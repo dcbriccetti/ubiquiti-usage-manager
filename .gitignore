@@ -1,3 +1,7 @@
 /.idea/
 /.venv/
 /src/keys.py
+/unifi-experiments.iml
+/meter.db
+/meter.db-shm
+/meter.db-wal
