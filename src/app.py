@@ -9,7 +9,7 @@ DATA_LIMIT_MB = 5_000
 
 stats_db: dict = {}
 
-def update_monitor() -> None:
+def process_connected_clients() -> None:
     speed_limit_names_by_id: dict[str, str]  = api.get_speed_limit_names_map()
     ap_names_by_mac:         dict[str, str]  = api.get_ap_names_map()
     clients:                 list            = api.get_api_data('stat/sta')
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     db.init_db()
     while True:
         try:
-            update_monitor()
+            process_connected_clients()
         except Exception as e:
             print(f'Error: {e}')
 
