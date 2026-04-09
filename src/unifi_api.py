@@ -7,7 +7,6 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 # --- SHARED CONFIG ---
 BASE_URL      = "https://192.168.0.1/proxy/network/api/s/default"
 HEADERS       = {"X-API-KEY": API_KEY, "Accept": "application/json"}
-SLOW_GROUP_ID = '69cad159178e6c2c87e7fdae'
 
 def get_api_data(endpoint: str) -> list:
     """Generic fetcher for UniFi data endpoints."""
@@ -19,10 +18,9 @@ def get_api_data(endpoint: str) -> list:
         print(f"⚠️ UniFi API Error ({endpoint}): {e}")
         return []
 
-def get_speed_limit_names_map() -> dict[str, str]:
-    """Returns a dictionary mapping Group IDs to their human Names."""
+def get_speed_limit_names() -> list[tuple[str, str]]:
     groups = get_api_data('list/usergroup')
-    return {g['_id']: g['name'] for g in groups}
+    return [(g['_id'], g['name']) for g in groups]
 
 def get_ap_names_map() -> dict[str, str]:
     """Returns a dictionary mapping AP MACs to their Names/Models."""
@@ -38,6 +36,21 @@ def set_user_group(user_id: str, group_id: str | None) -> bool:
     except:
         return False
 
+def get_vlan_ids_for_names(names: list[str]) -> list[str]:
+    networks = get_api_data('rest/networkconf')
+    return [n['_id'] for n in networks if n.get('name') in names]
+
+def release_all_from_limit(slow_group_id: str) -> None:
+    """Finds everyone currently throttled and moves them to the Default group."""
+    clients = get_api_data('stat/sta')
+    count = 0
+    for c in clients:
+        if c.get('usergroup_id') == slow_group_id:
+            if set_user_group(c.get('_id'), ""): # "" usually resets to Default
+                count += 1
+    if count > 0:
+        print(f"✅ Successfully released {count} user(s) from the speed limit.")
+
 def get_group_id_by_name(group_name: str) -> str | None:
     """
     Looks up the 24-character hex ID for a given group name (e.g., 'Slow').
@@ -49,12 +62,5 @@ def get_group_id_by_name(group_name: str) -> str | None:
 
     return target['_id'] if target else None
 
-def bytes_to_mb(bytes: int) -> float:
-    return bytes / (1024 * 1024)
-
-def get_signal_emoji(rssi: int) -> str:
-    if rssi <= 0:  return ""
-    if rssi >= 40: return "🟢"
-    if rssi >= 25: return "🟡"
-    if rssi >= 15: return "🟠"
-    return "🔴"
+def bytes_to_mb(num_bytes: int) -> float:
+    return num_bytes / (1024 * 1024)

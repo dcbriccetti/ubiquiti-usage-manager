@@ -21,12 +21,11 @@ def move_user(mac: str, target_group_name: str) -> None:
         print(f"❌ Error: Could not find active client: {mac}")
         return
 
-    user_id = target.get('_id')
     name = target.get('name') or mac
 
     # 3. Execute the move
     print(f"🔄 Moving {name} to group '{target_group_name}'...")
-    if api.set_user_group(user_id, group_id):
+    if api.set_user_group(target['_id'], group_id):
         print(f"✅ Success: {name} is now in the {target_group_name} group.")
     else:
         print(f"❌ Failed to update {name}.")
