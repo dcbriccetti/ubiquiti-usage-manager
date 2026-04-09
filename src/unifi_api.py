@@ -1,6 +1,7 @@
 import requests
 import urllib3
 from keys import API_KEY
+from structures import SpeedLimit
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -18,9 +19,16 @@ def get_api_data(endpoint: str) -> list:
         print(f"⚠️ UniFi API Error ({endpoint}): {e}")
         return []
 
-def get_speed_limit_names() -> list[tuple[str, str]]:
-    groups = get_api_data('list/usergroup')
-    return [(g['_id'], g['name']) for g in groups]
+def get_speed_limit_names() -> list[SpeedLimit]:
+    return [
+        SpeedLimit(
+            id=g['_id'],
+            name=g['name'],
+            up_kbps=g.get('qos_rate_max_up'),
+            down_kbps=g.get('qos_rate_max_down')
+        )
+        for g in get_api_data('list/usergroup')
+    ]
 
 def get_ap_names_map() -> dict[str, str]:
     """Returns a dictionary mapping AP MACs to their Names/Models."""
