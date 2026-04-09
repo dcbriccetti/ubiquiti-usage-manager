@@ -50,8 +50,8 @@ def process_connected_clients() -> None:
             drop_suffix = ' AP'  # No need for suffix in a column labeled "Access Point"
             ap_str = ap_name[:-len(drop_suffix)] if ap_name.endswith(drop_suffix) else ap_name
             signal_str = ' ' * 3 if signal == 0 else f'{signal:<3}'
-            interval_str = ' ' * 11 if interval_kb < 1.0   else f'{interval_kb:>8.2f} KB'
-            total_str    = ' ' * 11 if day_total_mb < 0.01 else f'{day_total_mb:>8.2f} MB'
+            interval_str = ' ' * 11 if interval_kb < 1.0   else f'{interval_kb:>8,.0f} KB'
+            total_str    = ' ' * 11 if day_total_mb < 0.01 else f'{day_total_mb:>8,.0f} MB'
             speed_limit_str = str(speed_limit) if speed_limit else ''
 
             print(f'{name:<18} | {mac:<17} | {vlan_name:<10} | {ap_str:<16} | {signal_str} | {interval_str} | {total_str} | {speed_limit_str:<30}')
