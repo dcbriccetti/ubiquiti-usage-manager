@@ -6,9 +6,8 @@ import config as cfg
 from structures import SpeedLimit
 
 def process_connected_clients() -> None:
-    speed_limits_by_id: dict[str, SpeedLimit]  = {l.id: l for l in api.get_speed_limit_names()}
-    ap_names_by_mac:    dict[str, str]         = api.get_ap_names_map()
-    clients:            list                   = api.get_api_data('stat/sta')
+    ap_names_by_mac: dict[str, str] = api.get_ap_names_by_mac()
+    clients:         list           = api.get_api_data('stat/sta')
 
     print(f'\n--- Update: {datetime.now().strftime('%H:%M:%S')} ---')
     header = f"{'Name':<18} | {'MAC':<17} | {'VLAN':<10} | {'AP':<16} | {'Sig':<3} | {'Last Min':>11} | {'Day Total':>11} | {'Speed Limit (kbps up/down)':<30}"
@@ -25,7 +24,7 @@ def process_connected_clients() -> None:
         ap_mac         = c.get('ap_mac', '')
         ap_name        = ap_names_by_mac.get(ap_mac, '')
         signal         = c.get('signal', 0)
-        curr_total_mb  = api.bytes_to_mb(c.get('tx_bytes', 0) + c.get('rx_bytes', 0))
+        curr_total_mb  = (c.get('tx_bytes', 0) + c.get('rx_bytes', 0)) / (1024 * 1024)
 
         if mac not in last_totals_by_client_mac:
             last_totals_by_client_mac[mac] = curr_total_mb
@@ -42,10 +41,10 @@ def process_connected_clients() -> None:
 
             day_total_mb = db.get_daily_total(mac)
 
-            if vlan_id in THROTTLEABLE_VLAN_IDS and day_total_mb > cfg.DATA_LIMIT_MB:
-                if speed_limit_id != SLOW_GROUP_ID:
+            if vlan_id in throttleable_vlan_ids and day_total_mb > cfg.DATA_LIMIT_MB:
+                if speed_limit_id != slow_speed_limit.id:
                     print(f'⚠️ LIMIT REACHED: Throttling {name}')
-                    api.set_user_group(c.get('_id'), SLOW_GROUP_ID)
+                    api.set_user_group(c.get('_id'), slow_speed_limit.id)
 
             drop_suffix = ' AP'  # No need for suffix in a column labeled "Access Point"
             ap_str = ap_name[:-len(drop_suffix)] if ap_name.endswith(drop_suffix) else ap_name
@@ -56,28 +55,18 @@ def process_connected_clients() -> None:
 
             print(f'{name:<18} | {mac:<17} | {vlan_name:<10} | {ap_str:<16} | {signal_str} | {interval_str} | {total_str} | {speed_limit_str:<30}')
 
-def resolve_config_ids():
-    """
-    Look up the IDs for the names specified in config.py
-    """
-    # Get all user groups from the controller
-    speed_limits: list[SpeedLimit] = api.get_speed_limit_names()
-
-    # Resolve SLOW_GROUP_ID
-    slow_group = next((g for g in speed_limits if g.name == cfg.SLOW_GROUP_NAME), None)
-    if not slow_group:
-        raise ValueError(f"Could not find speed limit group named: {cfg.SLOW_GROUP_NAME}")
-
-    vlan_ids: list[str] = api.get_vlan_ids_for_names(cfg.THROTTLEABLE_VLAN_NAMES)
-
-    return slow_group.id, vlan_ids
-
 if __name__ == "__main__":
     db.init_db()
 
-    SLOW_GROUP_ID, THROTTLEABLE_VLAN_IDS = resolve_config_ids()
+    speed_limits: list[SpeedLimit] = api.get_speed_limits()
+    speed_limits_by_id: dict[str, SpeedLimit]  = {limit.id: limit for limit in speed_limits}
+    slow_speed_limit: SpeedLimit | None = next((limit for limit in speed_limits if limit.name == cfg.SLOW_SPEED_LIMIT_NAME), None)
+    if not slow_speed_limit:
+        raise ValueError(f"Could not find speed limit named: {cfg.SLOW_SPEED_LIMIT_NAME}")
+
+    throttleable_vlan_ids = api.get_vlan_ids_for_names(cfg.THROTTLEABLE_VLAN_NAMES)
     last_totals_by_client_mac: dict[str, float] = {}
-    api.release_all_from_limit(SLOW_GROUP_ID)
+    api.release_all_from_limit(slow_speed_limit.id)
     current_day = datetime.now().date()
 
     while True:
@@ -86,7 +75,7 @@ if __name__ == "__main__":
             now_date = datetime.now().date()
             if now_date > current_day:
                 print(f"🕛 Midnight Reset: {now_date}")
-                api.release_all_from_limit(SLOW_GROUP_ID)
+                api.release_all_from_limit(slow_speed_limit.id)
                 current_day = now_date
 
             process_connected_clients()

@@ -11,6 +11,11 @@ class SpeedLimit:
     def is_unlimited(self) -> bool:
         return self.up_kbps is None and self.down_kbps is None
 
-    def __str__(self):
-        return f'{self.name} ({self.up_kbps}/{self.up_kbps})'
+    def __str__(self) -> str:
+        if self.is_unlimited:
+            return ''
 
+        up = self.up_kbps if self.up_kbps else '∞'
+        down = self.down_kbps if self.down_kbps else '∞'
+
+        return f'{self.name} ({up}/{down})'

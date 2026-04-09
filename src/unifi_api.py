@@ -19,7 +19,7 @@ def get_api_data(endpoint: str) -> list:
         print(f"⚠️ UniFi API Error ({endpoint}): {e}")
         return []
 
-def get_speed_limit_names() -> list[SpeedLimit]:
+def get_speed_limits() -> list[SpeedLimit]:
     return [
         SpeedLimit(
             id=g['_id'],
@@ -30,7 +30,7 @@ def get_speed_limit_names() -> list[SpeedLimit]:
         for g in get_api_data('list/usergroup')
     ]
 
-def get_ap_names_map() -> dict[str, str]:
+def get_ap_names_by_mac() -> dict[str, str]:
     """Returns a dictionary mapping AP MACs to their Names/Models."""
     devices = get_api_data('stat/device')
     return {d['mac']: (d.get('name') or d.get('model')) for d in devices}
@@ -70,5 +70,3 @@ def get_group_id_by_name(group_name: str) -> str | None:
 
     return target['_id'] if target else None
 
-def bytes_to_mb(num_bytes: int) -> float:
-    return num_bytes / (1024 * 1024)
