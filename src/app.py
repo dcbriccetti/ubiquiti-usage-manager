@@ -10,7 +10,7 @@ def process_connected_clients() -> None:
     clients:         list           = api.get_api_data('stat/sta')
 
     print(f'\n--- Update: {datetime.now().strftime('%H:%M:%S')} ---')
-    header = f"{'Name':<18} | {'MAC':<17} | {'VLAN':<10} | {'AP':<16} | {'Sig':<3} | {'Last Min':>11} | {'Day Total':>11} | {'Speed Limit (kbps up/down)':<30}"
+    header = f"{'Name':<25} | {'MAC':<17} | {'VLAN':<10} | {'AP':<16} | {'Sig':<3} | {'Last Min':>11} | {'Day Total':>11} | {'Speed Limit (kbps up/down)':<30}"
     print(header)
     print("-" * len(header))
 
@@ -53,7 +53,7 @@ def process_connected_clients() -> None:
             total_str    = ' ' * 11 if day_total_mb < 0.01 else f'{day_total_mb:>8,.0f} MB'
             speed_limit_str = str(speed_limit) if speed_limit else ''
 
-            print(f'{name:<18} | {mac:<17} | {vlan_name:<10} | {ap_str:<16} | {signal_str} | {interval_str} | {total_str} | {speed_limit_str:<30}')
+            print(f'{name:<25} | {mac:<17} | {vlan_name:<10} | {ap_str:<16} | {signal_str} | {interval_str} | {total_str} | {speed_limit_str:<30}')
 
 if __name__ == "__main__":
     db.init_db()
