@@ -10,13 +10,14 @@ def process_connected_clients() -> None:
     clients:         list           = api.get_api_data('stat/sta')
 
     print(f'\n--- Update: {datetime.now().strftime('%H:%M:%S')} ---')
-    header = f"{'Name':<25} | {'MAC':<17} | {'VLAN':<10} | {'AP':<16} | {'Sig':<3} | {'Last Min':>11} | {'Day Total':>11} | {'Speed Limit (kbps up/down)':<30}"
+    header = f"{'User ID':<13} | {'Name':<20} | {'MAC':<17} | {'VLAN':<10} | {'AP':<16} | {'Sig':<3} | {'Last Min':>11} | {'Day Total':>11} | {'Speed Limit (kbps up/down)':<20}"
     print(header)
     print("-" * len(header))
 
     for c in clients:
         mac            = c.get('mac')
         name           = c.get('name') or c.get('hostname') or c.get('dev_name') or mac
+        user_id        = c.get('1x_identity', '')
         vlan_id        = c.get('network_id')
         vlan_name      = c.get('network', '')
         speed_limit_id: str | None = c.get('usergroup_id')
@@ -37,7 +38,8 @@ def process_connected_clients() -> None:
         last_totals_by_client_mac[mac] = curr_total_mb
 
         if interval_kb >= cfg.IGNORE_BELOW_KB:
-            db.log_usage(mac, name, vlan_name, interval_mb, speed_limit.name if speed_limit else '', ap_name, signal)
+            db.log_usage(user_id, mac, name, vlan_name, interval_mb, speed_limit.name if speed_limit else '', ap_name,
+                         signal)
 
             day_total_mb = db.get_daily_total(mac)
 
@@ -53,7 +55,7 @@ def process_connected_clients() -> None:
             total_str    = ' ' * 11 if day_total_mb < 0.01 else f'{day_total_mb:>8,.0f} MB'
             speed_limit_str = str(speed_limit) if speed_limit else ''
 
-            print(f'{name:<25} | {mac:<17} | {vlan_name:<10} | {ap_str:<16} | {signal_str} | {interval_str} | {total_str} | {speed_limit_str:<30}')
+            print(f'{user_id:<13} | {name[:20]:<20} | {mac:<17} | {vlan_name:<10} | {ap_str:<16} | {signal_str} | {interval_str} | {total_str} | {speed_limit_str:<20}')
 
 if __name__ == "__main__":
     db.init_db()

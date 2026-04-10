@@ -27,6 +27,7 @@ class UsageRecord(Base):
     id:        Mapped[int]           = mapped_column(primary_key=True, autoincrement=True)
     timestamp: Mapped[datetime]      = mapped_column(default=datetime.now, index=True)
     mac:       Mapped[str]           = mapped_column(String(17), index=True)
+    user_id:   Mapped[Optional[str]] = mapped_column(String(30))
     name:      Mapped[Optional[str]] = mapped_column(String(50))
     vlan:      Mapped[Optional[str]] = mapped_column(String(20))
     mb_used:   Mapped[float]         = mapped_column()
@@ -38,12 +39,13 @@ class UsageRecord(Base):
 def init_db():
     Base.metadata.create_all(bind=engine)
 
-def log_usage(mac: str, name: str, vlan: str, mb_used: float, profile: str, ap_name: str, signal: int):
+def log_usage(user_id, mac: str, name: str, vlan: str, mb_used: float, profile: str, ap_name: str, signal: int):
     if round(mb_used, 3) <= 0:
         return
 
     with SessionLocal() as session:
         record = UsageRecord(
+            user_id=user_id,
             mac=mac,
             name=name,
             vlan=vlan,
