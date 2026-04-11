@@ -42,16 +42,13 @@ def init_db():
     Base.metadata.create_all(bind=engine)
 
 def log_usage(c: ClientInfo, interval_mb):
-    if round(c.mb_used_since_connection, 3) <= 0:
-        return
-
     with SessionLocal() as session:
         record = UsageRecord(
             user_id=c.user_id,
             mac=c.mac,
             name=c.name,
             vlan=c.vlan_name,
-            mb_used=c.mb_used_since_connection,
+            mb_used=interval_mb,
             profile=c.speed_limit.name if c.speed_limit else None,
             ap_name=c.ap_name,
             signal=c.signal
