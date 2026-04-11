@@ -39,9 +39,16 @@ def set_user_group(user_id: str, group_id: str | None) -> bool:
     """Updates a user's speed profile/group."""
     url = f"{BASE_URL}/upd/user/{user_id}"
     try:
-        res = requests.post(url, json={"usergroup_id": group_id}, headers=HEADERS, verify=False)
+        res = requests.post(
+            url,
+            json={"usergroup_id": group_id},
+            headers=HEADERS,
+            verify=False,
+            timeout=10,
+        )
         return res.status_code == 200
-    except:
+    except Exception as e:
+        print(f"⚠️ UniFi API Error (upd/user/{user_id}): {e}")
         return False
 
 def get_vlan_ids_for_names(names: list[str]) -> list[str]:
@@ -69,4 +76,3 @@ def get_group_id_by_name(group_name: str) -> str | None:
     target = next((g for g in groups if g['name'].lower() == group_name.lower()), None)
 
     return target['_id'] if target else None
-

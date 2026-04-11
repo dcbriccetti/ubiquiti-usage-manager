@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero">
+        <div>
+            <h1>UniFi Usage Control</h1>
+            <p>
+                A first-pass Flask dashboard for viewing connected clients, daily usage,
+                and throttling status while the background monitor keeps polling the network.
+            </p>
+        </div>
+        <div class="panel stat">
+            <span class="label">Daily Data Cap</span>
+            <span class="value">{{ "{:,.0f}".format(data_limit_mb) }} MB</span>
+        </div>
+    </section>
+
+    <section class="grid stats">
+        <article class="panel stat">
+            <span class="label">Connected Clients</span>
+            <span class="value">{{ connected_clients|length }}</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Tracked Today</span>
+            <span class="value">{{ daily_usage|length }}</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Total Usage Today</span>
+            <span class="value">{{ "{:,.0f}".format(total_usage_mb) }} MB</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Currently Throttled</span>
+            <span class="value">{{ throttled_count }}</span>
+        </article>
+    </section>
+
+    <section class="grid columns">
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Connected Clients</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>MAC</th>
+                            <th>Network</th>
+                            <th>Today</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for snapshot in connected_clients %}
+                            <tr>
+                                <td>
+                                    <strong>{{ snapshot.client.name }}</strong>
+                                    <div class="muted">{{ snapshot.client.ap_name or "No AP name" }}</div>
+                                </td>
+                                <td class="mono">
+                                    <a href="{{ url_for('client_detail', mac=snapshot.client.mac) }}">
+                                        {{ snapshot.client.mac }}
+                                    </a>
+                                </td>
+                                <td>{{ snapshot.client.vlan_name or "Unknown" }}</td>
+                                <td>{{ "{:,.1f}".format(snapshot.day_total_mb) }} MB</td>
+                                <td>
+                                    {% if snapshot.is_throttled %}
+                                        <span class="pill warn">Throttled</span>
+                                    {% else %}
+                                        <span class="pill">Normal</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="muted">No active clients were returned by the UniFi controller.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </article>
+
+        <aside class="stack">
+            <article class="panel">
+                <div class="panel-body">
+                    <h2>Highest Usage Today</h2>
+                    <div class="list">
+                        {% for row in daily_usage[:8] %}
+                            <div class="list-item">
+                                <strong>{{ row.name or row.mac }}</strong>
+                                <div class="muted mono">{{ row.mac }}</div>
+                                <div>{{ "{:,.1f}".format(row.total_mb) }} MB across {{ row.usage_entries }} entries</div>
+                            </div>
+                        {% else %}
+                            <div class="muted">No usage has been recorded yet today.</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-body">
+                    <h2>Next Steps</h2>
+                    <div class="list">
+                        <div class="list-item">Move controller URL and API key into environment-driven config.</div>
+                        <div class="list-item">Run the monitor separately with <span class="mono">python3 src/run_monitor.py</span>.</div>
+                        <div class="list-item">Add admin actions for manual throttle and release from the UI.</div>
+                    </div>
+                </div>
+            </article>
+        </aside>
+    </section>
+{% endblock %}

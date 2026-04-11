@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}{{ latest_record.name or mac }} | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero">
+        <div>
+            <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+            <h1>{{ latest_record.name or mac }}</h1>
+            <p class="mono">{{ mac }}</p>
+        </div>
+        <div class="panel stat">
+            <span class="label">Usage Today</span>
+            <span class="value">{{ "{:,.1f}".format(daily_total_mb) }} MB</span>
+        </div>
+    </section>
+
+    <section class="grid columns">
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Latest Known Details</h2>
+                <table>
+                    <tbody>
+                        <tr>
+                            <th>User ID</th>
+                            <td>{{ latest_record.user_id or "Unknown" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Network</th>
+                            <td>{{ latest_record.vlan or "Unknown" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Profile</th>
+                            <td>{{ latest_record.profile or "Default" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Access Point</th>
+                            <td>{{ latest_record.ap_name or "Unknown" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Signal</th>
+                            <td>{{ latest_record.signal if latest_record.signal is not none else "Unknown" }}</td>
+                        </tr>
+                        <tr>
+                            <th>Daily Cap</th>
+                            <td>{{ "{:,.0f}".format(data_limit_mb) }} MB</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Recent Usage Entries</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>MB Used</th>
+                            <th>Profile</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in usage_history %}
+                            <tr>
+                                <td>{{ row.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+                                <td>{{ "{:,.3f}".format(row.mb_used) }}</td>
+                                <td>{{ row.profile or "Default" }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="muted">No historical usage entries are stored for this client yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </article>
+    </section>
+{% endblock %}

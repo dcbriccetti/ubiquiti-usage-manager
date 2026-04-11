@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}UniFi Usage Dashboard{% endblock %}</title>
+    <style>
+        :root {
+            --bg: #f4efe6;
+            --panel: rgba(255, 251, 245, 0.88);
+            --ink: #1f2933;
+            --muted: #52606d;
+            --accent: #0f766e;
+            --accent-soft: #d6f5ef;
+            --warn: #c2410c;
+            --line: rgba(31, 41, 51, 0.12);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 35%),
+                radial-gradient(circle at top right, rgba(194, 65, 12, 0.12), transparent 30%),
+                linear-gradient(180deg, #faf6ef 0%, #f4efe6 100%);
+        }
+
+        a {
+            color: inherit;
+        }
+
+        .page {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+
+        .hero {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            align-items: end;
+            margin-bottom: 24px;
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: clamp(2rem, 4vw, 3.4rem);
+            line-height: 0.95;
+            letter-spacing: -0.04em;
+        }
+
+        .hero p {
+            margin: 10px 0 0;
+            color: var(--muted);
+            max-width: 700px;
+        }
+
+        .grid {
+            display: grid;
+            gap: 18px;
+        }
+
+        .stats {
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            margin-bottom: 24px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 20px 45px rgba(31, 41, 51, 0.08);
+        }
+
+        .stat {
+            padding: 20px;
+        }
+
+        .stat .label {
+            display: block;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
+        .stat .value {
+            display: block;
+            margin-top: 10px;
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .columns {
+            grid-template-columns: 1.25fr 1fr;
+            align-items: start;
+        }
+
+        .panel h2 {
+            margin: 0 0 16px;
+            font-size: 1.1rem;
+        }
+
+        .panel-body {
+            padding: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.95rem;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+        }
+
+        th {
+            font-size: 0.76rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+        }
+
+        tbody tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        .pill.warn {
+            background: rgba(194, 65, 12, 0.1);
+            color: var(--warn);
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .mono {
+            font-family: "SFMono-Regular", "Menlo", monospace;
+        }
+
+        .stack {
+            display: grid;
+            gap: 16px;
+        }
+
+        .list {
+            display: grid;
+            gap: 10px;
+        }
+
+        .list-item {
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.55);
+        }
+
+        .list-item strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        @media (max-width: 900px) {
+            .columns {
+                grid-template-columns: 1fr;
+            }
+
+            .hero {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
