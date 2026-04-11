@@ -1,7 +1,7 @@
 import requests
 import urllib3
 from keys import API_KEY
-from structures import SpeedLimit
+from speedlimit import SpeedLimit
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -39,8 +39,10 @@ def set_user_group(user_id: str, group_id: str | None) -> bool:
     """Updates a user's speed profile/group."""
     url = f"{BASE_URL}/upd/user/{user_id}"
     try:
-        res = requests.post(url, json={"usergroup_id": group_id}, headers=HEADERS, verify=False)
-        return res.status_code == 200
+        print('Skipping update')
+        return True
+        # res = requests.post(url, json={"usergroup_id": group_id}, headers=HEADERS, verify=False)
+        # return res.status_code == 200
     except:
         return False
 

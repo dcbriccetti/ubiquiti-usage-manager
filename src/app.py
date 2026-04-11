@@ -3,59 +3,47 @@ from datetime import datetime
 import unifi_api as api
 import database as db
 import config as cfg
-from structures import SpeedLimit
+from speedlimit import SpeedLimit
+from clientinfo import ClientInfo
 
 def process_connected_clients() -> None:
     ap_names_by_mac: dict[str, str] = api.get_ap_names_by_mac()
-    clients:         list           = api.get_api_data('stat/sta')
-
     print(f'\n--- Update: {datetime.now().strftime('%H:%M:%S')} ---')
     header = f"{'User ID':<13} | {'Name':<20} | {'MAC':<17} | {'VLAN':<10} | {'AP':<16} | {'Sig':<3} | {'Last Min':>11} | {'Day Total':>11} | {'Speed Limit (kbps up/down)':<20}"
     print(header)
     print("-" * len(header))
 
+    clients = [ClientInfo.create(c, speed_limits_by_id, ap_names_by_mac) for c in api.get_api_data('stat/sta')]
+
     for c in clients:
-        mac            = c.get('mac')
-        name           = c.get('name') or c.get('hostname') or c.get('dev_name') or mac
-        user_id        = c.get('1x_identity', '')
-        vlan_id        = c.get('network_id')
-        vlan_name      = c.get('network', '')
-        speed_limit_id: str | None = c.get('usergroup_id')
-        speed_limit: SpeedLimit | None = speed_limits_by_id[speed_limit_id] if speed_limit_id else None
-        ap_mac         = c.get('ap_mac', '')
-        ap_name        = ap_names_by_mac.get(ap_mac, '')
-        signal         = c.get('signal', 0)
-        curr_total_mb  = (c.get('tx_bytes', 0) + c.get('rx_bytes', 0)) / (1024 * 1024)
+        if c.mac not in last_totals_by_client_mac:
+            last_totals_by_client_mac[c.mac] = c.mb_used_since_connection
 
-        if mac not in last_totals_by_client_mac:
-            last_totals_by_client_mac[mac] = curr_total_mb
+        if c.mb_used_since_connection < last_totals_by_client_mac[c.mac]:
+            last_totals_by_client_mac[c.mac] = 0
 
-        if curr_total_mb < last_totals_by_client_mac[mac]:
-            last_totals_by_client_mac[mac] = 0
-
-        interval_mb = curr_total_mb - last_totals_by_client_mac[mac]
+        interval_mb = c.mb_used_since_connection - last_totals_by_client_mac[c.mac]
         interval_kb = interval_mb * 1024
-        last_totals_by_client_mac[mac] = curr_total_mb
+        last_totals_by_client_mac[c.mac] = c.mb_used_since_connection
 
         if interval_kb >= cfg.IGNORE_BELOW_KB:
-            db.log_usage(user_id, mac, name, vlan_name, interval_mb, speed_limit.name if speed_limit else '', ap_name,
-                         signal)
+            db.log_usage(c, interval_mb)
 
-            day_total_mb = db.get_daily_total(mac)
+            day_total_mb = db.get_daily_total(c.mac)
 
-            if vlan_id in throttleable_vlan_ids and day_total_mb > cfg.DATA_LIMIT_MB:
-                if speed_limit_id != slow_speed_limit.id:
-                    print(f'⚠️ LIMIT REACHED: Throttling {name}')
-                    api.set_user_group(c.get('_id'), slow_speed_limit.id)
+            if c.vlan_id in throttleable_vlan_ids and day_total_mb > cfg.DATA_LIMIT_MB:
+                if c.speed_limit is None or c.speed_limit.id != slow_speed_limit.id:
+                    print(f'⚠️ LIMIT REACHED: Throttling {c.name}')
+                    api.set_user_group(c.unifi_client_id, slow_speed_limit.id)
 
             drop_suffix = ' AP'  # No need for suffix in a column labeled "Access Point"
-            ap_str = ap_name[:-len(drop_suffix)] if ap_name.endswith(drop_suffix) else ap_name
-            signal_str = ' ' * 3 if signal == 0 else f'{signal:<3}'
+            ap_str = c.ap_name[:-len(drop_suffix)] if c.ap_name.endswith(drop_suffix) else c.ap_name
+            signal_str = ' ' * 3 if c.signal == 0 else f'{c.signal:<3}'
             interval_str = ' ' * 11 if interval_kb < 1.0   else f'{interval_kb:>8,.0f} KB'
             total_str    = ' ' * 11 if day_total_mb < 0.01 else f'{day_total_mb:>8,.0f} MB'
-            speed_limit_str = str(speed_limit) if speed_limit else ''
+            speed_limit_str = str(c.speed_limit) if c.speed_limit else ''
 
-            print(f'{user_id:<13} | {name[:20]:<20} | {mac:<17} | {vlan_name:<10} | {ap_str:<16} | {signal_str} | {interval_str} | {total_str} | {speed_limit_str:<20}')
+            print(f'{c.user_id:<13} | {c.name[:20]:<20} | {c.mac:<17} | {c.vlan_name:<10} | {ap_str:<16} | {signal_str} | {interval_str} | {total_str} | {speed_limit_str:<20}')
 
 if __name__ == "__main__":
     db.init_db()

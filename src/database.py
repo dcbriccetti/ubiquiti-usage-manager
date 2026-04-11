@@ -3,6 +3,8 @@ from typing import Optional
 from sqlalchemy import create_engine, String, func, select, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
+from clientinfo import ClientInfo
+
 # --- SETUP & CONCURRENCY ---
 DB_URL = "sqlite:///meter.db"
 engine = create_engine(DB_URL, echo=False)
@@ -39,20 +41,20 @@ class UsageRecord(Base):
 def init_db():
     Base.metadata.create_all(bind=engine)
 
-def log_usage(user_id, mac: str, name: str, vlan: str, mb_used: float, profile: str, ap_name: str, signal: int):
-    if round(mb_used, 3) <= 0:
+def log_usage(c: ClientInfo, interval_mb):
+    if round(c.mb_used_since_connection, 3) <= 0:
         return
 
     with SessionLocal() as session:
         record = UsageRecord(
-            user_id=user_id,
-            mac=mac,
-            name=name,
-            vlan=vlan,
-            mb_used=mb_used,
-            profile=profile,
-            ap_name=ap_name,
-            signal=signal
+            user_id=c.user_id,
+            mac=c.mac,
+            name=c.name,
+            vlan=c.vlan_name,
+            mb_used=c.mb_used_since_connection,
+            profile=c.speed_limit.name if c.speed_limit else None,
+            ap_name=c.ap_name,
+            signal=c.signal
         )
         session.add(record)
         session.commit()
