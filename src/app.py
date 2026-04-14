@@ -8,7 +8,6 @@ from monitor import get_connected_clients
 def create_app() -> Flask:
     'Create and configure the Flask web application.'
     app = Flask(__name__)
-    # db.init_db()  # Temporarily disabled: avoid DB writes during Flask startup.
 
     @app.route("/")
     def dashboard():
