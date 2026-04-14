@@ -2,7 +2,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 from sqlalchemy import create_engine, String, func, select, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -204,7 +204,8 @@ def get_usage_history(mac: str, limit: int = 200) -> list[UsageRecord]:
     )
 
     with SessionLocal() as session:
-        return session.execute(stmt).scalars().all()
+        rows = session.execute(stmt).scalars().all()
+        return [cast(UsageRecord, row) for row in rows]
 
 
 def update_monitor_heartbeat(at: datetime | None = None) -> None:
@@ -224,5 +225,7 @@ def update_monitor_heartbeat(at: datetime | None = None) -> None:
 def get_monitor_heartbeat() -> datetime | None:
     'Return the last monitor heartbeat time, if available.'
     with SessionLocal() as session:
-        heartbeat = session.get(MonitorHeartbeat, 1)
-        return heartbeat.updated_at if heartbeat else None
+        heartbeat: MonitorHeartbeat | None = session.get(MonitorHeartbeat, 1)
+        if heartbeat is None:
+            return None
+        return cast(datetime, heartbeat.updated_at)
