@@ -35,7 +35,6 @@ def create_app() -> Flask:
             "daily_usage": daily_usage,
             "total_usage_mb": total_usage_mb,
             "monitor_status": monitor_status,
-            "heartbeat_age_seconds": heartbeat_age_seconds,
             "heartbeat_at": heartbeat_at,
             "live_update_seconds": live_update_seconds,
         }
@@ -82,7 +81,6 @@ def create_app() -> Flask:
             tracked_today_count=len(data["daily_usage"]),
             total_usage_mb=data["total_usage_mb"],
             monitor_status=data["monitor_status"],
-            heartbeat_age_seconds=data["heartbeat_age_seconds"],
             heartbeat_time=(data["heartbeat_at"].strftime("%H:%M:%S") if data["heartbeat_at"] else None),
             connected_clients=connected_clients_payload,
             daily_usage_top=daily_usage_top_payload,
@@ -130,7 +128,6 @@ def create_app() -> Flask:
                     "tracked_today_count": len(data["daily_usage"]),
                     "total_usage_mb": data["total_usage_mb"],
                     "monitor_status": data["monitor_status"],
-                    "heartbeat_age_seconds": data["heartbeat_age_seconds"],
                     "heartbeat_time": (
                         data["heartbeat_at"].strftime("%H:%M:%S")
                         if data["heartbeat_at"]

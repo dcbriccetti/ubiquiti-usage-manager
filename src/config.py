@@ -1,5 +1,17 @@
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class ThrottleLevel:
+    threshold_mb: int
+    profile_name: str
+
+
 IGNORE_BELOW_KB = 10
-DATA_LIMIT_MB = 1_000
 THROTTLEABLE_VLAN_NAMES = ['Basic']
-SLOW_SPEED_LIMIT_NAME = 'Very slow'
+THROTTLING_LEVELS = [
+    ThrottleLevel(250, 'Half speed'),
+    ThrottleLevel(500, 'Quarter speed'),
+    ThrottleLevel(1_000, 'Eighth speed'),
+]
 SAFE_MODE = False

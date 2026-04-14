@@ -24,7 +24,7 @@ python3 src/app.py
 Run the polling/throttling worker separately:
 
 ```bash
-python3 src/run_monitor.py
+python3 src/monitor.py
 ```
 
 ## Safe Mode
