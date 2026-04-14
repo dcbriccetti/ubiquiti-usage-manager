@@ -41,10 +41,6 @@
                             <th>Signal</th>
                             <td>{% if latest_record.signal is not none and latest_record.signal != 0 %}{{ latest_record.signal }}{% endif %}</td>
                         </tr>
-                        <tr>
-                            <th>Daily Cap</th>
-                            <td>{{ "{:,.0f}".format(data_limit_mb) }} MB</td>
-                        </tr>
                     </tbody>
                 </table>
             </div>

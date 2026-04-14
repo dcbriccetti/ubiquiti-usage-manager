@@ -1,7 +1,6 @@
 from flask import Flask, abort, render_template
 from datetime import datetime
 
-import config as cfg
 import database as db
 from monitor import get_connected_clients
 
@@ -38,7 +37,6 @@ def create_app() -> Flask:
             daily_usage=daily_usage,
             total_usage_mb=total_usage_mb,
             throttled_count=throttled_count,
-            data_limit_mb=cfg.DATA_LIMIT_MB,
             monitor_status=monitor_status,
             heartbeat_age_seconds=heartbeat_age_seconds,
             heartbeat_at=heartbeat_at,
@@ -86,7 +84,6 @@ def create_app() -> Flask:
             latest_record=latest_record,
             usage_history=usage_history,
             daily_total_mb=daily_total_mb,
-            data_limit_mb=cfg.DATA_LIMIT_MB,
         )
 
     return app
