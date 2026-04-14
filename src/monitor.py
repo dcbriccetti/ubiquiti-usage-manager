@@ -95,7 +95,7 @@ class UsageMonitor:
                 raw_client, self.speed_limits_by_id, ap_names_by_mac
             )
             interval_mb = self._update_client_usage(client)
-            interval_kb = interval_mb * 1024
+            interval_kb = interval_mb * 1000
 
             if interval_kb >= cfg.IGNORE_BELOW_KB:
                 # db.log_usage(client, interval_mb)  # Temporarily disabled: no DB writes.

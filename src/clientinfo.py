@@ -30,5 +30,5 @@ class ClientInfo:
             speed_limit     = speed_limit,
             ap_name         = ap_names_by_mac.get(ap_mac, ''),
             signal          = c.get('signal', 0),
-            mb_used_since_connection = (c.get('tx_bytes', 0) + c.get('rx_bytes', 0)) / (1024 * 1024)
+            mb_used_since_connection = (c.get('tx_bytes', 0) + c.get('rx_bytes', 0)) / (1000 * 1000)
         )
