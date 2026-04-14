@@ -134,6 +134,7 @@ class UsageMonitor:
             try:
                 self._handle_day_transition()
                 snapshots = self.process_connected_clients()
+                db.update_monitor_heartbeat()
                 if on_cycle:
                     on_cycle(snapshots)
             except Exception as exc:

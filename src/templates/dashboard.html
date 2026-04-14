@@ -34,7 +34,20 @@
             <span class="label">Currently Throttled</span>
             <span class="value">{{ throttled_count }}</span>
         </article>
+        <article class="panel stat">
+            <span class="label">Monitor Health</span>
+            <span class="value">{{ monitor_status }}</span>
+            {% if heartbeat_age_seconds is not none and heartbeat_at %}
+                <div class="muted">
+                    Updated {{ heartbeat_age_seconds }}s ago
+                    ({{ heartbeat_at.strftime("%H:%M:%S") }})
+                </div>
+            {% else %}
+                <div class="muted">No heartbeat yet from monitor process.</div>
+            {% endif %}
+        </article>
     </section>
+    <p class="muted">Auto-refreshing every {{ auto_refresh_seconds }} seconds.</p>
 
     <section class="grid columns">
         <article class="panel">
@@ -134,4 +147,9 @@
             </article>
         </aside>
     </section>
+    <script>
+        window.setTimeout(function () {
+            window.location.reload();
+        }, {{ auto_refresh_seconds }} * 1000);
+    </script>
 {% endblock %}

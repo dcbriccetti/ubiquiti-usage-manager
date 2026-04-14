@@ -1,4 +1,5 @@
 from flask import Flask, abort, render_template
+from datetime import datetime
 
 import config as cfg
 import database as db
@@ -16,6 +17,20 @@ def create_app() -> Flask:
         daily_usage = db.get_daily_usage_summary()
         total_usage_mb = sum(row.total_mb for row in daily_usage)
         throttled_count = sum(1 for client in connected_clients if client.is_throttled)
+        heartbeat_at = db.get_monitor_heartbeat()
+        now = datetime.now()
+        heartbeat_age_seconds = (
+            max(0, int((now - heartbeat_at).total_seconds()))
+            if heartbeat_at
+            else None
+        )
+        monitor_status = (
+            "Healthy"
+            if heartbeat_age_seconds is not None and heartbeat_age_seconds <= 150
+            else "Stale"
+            if heartbeat_age_seconds is not None
+            else "Unknown"
+        )
 
         return render_template(
             "dashboard.html",
@@ -24,6 +39,10 @@ def create_app() -> Flask:
             total_usage_mb=total_usage_mb,
             throttled_count=throttled_count,
             data_limit_mb=cfg.DATA_LIMIT_MB,
+            monitor_status=monitor_status,
+            heartbeat_age_seconds=heartbeat_age_seconds,
+            heartbeat_at=heartbeat_at,
+            auto_refresh_seconds=15,
         )
 
     @app.route("/clients/<mac>")
