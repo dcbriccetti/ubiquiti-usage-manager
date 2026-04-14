@@ -3,6 +3,7 @@ from speedlimit import SpeedLimit
 
 @dataclass(frozen=True, kw_only=True)
 class ClientInfo:
+    'Normalized client fields derived from UniFi station payloads.'
     unifi_client_id: str
     mac: str
     name: str
@@ -16,6 +17,7 @@ class ClientInfo:
 
     @classmethod
     def create(cls, c: dict, speed_limits_by_id: dict[str, SpeedLimit], ap_names_by_mac: dict[str, str]):
+        'Build a ClientInfo instance from raw UniFi client data.'
         speed_limit_id: str | None = c.get('usergroup_id')
         speed_limit = speed_limits_by_id.get(speed_limit_id) if speed_limit_id else None
         ap_mac = c.get('ap_mac', '')

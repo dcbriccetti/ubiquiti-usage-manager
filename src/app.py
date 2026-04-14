@@ -6,11 +6,13 @@ from monitor import get_connected_clients
 
 
 def create_app() -> Flask:
+    'Create and configure the Flask web application.'
     app = Flask(__name__)
     # db.init_db()  # Temporarily disabled: avoid DB writes during Flask startup.
 
     @app.route("/")
     def dashboard():
+        'Render the dashboard with live snapshots and daily usage summaries.'
         connected_clients = get_connected_clients()
         daily_usage = db.get_daily_usage_summary()
         total_usage_mb = sum(row.total_mb for row in daily_usage)
@@ -27,6 +29,7 @@ def create_app() -> Flask:
 
     @app.route("/clients/<mac>")
     def client_detail(mac: str):
+        'Render detail view for one client MAC address.'
         usage_history = db.get_usage_history(mac)
         if usage_history:
             latest_record = usage_history[0]

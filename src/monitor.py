@@ -11,6 +11,8 @@ from speedlimit import SpeedLimit
 
 @dataclass(frozen=True, kw_only=True)
 class ClientSnapshot:
+    "Snapshot of one client's current usage totals and throttle state."
+    # Immutable view-model used by both CLI output and Flask templates.
     client: ClientInfo
     interval_mb: float
     day_total_mb: float
@@ -20,6 +22,7 @@ class ClientSnapshot:
 
 
 def get_connected_clients() -> list[ClientSnapshot]:
+    'Fetch connected clients and return lightweight usage snapshots for the UI.'
     speed_limits = api.get_speed_limits()
     speed_limits_by_id = {limit.id: limit for limit in speed_limits}
     slow_speed_limit = next(
@@ -51,7 +54,10 @@ def get_connected_clients() -> list[ClientSnapshot]:
 
 
 class UsageMonitor:
+    'Poll UniFi clients, compute usage deltas, and enforce throttling rules.'
+
     def __init__(self) -> None:
+        'Initialize runtime caches and load throttle-related controller metadata.'
         # db.init_db()  # Temporarily disabled: avoid schema writes.
         self.last_totals_by_client_mac: dict[str, float] = {}
         self.current_day = datetime.now().date()
@@ -67,6 +73,7 @@ class UsageMonitor:
                 api.release_all_from_limit(self.slow_speed_limit.id)
 
     def refresh_runtime_state(self) -> None:
+        'Reload speed-limit groups and throttleable VLAN IDs from the controller.'
         speed_limits = api.get_speed_limits()
         self.speed_limits_by_id = {limit.id: limit for limit in speed_limits}
         self.slow_speed_limit = next(
@@ -83,8 +90,10 @@ class UsageMonitor:
         )
 
     def process_connected_clients(self) -> list[ClientSnapshot]:
+        'Process all connected clients for one cycle and return current snapshots.'
         snapshots: list[ClientSnapshot] = []
         ap_names_by_mac = api.get_ap_names_by_mac()
+        # Build rows first so throttle updates are reflected before anything is printed.
         report_rows: list[str] = []
 
         print(f"\n--- Update: {datetime.now().strftime('%H:%M:%S')} ---")
@@ -138,6 +147,7 @@ class UsageMonitor:
         return snapshots
 
     def run_forever(self, poll_interval_seconds: int = 60) -> None:
+        'Run the monitor loop continuously at the configured poll interval.'
         while True:
             try:
                 self._handle_day_transition()
@@ -161,6 +171,7 @@ class UsageMonitor:
         previous_total = self.last_totals_by_client_mac.get(
             client.mac, client.mb_used_since_connection
         )
+        # Connection reset/device reconnect can roll counters backward.
         if client.mb_used_since_connection < previous_total:
             previous_total = 0
 
@@ -171,6 +182,7 @@ class UsageMonitor:
     def _enforce_limit_if_needed(
         self, client: ClientInfo, day_total_mb: float
     ) -> tuple[bool, SpeedLimit | None]:
+        # Return both throttled state and the effective speed limit for current-cycle display.
         should_throttle = (
             client.vlan_id in self.throttleable_vlan_ids
             and day_total_mb > cfg.DATA_LIMIT_MB
@@ -207,7 +219,7 @@ class UsageMonitor:
             f"{'Minute':>{usage_col_width}} | {'Today':>{usage_col_width}} | "
             f"{'7 Days':>{usage_col_width}} | {'This Month':>{usage_col_width}}"
         )
-        usage_group_label = " Usage (MB) "
+        usage_group_label = " USAGE (MB) "
         header_top = (
             f"{' ' * len(base_header)} | {usage_group_label.center(len(usage_columns), '-')} | "
         )

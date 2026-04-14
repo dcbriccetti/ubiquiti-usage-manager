@@ -15,6 +15,7 @@ engine = create_engine(DB_URL, echo=False)
 
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection, _connection_record):
+    'Apply SQLite pragmas for better concurrent read/write behavior.'
     cursor = dbapi_connection.cursor()
     try:
         # If another process has the DB locked momentarily, continue with defaults.
@@ -28,11 +29,13 @@ def set_sqlite_pragma(dbapi_connection, _connection_record):
 SessionLocal = sessionmaker(bind=engine)
 
 class Base(DeclarativeBase):
+    'Base class for SQLAlchemy ORM models.'
     pass
 
 
 @dataclass(frozen=True, kw_only=True)
 class DailyUsageSummary:
+    'Aggregated daily usage metrics for one client MAC.'
     mac: str
     user_id: str | None
     name: str | None
@@ -46,7 +49,7 @@ class DailyUsageSummary:
 
 # --- MODELS ---
 class UsageRecord(Base):
-    """The Ledger: Stores every non-zero minute of usage."""
+    'Ledger row storing one non-zero usage interval.'
     __tablename__ = "usage_records"
 
     id:        Mapped[int]           = mapped_column(primary_key=True, autoincrement=True)
@@ -62,9 +65,11 @@ class UsageRecord(Base):
 
 # --- DATABASE API ---
 def init_db():
+    'Create database tables if they do not already exist.'
     Base.metadata.create_all(bind=engine)
 
 def log_usage(c: ClientInfo, interval_mb):
+    'Persist one usage interval for a client.'
     with SessionLocal() as session:
         record = UsageRecord(
             user_id=c.user_id,
@@ -80,6 +85,7 @@ def log_usage(c: ClientInfo, interval_mb):
         session.commit()
 
 def get_daily_total(mac: str) -> float:
+    "Return one client's total usage for the current calendar day in MB."
     today_start = datetime.combine(datetime.now().date(), time.min)
     today_end = datetime.combine(datetime.now().date(), time.max)
 
@@ -95,6 +101,7 @@ def get_daily_total(mac: str) -> float:
 
 
 def get_last_7_days_total(mac: str) -> float:
+    "Return one client's rolling 7-day usage total in MB."
     now = datetime.now()
     seven_days_ago = now - timedelta(days=7)
 
@@ -110,6 +117,7 @@ def get_last_7_days_total(mac: str) -> float:
 
 
 def get_calendar_month_total(mac: str) -> float:
+    "Return one client's usage total since the start of this calendar month in MB."
     now = datetime.now()
     month_start = datetime.combine(now.date().replace(day=1), time.min)
 
@@ -125,6 +133,7 @@ def get_calendar_month_total(mac: str) -> float:
 
 
 def get_daily_usage_summary() -> list[DailyUsageSummary]:
+    'Return per-client usage summaries for today, sorted by total descending.'
     today_start = datetime.combine(datetime.now().date(), time.min)
     today_end = datetime.combine(datetime.now().date(), time.max)
     stmt = (
@@ -178,6 +187,7 @@ def get_daily_usage_summary() -> list[DailyUsageSummary]:
 
 
 def get_usage_history(mac: str, limit: int = 200) -> list[UsageRecord]:
+    'Return most recent usage records for one client MAC.'
     stmt = (
         select(UsageRecord)
         .where(UsageRecord.mac == mac)

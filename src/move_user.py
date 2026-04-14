@@ -2,6 +2,7 @@ import sys
 import unifi_api as api
 
 def move_user(mac: str, target_group_name: str) -> None:
+    'Move one active client into a specified UniFi group.'
     # 1. Resolve the Group Name to an ID
     group_id = api.get_group_id_by_name(target_group_name)
 
