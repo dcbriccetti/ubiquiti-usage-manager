@@ -46,8 +46,18 @@
                             <th>Name</th>
                             <th>MAC</th>
                             <th>Network</th>
-                            <th>Today</th>
+                            <th colspan="4">Usage (MB)</th>
                             <th>Status</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            <th></th>
+                            <th></th>
+                            <th>Minute</th>
+                            <th>Today</th>
+                            <th>7 Days</th>
+                            <th>This Month</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -63,7 +73,10 @@
                                     </a>
                                 </td>
                                 <td>{{ snapshot.client.vlan_name or "Unknown" }}</td>
-                                <td>{{ "{:,.1f}".format(snapshot.day_total_mb) }} MB</td>
+                                <td>{{ "{:,.2f}".format(snapshot.interval_mb) }}</td>
+                                <td>{{ "{:,.1f}".format(snapshot.day_total_mb) }}</td>
+                                <td>{{ "{:,.1f}".format(snapshot.last_7_days_total_mb) }}</td>
+                                <td>{{ "{:,.1f}".format(snapshot.calendar_month_total_mb) }}</td>
                                 <td>
                                     {% if snapshot.is_throttled %}
                                         <span class="pill warn">Throttled</span>
@@ -74,7 +87,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="5" class="muted">No active clients were returned by the UniFi controller.</td>
+                                <td colspan="8" class="muted">No active clients were returned by the UniFi controller.</td>
                             </tr>
                         {% endfor %}
                     </tbody>

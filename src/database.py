@@ -1,6 +1,6 @@
 import sqlite3
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
 from sqlalchemy import create_engine, String, func, select, event
@@ -87,6 +87,36 @@ def get_daily_total(mac: str) -> float:
         UsageRecord.mac == mac,
         UsageRecord.timestamp >= today_start,
         UsageRecord.timestamp <= today_end
+    )
+
+    with SessionLocal() as session:
+        result = session.execute(stmt).scalar()
+        return float(result or 0)
+
+
+def get_last_7_days_total(mac: str) -> float:
+    now = datetime.now()
+    seven_days_ago = now - timedelta(days=7)
+
+    stmt = select(func.sum(UsageRecord.mb_used)).where(
+        UsageRecord.mac == mac,
+        UsageRecord.timestamp >= seven_days_ago,
+        UsageRecord.timestamp <= now,
+    )
+
+    with SessionLocal() as session:
+        result = session.execute(stmt).scalar()
+        return float(result or 0)
+
+
+def get_calendar_month_total(mac: str) -> float:
+    now = datetime.now()
+    month_start = datetime.combine(now.date().replace(day=1), time.min)
+
+    stmt = select(func.sum(UsageRecord.mb_used)).where(
+        UsageRecord.mac == mac,
+        UsageRecord.timestamp >= month_start,
+        UsageRecord.timestamp <= now,
     )
 
     with SessionLocal() as session:
