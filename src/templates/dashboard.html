@@ -27,10 +27,6 @@
             <span class="value" id="stat-total-usage">{{ "{:,.0f}".format(total_usage_mb) }} MB</span>
         </article>
         <article class="panel stat">
-            <span class="label">Currently Throttled</span>
-            <span class="value" id="stat-throttled">{{ throttled_count }}</span>
-        </article>
-        <article class="panel stat">
             <span class="label">Monitor Health</span>
             <span class="value" id="stat-monitor">{{ monitor_status }}</span>
             <div class="muted" id="heartbeat-detail">
@@ -58,7 +54,6 @@
                             <th>Sig</th>
                             <th colspan="4" class="usage-group">USAGE (MB)</th>
                             <th>Speed Limit</th>
-                            <th>Status</th>
                         </tr>
                         <tr>
                             <th></th>
@@ -70,7 +65,6 @@
                             <th class="num">Today</th>
                             <th class="num">7 Days</th>
                             <th class="num">This Month</th>
-                            <th></th>
                             <th></th>
                         </tr>
                     </thead>
@@ -96,17 +90,10 @@
                                 <td class="num">{% if snapshot.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.last_7_days_total_mb) }}{% endif %}</td>
                                 <td class="num">{% if snapshot.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.calendar_month_total_mb) }}{% endif %}</td>
                                 <td>{{ snapshot.effective_speed_limit or "" }}</td>
-                                <td>
-                                    {% if snapshot.is_throttled %}
-                                        <span class="pill warn">Throttled</span>
-                                    {% else %}
-                                        <span class="pill">Normal</span>
-                                    {% endif %}
-                                </td>
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="11" class="muted">No active clients were returned by the UniFi controller.</td>
+                                <td colspan="10" class="muted">No active clients were returned by the UniFi controller.</td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -140,7 +127,6 @@
             const statConnected = document.getElementById("stat-connected");
             const statTracked = document.getElementById("stat-tracked");
             const statTotalUsage = document.getElementById("stat-total-usage");
-            const statThrottled = document.getElementById("stat-throttled");
             const statMonitor = document.getElementById("stat-monitor");
             const heartbeatDetail = document.getElementById("heartbeat-detail");
             const liveUpdateNote = document.getElementById("live-update-note");
@@ -169,14 +155,11 @@
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = '<tr><td colspan="11" class="muted">No active clients were returned by the UniFi controller.</td></tr>';
+                    connectedBody.innerHTML = '<tr><td colspan="10" class="muted">No active clients were returned by the UniFi controller.</td></tr>';
                     return;
                 }
 
                 connectedBody.innerHTML = clients.map((client) => {
-                    const statusPill = client.is_throttled
-                        ? '<span class="pill warn">Throttled</span>'
-                        : '<span class="pill">Normal</span>';
                     const apSubtext = client.ap_name
                         ? `<div class="muted">${escapeHtml(client.ap_name)}</div>`
                         : "";
@@ -198,7 +181,6 @@
                             <td class="num">${formatWhole(client.last_7_days_total_mb)}</td>
                             <td class="num">${formatWhole(client.calendar_month_total_mb)}</td>
                             <td>${escapeHtml(client.effective_speed_limit)}</td>
-                            <td>${statusPill}</td>
                         </tr>
                     `;
                 }).join("");
@@ -222,7 +204,6 @@
                 statConnected.textContent = data.connected_clients_count;
                 statTracked.textContent = data.tracked_today_count;
                 statTotalUsage.textContent = `${formatInt(data.total_usage_mb)} MB`;
-                statThrottled.textContent = data.throttled_count;
                 statMonitor.textContent = data.monitor_status;
 
                 if (data.heartbeat_time) {

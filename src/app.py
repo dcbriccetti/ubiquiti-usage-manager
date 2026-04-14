@@ -16,7 +16,6 @@ def create_app() -> Flask:
         connected_clients = get_connected_clients()
         daily_usage = db.get_daily_usage_summary()
         total_usage_mb = sum(row.total_mb for row in daily_usage)
-        throttled_count = sum(1 for client in connected_clients if client.is_throttled)
         heartbeat_at = db.get_monitor_heartbeat()
         now = datetime.now()
         heartbeat_age_seconds = (
@@ -35,7 +34,6 @@ def create_app() -> Flask:
             "connected_clients": connected_clients,
             "daily_usage": daily_usage,
             "total_usage_mb": total_usage_mb,
-            "throttled_count": throttled_count,
             "monitor_status": monitor_status,
             "heartbeat_age_seconds": heartbeat_age_seconds,
             "heartbeat_at": heartbeat_at,
@@ -65,7 +63,6 @@ def create_app() -> Flask:
                 "last_7_days_total_mb": snapshot.last_7_days_total_mb,
                 "calendar_month_total_mb": snapshot.calendar_month_total_mb,
                 "effective_speed_limit": str(snapshot.effective_speed_limit) if snapshot.effective_speed_limit else "",
-                "is_throttled": snapshot.is_throttled,
             }
             for snapshot in data["connected_clients"]
         ]
@@ -84,7 +81,6 @@ def create_app() -> Flask:
             connected_clients_count=len(data["connected_clients"]),
             tracked_today_count=len(data["daily_usage"]),
             total_usage_mb=data["total_usage_mb"],
-            throttled_count=data["throttled_count"],
             monitor_status=data["monitor_status"],
             heartbeat_age_seconds=data["heartbeat_age_seconds"],
             heartbeat_time=(data["heartbeat_at"].strftime("%H:%M:%S") if data["heartbeat_at"] else None),
@@ -115,7 +111,6 @@ def create_app() -> Flask:
                         "last_7_days_total_mb": snapshot.last_7_days_total_mb,
                         "calendar_month_total_mb": snapshot.calendar_month_total_mb,
                         "effective_speed_limit": str(snapshot.effective_speed_limit) if snapshot.effective_speed_limit else "",
-                        "is_throttled": snapshot.is_throttled,
                     }
                     for snapshot in data["connected_clients"]
                 ]
@@ -134,7 +129,6 @@ def create_app() -> Flask:
                     "connected_clients_count": len(data["connected_clients"]),
                     "tracked_today_count": len(data["daily_usage"]),
                     "total_usage_mb": data["total_usage_mb"],
-                    "throttled_count": data["throttled_count"],
                     "monitor_status": data["monitor_status"],
                     "heartbeat_age_seconds": data["heartbeat_age_seconds"],
                     "heartbeat_time": (
