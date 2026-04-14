@@ -94,6 +94,7 @@ def create_app() -> Flask:
         )
 
     @app.route("/api/dashboard-stream")
+    @app.route("/dashboard-stream")
     def dashboard_stream():
         'Stream dashboard updates over Server-Sent Events.'
 

@@ -145,6 +145,8 @@
             const heartbeatDetail = document.getElementById("heartbeat-detail");
             const liveUpdateNote = document.getElementById("live-update-note");
             const detailPattern = {{ url_for('client_detail', mac='__MAC__')|tojson }};
+            const streamUrl = {{ url_for('dashboard_stream')|tojson }};
+            const snapshotUrl = {{ url_for('dashboard_snapshot')|tojson }};
             let fallbackTimer = null;
 
             const formatInt = (value) => Math.round(value).toLocaleString();
@@ -237,7 +239,7 @@
 
             const fetchSnapshot = async () => {
                 try {
-                    const response = await fetch("/api/dashboard-snapshot", { cache: "no-store" });
+                    const response = await fetch(snapshotUrl, { cache: "no-store" });
                     if (!response.ok) return;
                     const data = await response.json();
                     applyPayload(data);
@@ -246,7 +248,7 @@
                 }
             };
 
-            const stream = new EventSource("/api/dashboard-stream");
+            const stream = new EventSource(streamUrl);
 
             stream.onmessage = (event) => {
                 try {
