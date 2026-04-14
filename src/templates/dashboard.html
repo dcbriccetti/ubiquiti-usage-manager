@@ -26,19 +26,7 @@
             <span class="label">Total Usage Today</span>
             <span class="value" id="stat-total-usage">{{ "{:,.0f}".format(total_usage_mb) }} MB</span>
         </article>
-        <article class="panel stat">
-            <span class="label">Monitor Health</span>
-            <span class="value" id="stat-monitor">{{ monitor_status }}</span>
-            <div class="muted" id="heartbeat-detail">
-            {% if heartbeat_at %}
-                Last monitor update: {{ heartbeat_at.strftime("%H:%M:%S") }}
-            {% else %}
-                No monitor updates yet.
-            {% endif %}
-            </div>
-        </article>
     </section>
-    <p class="muted" id="live-update-note">Live stream connecting...</p>
 
     <section class="grid columns">
         <article class="panel">
@@ -101,35 +89,13 @@
             </div>
         </article>
 
-        <aside class="stack">
-            <article class="panel">
-                <div class="panel-body">
-                    <h2>Highest Usage Today</h2>
-                    <div class="list" id="daily-usage-list">
-                        {% for row in daily_usage[:8] %}
-                            <div class="list-item">
-                                <strong>{{ row.name or row.mac }}</strong>
-                                <div class="muted mono">{{ row.mac }}</div>
-                                <div>{{ "{:,.1f}".format(row.total_mb) }} MB across {{ row.usage_entries }} entries</div>
-                            </div>
-                        {% else %}
-                            <div class="muted">No usage has been recorded yet today.</div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </article>
-        </aside>
     </section>
     <script>
         (function () {
             const connectedBody = document.getElementById("connected-clients-body");
-            const dailyUsageList = document.getElementById("daily-usage-list");
             const statConnected = document.getElementById("stat-connected");
             const statTracked = document.getElementById("stat-tracked");
             const statTotalUsage = document.getElementById("stat-total-usage");
-            const statMonitor = document.getElementById("stat-monitor");
-            const heartbeatDetail = document.getElementById("heartbeat-detail");
-            const liveUpdateNote = document.getElementById("live-update-note");
             const detailPattern = {{ url_for('client_detail', mac='__MAC__')|tojson }};
             const streamUrl = {{ url_for('dashboard_stream')|tojson }};
             const snapshotUrl = {{ url_for('dashboard_snapshot')|tojson }};
@@ -186,36 +152,12 @@
                 }).join("");
             };
 
-            const renderDailyUsage = (rows) => {
-                if (!rows.length) {
-                    dailyUsageList.innerHTML = '<div class="muted">No usage has been recorded yet today.</div>';
-                    return;
-                }
-                dailyUsageList.innerHTML = rows.map((row) => `
-                    <div class="list-item">
-                        <strong>${escapeHtml(row.name)}</strong>
-                        <div class="muted mono">${escapeHtml(row.mac)}</div>
-                        <div>${formatInt(row.total_mb)} MB across ${escapeHtml(row.usage_entries)} entries</div>
-                    </div>
-                `).join("");
-            };
-
             const applyPayload = (data) => {
                 statConnected.textContent = data.connected_clients_count;
                 statTracked.textContent = data.tracked_today_count;
                 statTotalUsage.textContent = `${formatInt(data.total_usage_mb)} MB`;
-                statMonitor.textContent = data.monitor_status;
-
-                if (data.heartbeat_time) {
-                    heartbeatDetail.textContent = `Last monitor update: ${data.heartbeat_time}`;
-                } else {
-                    heartbeatDetail.textContent = "No monitor updates yet.";
-                }
 
                 renderConnectedClients(data.connected_clients);
-                renderDailyUsage(data.daily_usage_top);
-
-                liveUpdateNote.textContent = "Live stream active.";
             };
 
             const fetchSnapshot = async () => {
@@ -245,7 +187,6 @@
             };
 
             stream.onopen = () => {
-                liveUpdateNote.textContent = "Live stream connected.";
                 if (fallbackTimer) {
                     clearInterval(fallbackTimer);
                     fallbackTimer = null;
@@ -253,7 +194,6 @@
             };
 
             stream.onerror = () => {
-                liveUpdateNote.textContent = "Live stream disconnected, using snapshot fallback.";
                 if (!fallbackTimer) {
                     fetchSnapshot();
                     fallbackTimer = window.setInterval(fetchSnapshot, {{ live_update_seconds }} * 1000);

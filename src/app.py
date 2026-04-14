@@ -1,5 +1,4 @@
 from flask import Flask, Response, abort, jsonify, render_template, stream_with_context
-from datetime import datetime
 import json
 import time
 
@@ -16,26 +15,10 @@ def create_app() -> Flask:
         connected_clients = get_connected_clients()
         daily_usage = db.get_daily_usage_summary()
         total_usage_mb = sum(row.total_mb for row in daily_usage)
-        heartbeat_at = db.get_monitor_heartbeat()
-        now = datetime.now()
-        heartbeat_age_seconds = (
-            max(0, int((now - heartbeat_at).total_seconds()))
-            if heartbeat_at
-            else None
-        )
-        monitor_status = (
-            "Healthy"
-            if heartbeat_age_seconds is not None and heartbeat_age_seconds <= 150
-            else "Stale"
-            if heartbeat_age_seconds is not None
-            else "Unknown"
-        )
         return {
             "connected_clients": connected_clients,
             "daily_usage": daily_usage,
             "total_usage_mb": total_usage_mb,
-            "monitor_status": monitor_status,
-            "heartbeat_at": heartbeat_at,
             "live_update_seconds": live_update_seconds,
         }
 
@@ -66,24 +49,11 @@ def create_app() -> Flask:
             for snapshot in data["connected_clients"]
         ]
 
-        daily_usage_top_payload = [
-            {
-                "name": row.name or row.mac,
-                "mac": row.mac,
-                "total_mb": row.total_mb,
-                "usage_entries": row.usage_entries,
-            }
-            for row in data["daily_usage"][:8]
-        ]
-
         return jsonify(
             connected_clients_count=len(data["connected_clients"]),
             tracked_today_count=len(data["daily_usage"]),
             total_usage_mb=data["total_usage_mb"],
-            monitor_status=data["monitor_status"],
-            heartbeat_time=(data["heartbeat_at"].strftime("%H:%M:%S") if data["heartbeat_at"] else None),
             connected_clients=connected_clients_payload,
-            daily_usage_top=daily_usage_top_payload,
             live_update_seconds=data["live_update_seconds"],
         )
 
@@ -112,28 +82,11 @@ def create_app() -> Flask:
                     for snapshot in data["connected_clients"]
                 ]
 
-                daily_usage_top_payload = [
-                    {
-                        "name": row.name or row.mac,
-                        "mac": row.mac,
-                        "total_mb": row.total_mb,
-                        "usage_entries": row.usage_entries,
-                    }
-                    for row in data["daily_usage"][:8]
-                ]
-
                 payload = {
                     "connected_clients_count": len(data["connected_clients"]),
                     "tracked_today_count": len(data["daily_usage"]),
                     "total_usage_mb": data["total_usage_mb"],
-                    "monitor_status": data["monitor_status"],
-                    "heartbeat_time": (
-                        data["heartbeat_at"].strftime("%H:%M:%S")
-                        if data["heartbeat_at"]
-                        else None
-                    ),
                     "connected_clients": connected_clients_payload,
-                    "daily_usage_top": daily_usage_top_payload,
                     "live_update_seconds": data["live_update_seconds"],
                 }
 
