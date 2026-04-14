@@ -9,7 +9,7 @@ from monitor import get_connected_clients
 
 def create_app() -> Flask:
     'Create and configure the Flask web application.'
-    app = Flask(__name__)
+    flask_app = Flask(__name__)
     live_update_seconds = 15
 
     def build_dashboard_data() -> dict:
@@ -39,12 +39,12 @@ def create_app() -> Flask:
             "live_update_seconds": live_update_seconds,
         }
 
-    @app.route("/")
+    @flask_app.route("/")
     def dashboard():
         'Render the dashboard with live snapshots and daily usage summaries.'
         return render_template("dashboard.html", **build_dashboard_data())
 
-    @app.route("/api/dashboard-snapshot")
+    @flask_app.route("/api/dashboard-snapshot")
     def dashboard_snapshot():
         'Return dashboard snapshot data for incremental in-page refresh.'
         data = build_dashboard_data()
@@ -87,12 +87,11 @@ def create_app() -> Flask:
             live_update_seconds=data["live_update_seconds"],
         )
 
-    @app.route("/api/dashboard-stream")
-    @app.route("/dashboard-stream")
+    @flask_app.route("/api/dashboard-stream")
+    @flask_app.route("/dashboard-stream")
     def dashboard_stream():
         'Stream dashboard updates over Server-Sent Events.'
 
-        @stream_with_context
         def event_stream():
             while True:
                 data = build_dashboard_data()
@@ -141,12 +140,12 @@ def create_app() -> Flask:
                 yield f"data: {json.dumps(payload)}\n\n"
                 time.sleep(live_update_seconds)
 
-        response = Response(event_stream(), mimetype="text/event-stream")
+        response = Response(stream_with_context(event_stream()), mimetype="text/event-stream")
         response.headers["Cache-Control"] = "no-cache"
         response.headers["X-Accel-Buffering"] = "no"
         return response
 
-    @app.route("/clients/<mac>")
+    @flask_app.route("/clients/<mac>")
     def client_detail(mac: str):
         'Render detail view for one client MAC address.'
         usage_history = db.get_usage_history(mac)
@@ -189,7 +188,7 @@ def create_app() -> Flask:
             daily_total_mb=daily_total_mb,
         )
 
-    return app
+    return flask_app
 
 
 app = create_app()
