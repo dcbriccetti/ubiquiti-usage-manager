@@ -13,12 +13,11 @@ def create_app() -> Flask:
 
     def build_dashboard_data() -> dict:
         connected_clients = get_connected_clients()
-        daily_usage = db.get_daily_usage_summary()
-        total_usage_mb = sum(row.total_mb for row in daily_usage)
         return {
             "connected_clients": connected_clients,
-            "daily_usage": daily_usage,
-            "total_usage_mb": total_usage_mb,
+            "total_today_mb": db.get_total_today_usage(),
+            "total_last_7_days_mb": db.get_total_last_7_days_usage(),
+            "total_calendar_month_mb": db.get_total_calendar_month_usage(),
             "live_update_seconds": live_update_seconds,
         }
 
@@ -50,9 +49,9 @@ def create_app() -> Flask:
         ]
 
         return jsonify(
-            connected_clients_count=len(data["connected_clients"]),
-            tracked_today_count=len(data["daily_usage"]),
-            total_usage_mb=data["total_usage_mb"],
+            total_today_mb=data["total_today_mb"],
+            total_last_7_days_mb=data["total_last_7_days_mb"],
+            total_calendar_month_mb=data["total_calendar_month_mb"],
             connected_clients=connected_clients_payload,
             live_update_seconds=data["live_update_seconds"],
         )
@@ -83,9 +82,9 @@ def create_app() -> Flask:
                 ]
 
                 payload = {
-                    "connected_clients_count": len(data["connected_clients"]),
-                    "tracked_today_count": len(data["daily_usage"]),
-                    "total_usage_mb": data["total_usage_mb"],
+                    "total_today_mb": data["total_today_mb"],
+                    "total_last_7_days_mb": data["total_last_7_days_mb"],
+                    "total_calendar_month_mb": data["total_calendar_month_mb"],
                     "connected_clients": connected_clients_payload,
                     "live_update_seconds": data["live_update_seconds"],
                 }

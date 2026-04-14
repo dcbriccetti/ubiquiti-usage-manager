@@ -140,6 +140,51 @@ def get_calendar_month_total(mac: str) -> float:
         return float(result or 0)
 
 
+def get_total_today_usage() -> float:
+    'Return total usage across all clients for the current calendar day in MB.'
+    today_start = datetime.combine(datetime.now().date(), time.min)
+    today_end = datetime.combine(datetime.now().date(), time.max)
+
+    stmt = select(func.sum(UsageRecord.mb_used)).where(
+        UsageRecord.timestamp >= today_start,
+        UsageRecord.timestamp <= today_end,
+    )
+
+    with SessionLocal() as session:
+        result = session.execute(stmt).scalar()
+        return float(result or 0)
+
+
+def get_total_last_7_days_usage() -> float:
+    'Return total usage across all clients for the rolling last 7 days in MB.'
+    now = datetime.now()
+    seven_days_ago = now - timedelta(days=7)
+
+    stmt = select(func.sum(UsageRecord.mb_used)).where(
+        UsageRecord.timestamp >= seven_days_ago,
+        UsageRecord.timestamp <= now,
+    )
+
+    with SessionLocal() as session:
+        result = session.execute(stmt).scalar()
+        return float(result or 0)
+
+
+def get_total_calendar_month_usage() -> float:
+    'Return total usage across all clients since the start of this month in MB.'
+    now = datetime.now()
+    month_start = datetime.combine(now.date().replace(day=1), time.min)
+
+    stmt = select(func.sum(UsageRecord.mb_used)).where(
+        UsageRecord.timestamp >= month_start,
+        UsageRecord.timestamp <= now,
+    )
+
+    with SessionLocal() as session:
+        result = session.execute(stmt).scalar()
+        return float(result or 0)
+
+
 def get_daily_usage_summary() -> list[DailyUsageSummary]:
     'Return per-client usage summaries for today, sorted by total descending.'
     today_start = datetime.combine(datetime.now().date(), time.min)

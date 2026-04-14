@@ -15,20 +15,20 @@
 
     <section class="grid stats">
         <article class="panel stat">
-            <span class="label">Connected Clients</span>
-            <span class="value" id="stat-connected">{{ connected_clients|length }}</span>
+            <span class="label">Usage Today</span>
+            <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(total_today_mb) }} MB</span>
         </article>
         <article class="panel stat">
-            <span class="label">Tracked Today</span>
-            <span class="value" id="stat-tracked">{{ daily_usage|length }}</span>
+            <span class="label">Usage 7 Days</span>
+            <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(total_last_7_days_mb) }} MB</span>
         </article>
         <article class="panel stat">
-            <span class="label">Total Usage Today</span>
-            <span class="value" id="stat-total-usage">{{ "{:,.0f}".format(total_usage_mb) }} MB</span>
+            <span class="label">Usage This Month</span>
+            <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(total_calendar_month_mb) }} MB</span>
         </article>
     </section>
 
-    <section class="grid columns">
+    <section class="grid">
         <article class="panel">
             <div class="panel-body">
                 <h2>Connected Clients</h2>
@@ -39,11 +39,13 @@
                             <th>Name</th>
                             <th>MAC</th>
                             <th>VLAN</th>
+                            <th class="ap-col">AP</th>
                             <th>Sig</th>
                             <th colspan="4" class="usage-group">USAGE (MB)</th>
                             <th>Speed Limit</th>
                         </tr>
                         <tr>
+                            <th></th>
                             <th></th>
                             <th></th>
                             <th></th>
@@ -60,18 +62,14 @@
                         {% for snapshot in connected_clients %}
                             <tr>
                                 <td>{{ snapshot.client.user_id or "" }}</td>
-                                <td>
-                                    <strong>{{ snapshot.client.name }}</strong>
-                                    {% if snapshot.client.ap_name %}
-                                        <div class="muted">{{ snapshot.client.ap_name }}</div>
-                                    {% endif %}
-                                </td>
+                                <td><strong>{{ snapshot.client.name }}</strong></td>
                                 <td class="mono">
                                     <a href="{{ url_for('client_detail', mac=snapshot.client.mac) }}">
                                         {{ snapshot.client.mac }}
                                     </a>
                                 </td>
                                 <td>{{ snapshot.client.vlan_name or "Unknown" }}</td>
+                                <td class="ap-col">{{ (snapshot.client.ap_name or "").removesuffix(" AP") }}</td>
                                 <td>{% if snapshot.client.signal %}{{ snapshot.client.signal }}{% endif %}</td>
                                 <td class="num">{% if snapshot.interval_mb > 0 %}{{ "{:,.3f}".format(snapshot.interval_mb).rstrip("0").rstrip(".") }}{% endif %}</td>
                                 <td class="num">{% if snapshot.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.day_total_mb) }}{% endif %}</td>
@@ -81,7 +79,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="10" class="muted">No active clients were returned by the UniFi controller.</td>
+                                <td colspan="11" class="muted">No active clients were returned by the UniFi controller.</td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -93,9 +91,9 @@
     <script>
         (function () {
             const connectedBody = document.getElementById("connected-clients-body");
-            const statConnected = document.getElementById("stat-connected");
-            const statTracked = document.getElementById("stat-tracked");
-            const statTotalUsage = document.getElementById("stat-total-usage");
+            const statUsageToday = document.getElementById("stat-usage-today");
+            const statUsage7Days = document.getElementById("stat-usage-7-days");
+            const statUsageThisMonth = document.getElementById("stat-usage-this-month");
             const detailPattern = {{ url_for('client_detail', mac='__MAC__')|tojson }};
             const streamUrl = {{ url_for('dashboard_stream')|tojson }};
             const snapshotUrl = {{ url_for('dashboard_snapshot')|tojson }};
@@ -111,6 +109,10 @@
                 const rounded = Math.round(value);
                 return rounded > 0 ? rounded.toLocaleString() : "";
             };
+            const normalizeApName = (value) => {
+                const text = String(value || "");
+                return text.endsWith(" AP") ? text.slice(0, -3) : text;
+            };
             const escapeHtml = (value) =>
                 String(value)
                     .replaceAll("&", "&amp;")
@@ -121,26 +123,21 @@
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = '<tr><td colspan="10" class="muted">No active clients were returned by the UniFi controller.</td></tr>';
+                    connectedBody.innerHTML = '<tr><td colspan="11" class="muted">No active clients were returned by the UniFi controller.</td></tr>';
                     return;
                 }
 
                 connectedBody.innerHTML = clients.map((client) => {
-                    const apSubtext = client.ap_name
-                        ? `<div class="muted">${escapeHtml(client.ap_name)}</div>`
-                        : "";
                     const signal = client.signal === null ? "" : client.signal;
                     const detailHref = detailPattern.replace("__MAC__", encodeURIComponent(client.mac));
 
                     return `
                         <tr>
                             <td>${escapeHtml(client.user_id)}</td>
-                            <td>
-                                <strong>${escapeHtml(client.name)}</strong>
-                                ${apSubtext}
-                            </td>
+                            <td><strong>${escapeHtml(client.name)}</strong></td>
                             <td class="mono"><a href="${detailHref}">${escapeHtml(client.mac)}</a></td>
                             <td>${escapeHtml(client.vlan_name)}</td>
+                            <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
                             <td>${escapeHtml(signal)}</td>
                             <td class="num">${formatMinute(client.interval_mb)}</td>
                             <td class="num">${formatWhole(client.day_total_mb)}</td>
@@ -153,9 +150,9 @@
             };
 
             const applyPayload = (data) => {
-                statConnected.textContent = data.connected_clients_count;
-                statTracked.textContent = data.tracked_today_count;
-                statTotalUsage.textContent = `${formatInt(data.total_usage_mb)} MB`;
+                statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
+                statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
+                statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
 
                 renderConnectedClients(data.connected_clients);
             };
