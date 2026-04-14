@@ -85,7 +85,9 @@
                                 <td>{{ snapshot.client.user_id or "" }}</td>
                                 <td>
                                     <strong>{{ snapshot.client.name }}</strong>
-                                    <div class="muted">{{ snapshot.client.ap_name or "Unknown" }}</div>
+                                    {% if snapshot.client.ap_name %}
+                                        <div class="muted">{{ snapshot.client.ap_name }}</div>
+                                    {% endif %}
                                 </td>
                                 <td class="mono">
                                     <a href="{{ url_for('client_detail', mac=snapshot.client.mac) }}">
@@ -94,10 +96,10 @@
                                 </td>
                                 <td>{{ snapshot.client.vlan_name or "Unknown" }}</td>
                                 <td>{% if snapshot.client.signal %}{{ snapshot.client.signal }}{% endif %}</td>
-                                <td>{{ "{:,.2f}".format(snapshot.interval_mb) }}</td>
-                                <td>{{ "{:,.1f}".format(snapshot.day_total_mb) }}</td>
-                                <td>{{ "{:,.1f}".format(snapshot.last_7_days_total_mb) }}</td>
-                                <td>{{ "{:,.1f}".format(snapshot.calendar_month_total_mb) }}</td>
+                                <td>{% if snapshot.interval_mb > 0 %}{{ "{:,.2f}".format(snapshot.interval_mb) }}{% endif %}</td>
+                                <td>{% if snapshot.day_total_mb > 0 %}{{ "{:,.1f}".format(snapshot.day_total_mb) }}{% endif %}</td>
+                                <td>{% if snapshot.last_7_days_total_mb > 0 %}{{ "{:,.1f}".format(snapshot.last_7_days_total_mb) }}{% endif %}</td>
+                                <td>{% if snapshot.calendar_month_total_mb > 0 %}{{ "{:,.1f}".format(snapshot.calendar_month_total_mb) }}{% endif %}</td>
                                 <td>{{ snapshot.effective_speed_limit or "" }}</td>
                                 <td>
                                     {% if snapshot.is_throttled %}
@@ -131,17 +133,6 @@
                         {% else %}
                             <div class="muted">No usage has been recorded yet today.</div>
                         {% endfor %}
-                    </div>
-                </div>
-            </article>
-
-            <article class="panel">
-                <div class="panel-body">
-                    <h2>Next Steps</h2>
-                    <div class="list">
-                        <div class="list-item">Move controller URL and API key into environment-driven config.</div>
-                        <div class="list-item">Run the monitor separately with <span class="mono">python3 src/run_monitor.py</span>.</div>
-                        <div class="list-item">Add admin actions for manual throttle and release from the UI.</div>
                     </div>
                 </div>
             </article>

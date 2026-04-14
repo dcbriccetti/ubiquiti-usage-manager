@@ -35,11 +35,11 @@
                         </tr>
                         <tr>
                             <th>Access Point</th>
-                            <td>{{ latest_record.ap_name or "Unknown" }}</td>
+                            <td>{{ latest_record.ap_name or "" }}</td>
                         </tr>
                         <tr>
                             <th>Signal</th>
-                            <td>{{ latest_record.signal if latest_record.signal is not none else "Unknown" }}</td>
+                            <td>{% if latest_record.signal is not none and latest_record.signal != 0 %}{{ latest_record.signal }}{% endif %}</td>
                         </tr>
                         <tr>
                             <th>Daily Cap</th>
