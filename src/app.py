@@ -1,9 +1,20 @@
-from flask import Flask, Response, abort, jsonify, render_template, stream_with_context
+from flask import Flask, Response, abort, jsonify, render_template, request, stream_with_context
 import json
 import time
 
 import database as db
 from monitor import get_connected_clients
+
+WINDOW_ONLINE_NOW = "online_now"
+WINDOW_TODAY = "today"
+WINDOW_LAST_7_DAYS = "last_7_days"
+WINDOW_THIS_MONTH = "this_month"
+ALLOWED_WINDOWS = {
+    WINDOW_ONLINE_NOW,
+    WINDOW_TODAY,
+    WINDOW_LAST_7_DAYS,
+    WINDOW_THIS_MONTH,
+}
 
 
 def create_app() -> Flask:
@@ -11,27 +22,13 @@ def create_app() -> Flask:
     flask_app = Flask(__name__)
     live_update_seconds = 15
 
-    def build_dashboard_data() -> dict:
-        connected_clients = get_connected_clients()
-        return {
-            "connected_clients": connected_clients,
-            "total_today_mb": db.get_total_today_usage(),
-            "total_last_7_days_mb": db.get_total_last_7_days_usage(),
-            "total_calendar_month_mb": db.get_total_calendar_month_usage(),
-            "live_update_seconds": live_update_seconds,
-        }
+    def normalize_window(window_name: str | None) -> str:
+        if window_name in ALLOWED_WINDOWS:
+            return window_name
+        return WINDOW_ONLINE_NOW
 
-    @flask_app.route("/")
-    def dashboard():
-        'Render the dashboard with live snapshots and daily usage summaries.'
-        return render_template("dashboard.html", **build_dashboard_data())
-
-    @flask_app.route("/api/dashboard-snapshot")
-    def dashboard_snapshot():
-        'Return dashboard snapshot data for incremental in-page refresh.'
-        data = build_dashboard_data()
-
-        connected_clients_payload = [
+    def build_rows_for_online_clients() -> list[dict]:
+        return [
             {
                 "user_id": snapshot.client.user_id or "",
                 "name": snapshot.client.name,
@@ -45,14 +42,61 @@ def create_app() -> Flask:
                 "calendar_month_total_mb": snapshot.calendar_month_total_mb,
                 "effective_speed_limit": str(snapshot.effective_speed_limit) if snapshot.effective_speed_limit else "",
             }
-            for snapshot in data["connected_clients"]
+            for snapshot in get_connected_clients()
         ]
 
+    def build_rows_for_historical_window(window_name: str) -> list[dict]:
+        summaries = db.get_usage_window_summary(window_name)
+        return [
+            {
+                "user_id": row.user_id or "",
+                "name": row.name or row.mac,
+                "ap_name": row.ap_name or "",
+                "mac": row.mac,
+                "vlan_name": row.vlan or "Unknown",
+                "signal": None,
+                "interval_mb": 0.0,
+                "day_total_mb": row.day_total_mb,
+                "last_7_days_total_mb": row.last_7_days_total_mb,
+                "calendar_month_total_mb": row.calendar_month_total_mb,
+                "effective_speed_limit": row.profile or "",
+            }
+            for row in summaries
+        ]
+
+    def build_dashboard_data(window_name: str) -> dict:
+        rows = (
+            build_rows_for_online_clients()
+            if window_name == WINDOW_ONLINE_NOW
+            else build_rows_for_historical_window(window_name)
+        )
+        return {
+            "clients": rows,
+            "selected_window": window_name,
+            "total_today_mb": db.get_total_today_usage(),
+            "total_last_7_days_mb": db.get_total_last_7_days_usage(),
+            "total_calendar_month_mb": db.get_total_calendar_month_usage(),
+            "live_update_seconds": live_update_seconds,
+        }
+
+    @flask_app.route("/")
+    def dashboard():
+        'Render the dashboard with live snapshots and daily usage summaries.'
+        window_name = normalize_window(request.args.get("window"))
+        return render_template("dashboard.html", **build_dashboard_data(window_name))
+
+    @flask_app.route("/api/dashboard-snapshot")
+    def dashboard_snapshot():
+        'Return dashboard snapshot data for incremental in-page refresh.'
+        window_name = normalize_window(request.args.get("window"))
+        data = build_dashboard_data(window_name)
+
         return jsonify(
+            selected_window=data["selected_window"],
             total_today_mb=data["total_today_mb"],
             total_last_7_days_mb=data["total_last_7_days_mb"],
             total_calendar_month_mb=data["total_calendar_month_mb"],
-            connected_clients=connected_clients_payload,
+            clients=data["clients"],
             live_update_seconds=data["live_update_seconds"],
         )
 
@@ -60,32 +104,18 @@ def create_app() -> Flask:
     @flask_app.route("/dashboard-stream")
     def dashboard_stream():
         'Stream dashboard updates over Server-Sent Events.'
+        window_name = normalize_window(request.args.get("window"))
 
         def event_stream():
             while True:
-                data = build_dashboard_data()
-                connected_clients_payload = [
-                    {
-                        "user_id": snapshot.client.user_id or "",
-                        "name": snapshot.client.name,
-                        "ap_name": snapshot.client.ap_name or "",
-                        "mac": snapshot.client.mac,
-                        "vlan_name": snapshot.client.vlan_name or "Unknown",
-                        "signal": snapshot.client.signal if snapshot.client.signal else None,
-                        "interval_mb": snapshot.interval_mb,
-                        "day_total_mb": snapshot.day_total_mb,
-                        "last_7_days_total_mb": snapshot.last_7_days_total_mb,
-                        "calendar_month_total_mb": snapshot.calendar_month_total_mb,
-                        "effective_speed_limit": str(snapshot.effective_speed_limit) if snapshot.effective_speed_limit else "",
-                    }
-                    for snapshot in data["connected_clients"]
-                ]
+                data = build_dashboard_data(window_name)
 
                 payload = {
+                    "selected_window": data["selected_window"],
                     "total_today_mb": data["total_today_mb"],
                     "total_last_7_days_mb": data["total_last_7_days_mb"],
                     "total_calendar_month_mb": data["total_calendar_month_mb"],
-                    "connected_clients": connected_clients_payload,
+                    "clients": data["clients"],
                     "live_update_seconds": data["live_update_seconds"],
                 }
 

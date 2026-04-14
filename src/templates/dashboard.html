@@ -31,7 +31,14 @@
     <section class="grid">
         <article class="panel">
             <div class="panel-body">
-                <h2>Connected Clients</h2>
+                <h2>Clients</h2>
+                <label for="window-select" class="muted">Show:</label>
+                <select id="window-select">
+                    <option value="online_now" {% if selected_window == "online_now" %}selected{% endif %}>Online Now</option>
+                    <option value="today" {% if selected_window == "today" %}selected{% endif %}>Today</option>
+                    <option value="last_7_days" {% if selected_window == "last_7_days" %}selected{% endif %}>7 Days</option>
+                    <option value="this_month" {% if selected_window == "this_month" %}selected{% endif %}>This Month</option>
+                </select>
                 <table>
                     <thead>
                         <tr>
@@ -59,27 +66,27 @@
                         </tr>
                     </thead>
                     <tbody id="connected-clients-body">
-                        {% for snapshot in connected_clients %}
+                        {% for client in clients %}
                             <tr>
-                                <td>{{ snapshot.client.user_id or "" }}</td>
-                                <td><strong>{{ snapshot.client.name }}</strong></td>
+                                <td>{{ client.user_id or "" }}</td>
+                                <td><strong>{{ client.name }}</strong></td>
                                 <td class="mono">
-                                    <a href="{{ url_for('client_detail', mac=snapshot.client.mac) }}">
-                                        {{ snapshot.client.mac }}
+                                    <a href="{{ url_for('client_detail', mac=client.mac) }}">
+                                        {{ client.mac }}
                                     </a>
                                 </td>
-                                <td>{{ snapshot.client.vlan_name or "Unknown" }}</td>
-                                <td class="ap-col">{{ (snapshot.client.ap_name or "").removesuffix(" AP") }}</td>
-                                <td>{% if snapshot.client.signal %}{{ snapshot.client.signal }}{% endif %}</td>
-                                <td class="num">{% if snapshot.interval_mb > 0 %}{{ "{:,.3f}".format(snapshot.interval_mb).rstrip("0").rstrip(".") }}{% endif %}</td>
-                                <td class="num">{% if snapshot.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.day_total_mb) }}{% endif %}</td>
-                                <td class="num">{% if snapshot.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.last_7_days_total_mb) }}{% endif %}</td>
-                                <td class="num">{% if snapshot.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.calendar_month_total_mb) }}{% endif %}</td>
-                                <td>{{ snapshot.effective_speed_limit or "" }}</td>
+                                <td>{{ client.vlan_name or "Unknown" }}</td>
+                                <td class="ap-col">{{ (client.ap_name or "").removesuffix(" AP") }}</td>
+                                <td>{% if client.signal %}{{ client.signal }}{% endif %}</td>
+                                <td class="num">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb).rstrip("0").rstrip(".") }}{% endif %}</td>
+                                <td class="num">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
+                                <td class="num">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
+                                <td class="num">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
+                                <td>{{ client.effective_speed_limit or "" }}</td>
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="11" class="muted">No active clients were returned by the UniFi controller.</td>
+                                <td colspan="11" class="muted">No clients match this window.</td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -91,13 +98,16 @@
     <script>
         (function () {
             const connectedBody = document.getElementById("connected-clients-body");
+            const windowSelect = document.getElementById("window-select");
             const statUsageToday = document.getElementById("stat-usage-today");
             const statUsage7Days = document.getElementById("stat-usage-7-days");
             const statUsageThisMonth = document.getElementById("stat-usage-this-month");
             const detailPattern = {{ url_for('client_detail', mac='__MAC__')|tojson }};
-            const streamUrl = {{ url_for('dashboard_stream')|tojson }};
-            const snapshotUrl = {{ url_for('dashboard_snapshot')|tojson }};
+            const streamBaseUrl = {{ url_for('dashboard_stream')|tojson }};
+            const snapshotBaseUrl = {{ url_for('dashboard_snapshot')|tojson }};
             let fallbackTimer = null;
+            let stream = null;
+            let selectedWindow = windowSelect.value;
 
             const formatInt = (value) => Math.round(value).toLocaleString();
             const formatMinute = (value) => {
@@ -123,7 +133,7 @@
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = '<tr><td colspan="11" class="muted">No active clients were returned by the UniFi controller.</td></tr>';
+                    connectedBody.innerHTML = '<tr><td colspan="11" class="muted">No clients match this window.</td></tr>';
                     return;
                 }
 
@@ -149,17 +159,25 @@
                 }).join("");
             };
 
+            const getStreamUrl = () => `${streamBaseUrl}?window=${encodeURIComponent(selectedWindow)}`;
+            const getSnapshotUrl = () => `${snapshotBaseUrl}?window=${encodeURIComponent(selectedWindow)}`;
+
             const applyPayload = (data) => {
                 statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
                 statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
                 statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
 
-                renderConnectedClients(data.connected_clients);
+                if (data.selected_window && data.selected_window !== selectedWindow) {
+                    selectedWindow = data.selected_window;
+                    windowSelect.value = selectedWindow;
+                }
+
+                renderConnectedClients(data.clients);
             };
 
             const fetchSnapshot = async () => {
                 try {
-                    const response = await fetch(snapshotUrl, { cache: "no-store" });
+                    const response = await fetch(getSnapshotUrl(), { cache: "no-store" });
                     if (!response.ok) return;
                     const data = await response.json();
                     applyPayload(data);
@@ -168,34 +186,51 @@
                 }
             };
 
-            const stream = new EventSource(streamUrl);
+            const connectStream = () => {
+                stream = new EventSource(getStreamUrl());
 
-            stream.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    applyPayload(data);
+                stream.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        applyPayload(data);
+                        if (fallbackTimer) {
+                            clearInterval(fallbackTimer);
+                            fallbackTimer = null;
+                        }
+                    } catch (_err) {
+                        // Ignore malformed messages and keep current display.
+                    }
+                };
+
+                stream.onopen = () => {
                     if (fallbackTimer) {
                         clearInterval(fallbackTimer);
                         fallbackTimer = null;
                     }
-                } catch (_err) {
-                    // Ignore malformed messages and keep current display.
-                }
+                };
+
+                stream.onerror = () => {
+                    if (!fallbackTimer) {
+                        fetchSnapshot();
+                        fallbackTimer = window.setInterval(fetchSnapshot, {{ live_update_seconds }} * 1000);
+                    }
+                };
             };
 
-            stream.onopen = () => {
+            windowSelect.addEventListener("change", () => {
+                selectedWindow = windowSelect.value;
+                if (stream) {
+                    stream.close();
+                }
                 if (fallbackTimer) {
                     clearInterval(fallbackTimer);
                     fallbackTimer = null;
                 }
-            };
+                fetchSnapshot();
+                connectStream();
+            });
 
-            stream.onerror = () => {
-                if (!fallbackTimer) {
-                    fetchSnapshot();
-                    fallbackTimer = window.setInterval(fetchSnapshot, {{ live_update_seconds }} * 1000);
-                }
-            };
+            connectStream();
         })();
     </script>
 {% endblock %}

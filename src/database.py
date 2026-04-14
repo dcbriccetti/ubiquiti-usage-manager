@@ -47,6 +47,21 @@ class DailyUsageSummary:
     last_seen: datetime
     usage_entries: int
 
+
+@dataclass(frozen=True, kw_only=True)
+class UsageWindowSummary:
+    'Per-client usage rollup and latest-known metadata for dashboard windows.'
+    mac: str
+    user_id: str | None
+    name: str | None
+    vlan: str | None
+    profile: str | None
+    ap_name: str | None
+    day_total_mb: float
+    last_7_days_total_mb: float
+    calendar_month_total_mb: float
+    last_seen: datetime
+
 # --- MODELS ---
 class UsageRecord(Base):
     'Ledger row storing one non-zero usage interval.'
@@ -251,6 +266,90 @@ def get_usage_history(mac: str, limit: int = 200) -> list[UsageRecord]:
     with SessionLocal() as session:
         rows = session.execute(stmt).scalars().all()
         return [cast(UsageRecord, row) for row in rows]
+
+
+def get_usage_window_summary(window: str) -> list[UsageWindowSummary]:
+    'Return usage rollups for clients active in the requested dashboard time window.'
+    now = datetime.now()
+    today_start = datetime.combine(now.date(), time.min)
+    seven_days_ago = now - timedelta(days=7)
+    month_start = datetime.combine(now.date().replace(day=1), time.min)
+
+    stmt = (
+        select(UsageRecord)
+        .where(
+            UsageRecord.timestamp >= month_start,
+            UsageRecord.timestamp <= now,
+        )
+        .order_by(UsageRecord.timestamp.desc())
+    )
+    with SessionLocal() as session:
+        records = session.execute(stmt).scalars().all()
+
+    summary_by_mac: dict[str, UsageWindowSummary] = {}
+    for record in records:
+        existing = summary_by_mac.get(record.mac)
+        if existing:
+            day_total_mb = existing.day_total_mb
+            last_7_days_total_mb = existing.last_7_days_total_mb
+            calendar_month_total_mb = existing.calendar_month_total_mb + record.mb_used
+        else:
+            day_total_mb = 0.0
+            last_7_days_total_mb = 0.0
+            calendar_month_total_mb = record.mb_used
+
+        if record.timestamp >= today_start:
+            day_total_mb += record.mb_used
+        if record.timestamp >= seven_days_ago:
+            last_7_days_total_mb += record.mb_used
+
+        if existing:
+            summary_by_mac[record.mac] = UsageWindowSummary(
+                mac=existing.mac,
+                user_id=existing.user_id,
+                name=existing.name,
+                vlan=existing.vlan,
+                profile=existing.profile,
+                ap_name=existing.ap_name,
+                day_total_mb=day_total_mb,
+                last_7_days_total_mb=last_7_days_total_mb,
+                calendar_month_total_mb=calendar_month_total_mb,
+                last_seen=existing.last_seen,
+            )
+            continue
+
+        summary_by_mac[record.mac] = UsageWindowSummary(
+            mac=record.mac,
+            user_id=record.user_id,
+            name=record.name,
+            vlan=record.vlan,
+            profile=record.profile,
+            ap_name=record.ap_name,
+            day_total_mb=day_total_mb,
+            last_7_days_total_mb=last_7_days_total_mb,
+            calendar_month_total_mb=calendar_month_total_mb,
+            last_seen=record.timestamp,
+        )
+
+    summaries = list(summary_by_mac.values())
+    if window == "today":
+        return sorted(
+            [row for row in summaries if row.day_total_mb > 0],
+            key=lambda row: row.day_total_mb,
+            reverse=True,
+        )
+    if window == "last_7_days":
+        return sorted(
+            [row for row in summaries if row.last_7_days_total_mb > 0],
+            key=lambda row: row.last_7_days_total_mb,
+            reverse=True,
+        )
+
+    return sorted(
+        [row for row in summaries if row.calendar_month_total_mb > 0],
+        key=lambda row: row.calendar_month_total_mb,
+        reverse=True,
+    )
 
 
 def update_monitor_heartbeat(at: datetime | None = None) -> None:
