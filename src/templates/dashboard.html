@@ -92,9 +92,9 @@
                                 <td>{{ snapshot.client.vlan_name or "Unknown" }}</td>
                                 <td>{% if snapshot.client.signal %}{{ snapshot.client.signal }}{% endif %}</td>
                                 <td class="num">{% if snapshot.interval_mb > 0 %}{{ "{:,.3f}".format(snapshot.interval_mb).rstrip("0").rstrip(".") }}{% endif %}</td>
-                                <td class="num">{% if snapshot.day_total_mb > 0 %}{{ "{:,.0f}".format(snapshot.day_total_mb) }}{% endif %}</td>
-                                <td class="num">{% if snapshot.last_7_days_total_mb > 0 %}{{ "{:,.0f}".format(snapshot.last_7_days_total_mb) }}{% endif %}</td>
-                                <td class="num">{% if snapshot.calendar_month_total_mb > 0 %}{{ "{:,.0f}".format(snapshot.calendar_month_total_mb) }}{% endif %}</td>
+                                <td class="num">{% if snapshot.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.day_total_mb) }}{% endif %}</td>
+                                <td class="num">{% if snapshot.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.last_7_days_total_mb) }}{% endif %}</td>
+                                <td class="num">{% if snapshot.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(snapshot.calendar_month_total_mb) }}{% endif %}</td>
                                 <td>{{ snapshot.effective_speed_limit or "" }}</td>
                                 <td>
                                     {% if snapshot.is_throttled %}
@@ -153,8 +153,9 @@
                 return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
             };
             const formatWhole = (value) => {
-                if (!value || value <= 0) return "";
-                return formatInt(value);
+                if (!value) return "";
+                const rounded = Math.round(value);
+                return rounded > 0 ? rounded.toLocaleString() : "";
             };
             const escapeHtml = (value) =>
                 String(value)
