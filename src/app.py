@@ -3,6 +3,7 @@ import json
 import time
 
 import database as db
+import unifi_api as api
 from monitor import get_connected_clients
 
 WINDOW_ONLINE_NOW = "online_now"
@@ -54,7 +55,10 @@ def create_app() -> Flask:
             ),
         )
 
-    def build_rows_for_historical_window(window_name: str) -> list[dict]:
+    def build_rows_for_historical_window(
+        window_name: str,
+        speed_limits_by_name: dict[str, str],
+    ) -> list[dict]:
         summaries = db.get_usage_window_summary(window_name)
         return [
             {
@@ -68,16 +72,21 @@ def create_app() -> Flask:
                 "day_total_mb": row.day_total_mb,
                 "last_7_days_total_mb": row.last_7_days_total_mb,
                 "calendar_month_total_mb": row.calendar_month_total_mb,
-                "effective_speed_limit": row.profile or "",
+                "effective_speed_limit": (
+                    speed_limits_by_name.get(row.profile, row.profile) if row.profile else ""
+                ),
             }
             for row in summaries
         ]
 
     def build_dashboard_data(window_name: str) -> dict:
+        speed_limits_by_name = {
+            limit.name: str(limit) for limit in api.get_speed_limits()
+        }
         rows = (
             build_rows_for_online_clients()
             if window_name == WINDOW_ONLINE_NOW
-            else build_rows_for_historical_window(window_name)
+            else build_rows_for_historical_window(window_name, speed_limits_by_name)
         )
         return {
             "clients": rows,
