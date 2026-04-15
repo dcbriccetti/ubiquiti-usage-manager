@@ -105,7 +105,11 @@ class UsageMonitor:
             day_total_mb = db.get_daily_total(client.mac)
             last_7_days_total_mb = db.get_last_7_days_total(client.mac)
             calendar_month_total_mb = db.get_calendar_month_total(client.mac)
-            is_throttled, effective_speed_limit = self._enforce_limit_if_needed(client, day_total_mb)
+            is_throttled, effective_speed_limit = self._enforce_limit_if_needed(
+                client,
+                day_total_mb,
+                calendar_month_total_mb,
+            )
             snapshots.append(
                 ClientSnapshot(
                     client=client,
@@ -159,9 +163,17 @@ class UsageMonitor:
         return interval_mb
 
     def _enforce_limit_if_needed(
-        self, client: ClientInfo, day_total_mb: float
+        self,
+        client: ClientInfo,
+        day_total_mb: float,
+        calendar_month_total_mb: float,
     ) -> tuple[bool, SpeedLimit | None]:
-        target_profile_name = target_profile_name_for_usage(client.vlan_id, day_total_mb, self.throttleable_vlan_ids)
+        target_profile_name = target_profile_name_for_usage(
+            client.vlan_id,
+            day_total_mb,
+            calendar_month_total_mb,
+            self.throttleable_vlan_ids,
+        )
         target_limit = (
             self.speed_limits_by_name.get(target_profile_name)
             if target_profile_name
