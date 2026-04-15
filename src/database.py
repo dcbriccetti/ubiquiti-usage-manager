@@ -79,13 +79,6 @@ class UsageRecord(Base):
     signal:    Mapped[Optional[int]] = mapped_column()
 
 
-class MonitorHeartbeat(Base):
-    'Single-row heartbeat record updated by the monitor loop.'
-    __tablename__ = "monitor_heartbeat"
-
-    id:         Mapped[int]      = mapped_column(primary_key=True)
-    updated_at: Mapped[datetime] = mapped_column(default=datetime.now, index=True)
-
 # --- DATABASE API ---
 def init_db():
     'Create database tables if they do not already exist.'
@@ -370,25 +363,3 @@ def get_usage_window_summary(window: str) -> list[UsageWindowSummary]:
         reverse=True,
     )
 
-
-def update_monitor_heartbeat(at: datetime | None = None) -> None:
-    'Upsert the monitor heartbeat timestamp.'
-    heartbeat_time = at or datetime.now()
-
-    with SessionLocal() as session:
-        heartbeat = session.get(MonitorHeartbeat, 1)
-        if heartbeat is None:
-            heartbeat = MonitorHeartbeat(id=1, updated_at=heartbeat_time)
-            session.add(heartbeat)
-        else:
-            heartbeat.updated_at = heartbeat_time
-        session.commit()
-
-
-def get_monitor_heartbeat() -> datetime | None:
-    'Return the last monitor heartbeat time, if available.'
-    with SessionLocal() as session:
-        heartbeat: MonitorHeartbeat | None = session.get(MonitorHeartbeat, 1)
-        if heartbeat is None:
-            return None
-        return cast(datetime, heartbeat.updated_at)

@@ -7,8 +7,9 @@ import config as cfg
 import database as db
 import unifi_api as api
 from clientinfo import ClientInfo
+from config import THROTTLING_LEVELS
 from speedlimit import SpeedLimit
-from throttling_policy import get_throttling_policy, target_profile_name_for_usage
+from throttling_policy import target_profile_name_for_usage
 from throttling_runtime import (
     build_throttling_levels,
     enforce_target_limit,
@@ -35,7 +36,7 @@ def get_connected_clients() -> list[ClientSnapshot]:
     'Fetch connected clients and return lightweight usage snapshots for the UI.'
     speed_limits = api.get_speed_limits()
     speed_limits_by_id = {limit.id: limit for limit in speed_limits}
-    throttling_levels = build_throttling_levels(speed_limits, get_throttling_policy())
+    throttling_levels = build_throttling_levels(speed_limits)
     throttling_limit_ids = get_throttling_limit_ids(throttling_levels)
     ap_names_by_mac = api.get_ap_names_by_mac()
     recent_interval_by_mac = db.get_recent_interval_totals()
@@ -68,7 +69,6 @@ class UsageMonitor:
         self.current_day = datetime.now().date()
         self.speed_limits_by_id: dict[str, SpeedLimit] = {}
         self.speed_limits_by_name: dict[str, SpeedLimit] = {}
-        self.throttling_policy: list[cfg.ThrottleLevel] = []
         self.throttling_levels: list[tuple[int, SpeedLimit]] = []
         self.throttling_limit_ids: set[str] = set()
         self.throttleable_vlan_ids: list[str] = []
@@ -81,10 +81,7 @@ class UsageMonitor:
         speed_limits = api.get_speed_limits()
         self.speed_limits_by_id = {limit.id: limit for limit in speed_limits}
         self.speed_limits_by_name = {limit.name: limit for limit in speed_limits}
-        self.throttling_policy = get_throttling_policy()
-        self.throttling_levels = build_throttling_levels(
-            speed_limits, self.throttling_policy
-        )
+        self.throttling_levels = build_throttling_levels(speed_limits)
         self.throttling_limit_ids = get_throttling_limit_ids(self.throttling_levels)
 
         self.throttleable_vlan_ids = api.get_vlan_ids_for_names(
@@ -134,7 +131,6 @@ class UsageMonitor:
             try:
                 self._handle_day_transition()
                 snapshots = self.process_connected_clients()
-                db.update_monitor_heartbeat()
                 if on_cycle:
                     on_cycle(snapshots)
             except Exception as exc:
@@ -166,12 +162,7 @@ class UsageMonitor:
     def _enforce_limit_if_needed(
         self, client: ClientInfo, day_total_mb: float
     ) -> tuple[bool, SpeedLimit | None]:
-        target_profile_name = target_profile_name_for_usage(
-            client.vlan_id,
-            day_total_mb,
-            self.throttleable_vlan_ids,
-            self.throttling_policy,
-        )
+        target_profile_name = target_profile_name_for_usage(client.vlan_id, day_total_mb, self.throttleable_vlan_ids)
         target_limit = (
             self.speed_limits_by_name.get(target_profile_name)
             if target_profile_name
