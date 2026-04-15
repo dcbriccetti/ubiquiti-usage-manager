@@ -200,6 +200,25 @@ def get_total_calendar_month_usage() -> float:
         return float(result or 0)
 
 
+def get_recent_interval_totals(window_seconds: int = 90) -> dict[str, float]:
+    'Return per-client MB totals over a recent time window.'
+    now = datetime.now()
+    window_start = now - timedelta(seconds=window_seconds)
+    stmt = (
+        select(UsageRecord.mac, func.sum(UsageRecord.mb_used))
+        .where(
+            UsageRecord.timestamp >= window_start,
+            UsageRecord.timestamp <= now,
+        )
+        .group_by(UsageRecord.mac)
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    return {str(mac): float(total or 0.0) for mac, total in rows}
+
+
 def get_daily_usage_summary() -> list[DailyUsageSummary]:
     'Return per-client usage summaries for today, sorted by total descending.'
     today_start = datetime.combine(datetime.now().date(), time.min)

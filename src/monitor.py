@@ -38,6 +38,7 @@ def get_connected_clients() -> list[ClientSnapshot]:
     throttling_levels = build_throttling_levels(speed_limits, get_throttling_policy())
     throttling_limit_ids = get_throttling_limit_ids(throttling_levels)
     ap_names_by_mac = api.get_ap_names_by_mac()
+    recent_interval_by_mac = db.get_recent_interval_totals()
 
     snapshots: list[ClientSnapshot] = []
     for raw_client in api.get_api_data("stat/sta"):
@@ -46,7 +47,7 @@ def get_connected_clients() -> list[ClientSnapshot]:
         snapshots.append(
             ClientSnapshot(
                 client=client,
-                interval_mb=0,
+                interval_mb=recent_interval_by_mac.get(client.mac, 0.0),
                 day_total_mb=db.get_daily_total(client.mac),
                 last_7_days_total_mb=db.get_last_7_days_total(client.mac),
                 calendar_month_total_mb=db.get_calendar_month_total(client.mac),
