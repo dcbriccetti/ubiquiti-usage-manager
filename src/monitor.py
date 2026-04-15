@@ -73,7 +73,7 @@ class UsageMonitor:
         self.throttleable_vlan_ids: list[str] = []
         self.refresh_runtime_state()
 
-        release_configured_limits(self.throttling_limit_ids, cfg.SAFE_MODE, "startup")
+        release_configured_limits(self.throttling_limit_ids, "startup")
 
     def refresh_runtime_state(self) -> None:
         'Reload speed-limit groups and throttleable VLAN IDs from the controller.'
@@ -146,7 +146,7 @@ class UsageMonitor:
         if now_date > self.current_day:
             print(f"Midnight Reset: {now_date}")
             release_configured_limits(
-                self.throttling_limit_ids, cfg.SAFE_MODE, "midnight"
+                self.throttling_limit_ids, "midnight"
             )
             self.current_day = now_date
 
@@ -186,7 +186,6 @@ class UsageMonitor:
             client.speed_limit,
             target_limit,
             self.throttling_limit_ids,
-            cfg.SAFE_MODE,
         )
 
 

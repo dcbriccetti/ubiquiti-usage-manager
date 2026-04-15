@@ -27,4 +27,3 @@ MONTHLY_USAGE_ADJUSTMENTS = [  # Ascending order
     MonthlyUsageAdjustment(4_000, 0.50),
     MonthlyUsageAdjustment(6_000, 0.35),
 ]
-SAFE_MODE = False
