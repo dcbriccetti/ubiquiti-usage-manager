@@ -42,14 +42,14 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>User ID</th>
+                            <th class="nowrap-col">User ID</th>
                             <th>Name</th>
                             <th>MAC</th>
                             <th>VLAN</th>
                             <th class="ap-col">AP</th>
                             <th>Sig</th>
                             <th colspan="4" class="usage-group">USAGE (MB)</th>
-                            <th>Speed Limit</th>
+                            <th class="nowrap-col">Speed Limit</th>
                         </tr>
                         <tr>
                             <th></th>
@@ -68,7 +68,7 @@
                     <tbody id="connected-clients-body">
                         {% for client in clients %}
                             <tr>
-                                <td>{{ client.user_id or "" }}</td>
+                                <td class="nowrap-col">{{ client.user_id or "" }}</td>
                                 <td><strong>{{ client.name }}</strong></td>
                                 <td class="mono">
                                     <a href="{{ url_for('client_detail', mac=client.mac) }}">
@@ -82,7 +82,7 @@
                                 <td class="num">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
                                 <td class="num">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
                                 <td class="num">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
-                                <td>{{ client.effective_speed_limit or "" }}</td>
+                                <td class="nowrap-col">{{ client.effective_speed_limit or "" }}</td>
                             </tr>
                         {% else %}
                             <tr>
@@ -143,7 +143,7 @@
 
                     return `
                         <tr>
-                            <td>${escapeHtml(client.user_id)}</td>
+                            <td class="nowrap-col">${escapeHtml(client.user_id)}</td>
                             <td><strong>${escapeHtml(client.name)}</strong></td>
                             <td class="mono"><a href="${detailHref}">${escapeHtml(client.mac)}</a></td>
                             <td>${escapeHtml(client.vlan_name)}</td>
@@ -153,7 +153,7 @@
                             <td class="num">${formatWhole(client.day_total_mb)}</td>
                             <td class="num">${formatWhole(client.last_7_days_total_mb)}</td>
                             <td class="num">${formatWhole(client.calendar_month_total_mb)}</td>
-                            <td>${escapeHtml(client.effective_speed_limit)}</td>
+                            <td class="nowrap-col">${escapeHtml(client.effective_speed_limit)}</td>
                         </tr>
                     `;
                 }).join("");
