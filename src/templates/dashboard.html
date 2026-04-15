@@ -8,7 +8,7 @@
             <h1>Network Usage Controller</h1>
             <p>
                 Live usage and management dashboard for UniFi clients, with switchable views
-                for online now, today, 7 days, and this month.
+                for online now, today, 7 days, and {{ current_month_label }}.
             </p>
         </div>
     </section>
@@ -19,11 +19,11 @@
             <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(total_today_mb) }} MB</span>
         </article>
         <article class="panel stat">
-            <span class="label">Usage 7 Days</span>
+            <span class="label">Usage 7&nbsp;Days</span>
             <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(total_last_7_days_mb) }} MB</span>
         </article>
         <article class="panel stat">
-            <span class="label">Usage This Month</span>
+            <span class="label" id="stat-usage-month-label">Usage {{ current_month_label }}</span>
             <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(total_calendar_month_mb) }} MB</span>
         </article>
     </section>
@@ -37,7 +37,7 @@
                     <option value="online_now" {% if selected_window == "online_now" %}selected{% endif %}>Online Now</option>
                     <option value="today" {% if selected_window == "today" %}selected{% endif %}>Today</option>
                     <option value="last_7_days" {% if selected_window == "last_7_days" %}selected{% endif %}>7 Days</option>
-                    <option value="this_month" {% if selected_window == "this_month" %}selected{% endif %}>This Month</option>
+                    <option value="this_month" {% if selected_window == "this_month" %}selected{% endif %}>{{ current_month_label }}</option>
                 </select>
                 <table>
                     <thead>
@@ -60,8 +60,8 @@
                             <th></th>
                             <th class="num usage-col usage-first">Minute</th>
                             <th class="num usage-col">Today</th>
-                            <th class="num usage-col">7 Days</th>
-                            <th class="num usage-col usage-last">This Month</th>
+                            <th class="num usage-col">7&nbsp;Days</th>
+                            <th class="num usage-col usage-last" id="usage-month-header">{{ current_month_label }}</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -102,6 +102,8 @@
             const statUsageToday = document.getElementById("stat-usage-today");
             const statUsage7Days = document.getElementById("stat-usage-7-days");
             const statUsageThisMonth = document.getElementById("stat-usage-this-month");
+            const statUsageMonthLabel = document.getElementById("stat-usage-month-label");
+            const usageMonthHeader = document.getElementById("usage-month-header");
             const detailPattern = {{ url_for('client_detail', mac='__MAC__')|tojson }};
             const streamBaseUrl = {{ url_for('dashboard_stream')|tojson }};
             const snapshotBaseUrl = {{ url_for('dashboard_snapshot')|tojson }};
@@ -166,6 +168,14 @@
                 statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
                 statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
                 statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
+                if (data.current_month_label) {
+                    statUsageMonthLabel.textContent = `Usage ${data.current_month_label}`;
+                    usageMonthHeader.textContent = data.current_month_label;
+                    const monthOption = windowSelect.querySelector('option[value="this_month"]');
+                    if (monthOption) {
+                        monthOption.textContent = data.current_month_label;
+                    }
+                }
 
                 if (data.selected_window && data.selected_window !== selectedWindow) {
                     selectedWindow = data.selected_window;

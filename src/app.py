@@ -1,4 +1,5 @@
 from flask import Flask, Response, abort, jsonify, render_template, request, stream_with_context
+from datetime import datetime
 import json
 import time
 
@@ -91,6 +92,7 @@ def create_app() -> Flask:
         return {
             "clients": rows,
             "selected_window": window_name,
+            "current_month_label": datetime.now().strftime("%b"),
             "total_today_mb": db.get_total_today_usage(),
             "total_last_7_days_mb": db.get_total_last_7_days_usage(),
             "total_calendar_month_mb": db.get_total_calendar_month_usage(),
@@ -111,6 +113,7 @@ def create_app() -> Flask:
 
         return jsonify(
             selected_window=data["selected_window"],
+            current_month_label=data["current_month_label"],
             total_today_mb=data["total_today_mb"],
             total_last_7_days_mb=data["total_last_7_days_mb"],
             total_calendar_month_mb=data["total_calendar_month_mb"],
@@ -130,6 +133,7 @@ def create_app() -> Flask:
 
                 payload = {
                     "selected_window": data["selected_window"],
+                    "current_month_label": data["current_month_label"],
                     "total_today_mb": data["total_today_mb"],
                     "total_last_7_days_mb": data["total_last_7_days_mb"],
                     "total_calendar_month_mb": data["total_calendar_month_mb"],
