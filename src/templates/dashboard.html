@@ -78,7 +78,7 @@
                                 <td>{{ client.vlan_name or "Unknown" }}</td>
                                 <td class="ap-col">{{ (client.ap_name or "").removesuffix(" AP") }}</td>
                                 <td>{% if client.signal %}{{ client.signal }}{% endif %}</td>
-                                <td class="num usage-col usage-first">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb).rstrip("0").rstrip(".") }}{% endif %}</td>
+                                <td class="num usage-col usage-first">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
                                 <td class="num usage-col usage-last">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
@@ -114,7 +114,10 @@
             const formatInt = (value) => Math.round(value).toLocaleString();
             const formatMinute = (value) => {
                 if (!value || value <= 0) return "";
-                return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+                return value.toLocaleString(undefined, {
+                    minimumFractionDigits: 3,
+                    maximumFractionDigits: 3
+                });
             };
             const formatWhole = (value) => {
                 if (!value) return "";
