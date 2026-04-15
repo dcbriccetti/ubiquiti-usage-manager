@@ -28,7 +28,7 @@ def create_app() -> Flask:
         return WINDOW_ONLINE_NOW
 
     def build_rows_for_online_clients() -> list[dict]:
-        return [
+        rows = [
             {
                 "user_id": snapshot.client.user_id or "",
                 "name": snapshot.client.name,
@@ -44,6 +44,15 @@ def create_app() -> Flask:
             }
             for snapshot in get_connected_clients()
         ]
+        return sorted(
+            rows,
+            key=lambda row: (
+                -row["interval_mb"],
+                -row["day_total_mb"],
+                str(row["name"]).lower(),
+                str(row["mac"]).lower(),
+            ),
+        )
 
     def build_rows_for_historical_window(window_name: str) -> list[dict]:
         summaries = db.get_usage_window_summary(window_name)
