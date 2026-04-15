@@ -1,0 +1,75 @@
+<section class="grid columns">
+    <article class="panel">
+        <div class="panel-body">
+            <h2>Latest Known Details</h2>
+            <table>
+                <tbody>
+                    {% if show_name_row %}
+                        <tr>
+                            <th>Name</th>
+                            <td>{{ latest_record.name or name_fallback }}</td>
+                        </tr>
+                    {% endif %}
+                    <tr>
+                        <th>User ID</th>
+                        <td>{{ latest_record.user_id or "Unknown" }}</td>
+                    </tr>
+                    <tr>
+                        <th>Network</th>
+                        <td>{{ latest_record.vlan or "Unknown" }}</td>
+                    </tr>
+                    <tr>
+                        <th>Speed Limit</th>
+                        <td>
+                            {% if latest_record.profile %}
+                                {{ speed_limit_display_by_name.get(latest_record.profile, latest_record.profile) }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <th>Access Point</th>
+                        <td>{{ latest_record.ap_name or "" }}</td>
+                    </tr>
+                    {% if show_signal_row %}
+                        <tr>
+                            <th>Signal</th>
+                            <td>{% if latest_record.signal is not none and latest_record.signal != 0 %}{{ latest_record.signal }}{% endif %}</td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="panel">
+        <div class="panel-body">
+            <h2>Recent Usage Entries</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>MB Used</th>
+                        <th>Speed Limit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in usage_history %}
+                        <tr>
+                            <td>{{ row.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+                            <td>{{ "{:,.3f}".format(row.mb_used) }}</td>
+                            <td>
+                                {% if row.profile %}
+                                    {{ speed_limit_display_by_name.get(row.profile, row.profile) }}
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="3" class="muted">{{ empty_usage_message }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
