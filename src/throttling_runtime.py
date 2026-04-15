@@ -1,19 +1,18 @@
 'Throttle runtime helpers for resolving and applying UniFi speed-limit profiles.'
 
-import config as cfg
 import unifi_api as api
+from config import THROTTLING_LEVELS
 from speedlimit import SpeedLimit
 
 
 def build_throttling_levels(
-    speed_limits: list[SpeedLimit],
-    policy: list[cfg.ThrottleLevel],
+    speed_limits: list[SpeedLimit]
 ) -> list[tuple[int, SpeedLimit]]:
-    'Resolve configured profile names to concrete SpeedLimit objects.'
+    'Resolve configured policy profile names to concrete SpeedLimit objects.'
     speed_limits_by_name = {limit.name: limit for limit in speed_limits}
 
     throttling_levels: list[tuple[int, SpeedLimit]] = []
-    for level in policy:
+    for level in THROTTLING_LEVELS:
         limit = speed_limits_by_name.get(level.profile_name)
         if not limit:
             raise ValueError(f"Could not find speed limit named: {level.profile_name}")

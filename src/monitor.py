@@ -7,7 +7,6 @@ import config as cfg
 import database as db
 import unifi_api as api
 from clientinfo import ClientInfo
-from config import THROTTLING_LEVELS
 from speedlimit import SpeedLimit
 from throttling_policy import target_profile_name_for_usage
 from throttling_runtime import (
