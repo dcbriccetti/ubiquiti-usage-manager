@@ -16,10 +16,10 @@ class MonthlyUsageAdjustment:
 IGNORE_BELOW_KB = 10
 THROTTLEABLE_VLAN_NAMES = ['Basic']
 THROTTLING_LEVELS = [  # Ascending order
-    ThrottleLevel(  250, 'Half speed'),
-    ThrottleLevel(  500, 'Quarter speed'),
-    ThrottleLevel(1_000, 'Eighth speed'),
-    ThrottleLevel(1_500, 'Sixteenth speed'),
+    ThrottleLevel(  250, '1/2 speed'),
+    ThrottleLevel(  500, '1/4 speed'),
+    ThrottleLevel(1_000, '1/8 speed'),
+    ThrottleLevel(1_500, '1/16 speed'),
 ]
 # As month-to-date usage grows, daily thresholds are lowered by these multipliers.
 MONTHLY_USAGE_ADJUSTMENTS = [  # Ascending order
