@@ -49,7 +49,7 @@
                             <th class="ap-col">AP</th>
                             <th>Sig</th>
                             <th colspan="4" class="usage-group">USAGE (MB)</th>
-                            <th class="nowrap-col">Speed Limit</th>
+                            <th class="nowrap-col">Speed Limit (KB)</th>
                         </tr>
                         <tr>
                             <th></th>
@@ -58,10 +58,10 @@
                             <th></th>
                             <th></th>
                             <th></th>
-                            <th class="num">Minute</th>
-                            <th class="num">Today</th>
-                            <th class="num">7 Days</th>
-                            <th class="num">This Month</th>
+                            <th class="num usage-col usage-first">Minute</th>
+                            <th class="num usage-col">Today</th>
+                            <th class="num usage-col">7 Days</th>
+                            <th class="num usage-col usage-last">This Month</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -78,10 +78,10 @@
                                 <td>{{ client.vlan_name or "Unknown" }}</td>
                                 <td class="ap-col">{{ (client.ap_name or "").removesuffix(" AP") }}</td>
                                 <td>{% if client.signal %}{{ client.signal }}{% endif %}</td>
-                                <td class="num">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb).rstrip("0").rstrip(".") }}{% endif %}</td>
-                                <td class="num">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
-                                <td class="num">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
-                                <td class="num">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
+                                <td class="num usage-col usage-first">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb).rstrip("0").rstrip(".") }}{% endif %}</td>
+                                <td class="num usage-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
+                                <td class="num usage-col">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
+                                <td class="num usage-col usage-last">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
                                 <td class="nowrap-col">{{ client.effective_speed_limit or "" }}</td>
                             </tr>
                         {% else %}
@@ -149,10 +149,10 @@
                             <td>${escapeHtml(client.vlan_name)}</td>
                             <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
                             <td>${escapeHtml(signal)}</td>
-                            <td class="num">${formatMinute(client.interval_mb)}</td>
-                            <td class="num">${formatWhole(client.day_total_mb)}</td>
-                            <td class="num">${formatWhole(client.last_7_days_total_mb)}</td>
-                            <td class="num">${formatWhole(client.calendar_month_total_mb)}</td>
+                            <td class="num usage-col usage-first">${formatMinute(client.interval_mb)}</td>
+                            <td class="num usage-col">${formatWhole(client.day_total_mb)}</td>
+                            <td class="num usage-col">${formatWhole(client.last_7_days_total_mb)}</td>
+                            <td class="num usage-col usage-last">${formatWhole(client.calendar_month_total_mb)}</td>
                             <td class="nowrap-col">${escapeHtml(client.effective_speed_limit)}</td>
                         </tr>
                     `;
