@@ -46,7 +46,7 @@
                             <th>Name</th>
                             <th>MAC</th>
                             <th>VLAN</th>
-                            <th class="ap-col">AP</th>
+                            <th class="ap-col">Access Point</th>
                             <th>Sig</th>
                             <th colspan="4" class="usage-group">Usage (MB)</th>
                             <th class="nowrap-col">Speed Limit (kbps up/down)</th>
@@ -69,9 +69,9 @@
                         {% for client in clients %}
                             <tr>
                                 <td class="nowrap-col">{{ client.user_id or "" }}</td>
-                                <td><strong>{{ client.name }}</strong></td>
-                                <td class="mono">
-                                    <a href="{{ url_for('client_detail', mac=client.mac) }}">
+                                <td>{{ client.name }}</td>
+                                <td class="mono mac-cell">
+                                    <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}">
                                         {{ client.mac }}
                                     </a>
                                 </td>
@@ -149,8 +149,8 @@
                     return `
                         <tr>
                             <td class="nowrap-col">${escapeHtml(client.user_id)}</td>
-                            <td><strong>${escapeHtml(client.name)}</strong></td>
-                            <td class="mono"><a href="${detailHref}">${escapeHtml(client.mac)}</a></td>
+                            <td>${escapeHtml(client.name)}</td>
+                            <td class="mono mac-cell"><a class="mac-link" href="${detailHref}">${escapeHtml(client.mac)}</a></td>
                             <td>${escapeHtml(client.vlan_name)}</td>
                             <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
                             <td>${escapeHtml(signal)}</td>

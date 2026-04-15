@@ -34,6 +34,18 @@
             color: inherit;
         }
 
+        a.mac-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 400;
+        }
+
+        a.mac-link:hover,
+        a.mac-link:focus-visible {
+            background: rgba(15, 118, 110, 0.10);
+            outline: none;
+        }
+
         .page {
             max-width: 1120px;
             margin: 0 auto;
@@ -195,6 +207,11 @@
 
         .mono {
             font-family: "SFMono-Regular", "Menlo", monospace;
+        }
+
+        .mac-cell {
+            font-size: 0.84em;
+            letter-spacing: 0;
         }
 
         .stack {
