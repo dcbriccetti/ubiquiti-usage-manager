@@ -33,6 +33,28 @@
             </article>
         </section>
 
+        {% if can_set_speed_limit %}
+            <article class="panel">
+                <div class="panel-body">
+                    <h2>Set My Speed Limit</h2>
+                    <form method="post">
+                        <label for="speed_limit_name" class="muted">Speed Limit</label>
+                        <select id="speed_limit_name" name="speed_limit_name">
+                            {% for option in speed_limit_options %}
+                                <option value="{{ option.name }}" {% if option.name == selected_speed_limit_name %}selected{% endif %}>
+                                    {{ option.label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <button type="submit">Apply</button>
+                    </form>
+                    {% if speed_limit_form_message %}
+                        <p class="muted">{{ speed_limit_form_message }}</p>
+                    {% endif %}
+                </div>
+            </article>
+        {% endif %}
+
         {% set show_name_row = true %}
         {% set show_signal_row = false %}
         {% set name_fallback = detected_mac %}

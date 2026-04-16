@@ -10,7 +10,7 @@ Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
 from datetime import datetime
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from flask import Flask, Response, abort, jsonify, render_template, request, stream_with_context
 
@@ -25,6 +25,7 @@ from dashboard_service import (
 from dashboard_stream import event_stream
 from lan_identity import find_client_mac_for_ip, get_request_ip
 from monitor import get_connected_clients
+from speedlimit import SpeedLimit
 
 
 class ClientUsageContext(TypedDict):
@@ -47,6 +48,26 @@ def create_app() -> Flask:
     def get_speed_limit_display_by_name() -> dict[str, str]:
         'Return mapping of speed-limit profile name to rendered display label.'
         return {limit.name: str(limit) for limit in api.get_speed_limits()}
+
+    def get_live_client_record_by_mac(mac: str) -> dict[str, Any] | None:
+        'Return live UniFi station payload for one MAC, if currently connected.'
+        target_mac = mac.lower()
+        for client in api.get_api_data("stat/sta"):
+            raw_mac = client.get("mac")
+            if isinstance(raw_mac, str) and raw_mac.lower() == target_mac:
+                return client
+        return None
+
+    def is_plus_network(vlan_name: str | None) -> bool:
+        'Return True when the VLAN/network label represents the Plus network.'
+        return bool(vlan_name and vlan_name.strip().lower() == "plus")
+
+    def speed_limit_option_label(limit: SpeedLimit) -> str:
+        'Build select-option label for one speed-limit profile.'
+        rendered = str(limit)
+        if rendered:
+            return rendered
+        return f'{limit.name} (Unlimited)'
 
     def get_client_usage_context(mac: str) -> ClientUsageContext:
         'Build shared usage/detail context used by both admin and self-service pages.'
@@ -127,7 +148,7 @@ def create_app() -> Flask:
         except LookupError:
             abort(404)
 
-    @flask_app.route("/my-usage")
+    @flask_app.route("/my-usage", methods=["GET", "POST"])
     def my_usage():
         'Render usage details for the LAN client identified by request IP/MAC mapping.'
         if not (request_ip := get_request_ip(request)):
@@ -137,6 +158,8 @@ def create_app() -> Flask:
                 request_ip="",
                 detected_mac="",
             )
+
+        request_ip = '192.168.6.227'
 
         if not (detected_mac := find_client_mac_for_ip(request_ip)):
             return render_template(
@@ -159,7 +182,49 @@ def create_app() -> Flask:
                 detected_mac=detected_mac,
             )
 
-        return render_template("my_usage.html", request_ip=request_ip, detected_mac=detected_mac, **context)
+        plus_user = is_plus_network(context['latest_record'].vlan)
+        speed_limits = api.get_speed_limits()
+        selected_speed_limit_name = context['latest_record'].profile or ''
+        speed_limit_form_message = ''
+
+        if request.method == "POST":
+            if not plus_user:
+                speed_limit_form_message = 'Speed-limit changes are available only on the Plus network.'
+            else:
+                requested_limit_name = request.form.get("speed_limit_name", "").strip()
+                speed_limits_by_name = {limit.name: limit for limit in speed_limits}
+                selected_limit = speed_limits_by_name.get(requested_limit_name)
+
+                if not selected_limit:
+                    speed_limit_form_message = 'Please select a valid speed limit.'
+                elif not (live_client := get_live_client_record_by_mac(detected_mac)):
+                    speed_limit_form_message = 'Your device must be online to apply a speed-limit change.'
+                else:
+                    unifi_client_id = live_client.get('_id')
+                    if not isinstance(unifi_client_id, str) or not unifi_client_id:
+                        speed_limit_form_message = 'Could not identify this device in UniFi right now.'
+                    elif api.set_user_group(unifi_client_id, selected_limit.id):
+                        selected_speed_limit_name = selected_limit.name
+                        context['latest_record'].profile = selected_limit.name
+                        speed_limit_form_message = f'Speed limit updated to {speed_limit_option_label(selected_limit)}.'
+                    else:
+                        speed_limit_form_message = 'Could not apply speed limit. Please try again.'
+
+        speed_limit_options = [
+            {'name': limit.name, 'label': speed_limit_option_label(limit)}
+            for limit in speed_limits
+        ]
+
+        return render_template(
+            "my_usage.html",
+            request_ip=request_ip,
+            detected_mac=detected_mac,
+            can_set_speed_limit=plus_user,
+            speed_limit_options=speed_limit_options,
+            selected_speed_limit_name=selected_speed_limit_name,
+            speed_limit_form_message=speed_limit_form_message,
+            **context,
+        )
 
     return flask_app
 
