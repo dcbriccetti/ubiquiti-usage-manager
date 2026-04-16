@@ -43,7 +43,7 @@
                 <table>
                     <thead>
                         <tr>
-                            <th colspan="6"></th>
+                            <th colspan="7"></th>
                             <th colspan="4" class="usage-group">Usage (MB)</th>
                             <th></th>
                         </tr>
@@ -54,6 +54,7 @@
                             <th>VLAN</th>
                             <th class="ap-col">Access Point</th>
                             <th>Sig</th>
+                            <th class="num nowrap-col" title="Average throughput over the last minute (megabits per second).">Mbps</th>
                             <th class="num usage-col usage-first">Minute</th>
                             <th class="num usage-col">Today</th>
                             <th class="num usage-col">7&nbsp;Days</th>
@@ -68,12 +69,13 @@
                                 <td>{{ client.name }}</td>
                                 <td class="mono mac-cell">
                                     <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}" title="{{ client.mac }}">
-                                        &hellip;{{ client.mac[-5:] }}
+                                        {{ client.mac[-5:] }}
                                     </a>
                                 </td>
                                 <td>{{ client.vlan_name or "Unknown" }}</td>
                                 <td class="ap-col">{{ (client.ap_name or "").removesuffix(" AP") }}</td>
                                 <td>{% if client.signal %}{{ client.signal }}{% endif %}</td>
+                                <td class="num nowrap-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format((client.interval_mb * 8.0) / 60.0) }}{% endif %}</td>
                                 <td class="num usage-col usage-first">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
@@ -82,7 +84,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="11" class="muted">
+                                <td colspan="12" class="muted">
                                     {% if selected_window == "active_now" %}
                                         No clients are actively using data right now.
                                     {% else %}
@@ -121,6 +123,14 @@
                     maximumFractionDigits: 3
                 });
             };
+            const formatAvgMbps = (intervalMb) => {
+                if (!intervalMb || intervalMb <= 0) return "";
+                const avgMbps = (intervalMb * 8) / 60;
+                return avgMbps.toLocaleString(undefined, {
+                    minimumFractionDigits: 3,
+                    maximumFractionDigits: 3
+                });
+            };
             const formatWhole = (value) => {
                 if (!value) return "";
                 const rounded = Math.round(value);
@@ -133,7 +143,7 @@
             const formatMacShort = (value) => {
                 const text = String(value || "");
                 if (!text) return "";
-                return `…${text.slice(-5)}`;
+                return text.slice(-5);
             };
             const escapeHtml = (value) =>
                 String(value)
@@ -151,7 +161,7 @@
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = `<tr><td colspan="11" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+                    connectedBody.innerHTML = `<tr><td colspan="12" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
                     return;
                 }
 
@@ -167,6 +177,7 @@
                             <td>${escapeHtml(client.vlan_name)}</td>
                             <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
                             <td>${escapeHtml(signal)}</td>
+                            <td class="num nowrap-col">${formatAvgMbps(client.interval_mb)}</td>
                             <td class="num usage-col usage-first">${formatMinute(client.interval_mb)}</td>
                             <td class="num usage-col">${formatWhole(client.day_total_mb)}</td>
                             <td class="num usage-col">${formatWhole(client.last_7_days_total_mb)}</td>
