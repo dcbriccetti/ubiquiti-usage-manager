@@ -49,6 +49,7 @@
                     <tr>
                         <th class="nowrap-col">Time</th>
                         <th class="num">MB Used</th>
+                        <th class="ap-col">Access Point</th>
                         <th>Speed Limit</th>
                     </tr>
                 </thead>
@@ -57,6 +58,7 @@
                         <tr>
                             <td class="nowrap-col">{{ row.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
                             <td class="num">{{ "{:,.3f}".format(row.mb_used) }}</td>
+                            <td class="ap-col">{{ (row.ap_name or "").removesuffix(" AP") }}</td>
                             <td>
                                 {% if row.profile %}
                                     {{ speed_limit_display_by_name.get(row.profile, row.profile) }}
@@ -65,7 +67,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="3" class="muted">{{ empty_usage_message }}</td>
+                            <td colspan="4" class="muted">{{ empty_usage_message }}</td>
                         </tr>
                     {% endfor %}
                 </tbody>
