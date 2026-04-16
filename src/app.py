@@ -35,19 +35,17 @@ def create_app() -> Flask:
 
     def get_client_usage_context(mac: str) -> dict:
         'Build shared usage/detail context used by both admin and self-service pages.'
-        usage_history = db.get_usage_history(mac)
-        if usage_history:
+        if usage_history := db.get_usage_history(mac):
             latest_record = usage_history[0]
         else:
-            live_snapshot = next(
+            if (live_snapshot := next(
                 (
                     snapshot
                     for snapshot in get_connected_clients()
                     if snapshot.client.mac.lower() == mac.lower()
                 ),
                 None,
-            )
-            if live_snapshot is None:
+            )) is None:
                 raise LookupError(f'No usage or live snapshot found for MAC {mac}')
 
             latest_record = db.UsageRecord(
@@ -116,8 +114,7 @@ def create_app() -> Flask:
     @flask_app.route("/my-usage")
     def my_usage():
         'Render usage details for the LAN client identified by request IP/MAC mapping.'
-        request_ip = get_request_ip(request)
-        if not request_ip:
+        if not (request_ip := get_request_ip(request)):
             return render_template(
                 "my_usage.html",
                 error_message="Could not determine your client IP address from this request.",
@@ -125,8 +122,7 @@ def create_app() -> Flask:
                 detected_mac="",
             )
 
-        detected_mac = find_client_mac_for_ip(request_ip)
-        if not detected_mac:
+        if not (detected_mac := find_client_mac_for_ip(request_ip)):
             return render_template(
                 "my_usage.html",
                 error_message=(
