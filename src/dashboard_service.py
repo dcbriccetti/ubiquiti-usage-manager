@@ -3,7 +3,7 @@
 This module owns dashboard-specific data assembly and normalization rules used by:
 - initial HTML render (`/`)
 - snapshot API (`/api/dashboard-snapshot`)
-- live stream API (`/dashboard-stream`)
+- live stream API (`/api/dashboard-stream`)
 
 Responsibilities:
 1. Normalize and validate user-selected dashboard windows.

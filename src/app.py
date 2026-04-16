@@ -130,7 +130,6 @@ def create_app() -> Flask:
         return jsonify(build_dashboard_payload(data))
 
     @flask_app.route("/api/dashboard-stream")
-    @flask_app.route("/dashboard-stream")
     def dashboard_stream():
         'Stream dashboard updates over Server-Sent Events.'
         window_name = normalize_window(request.args.get("window"))

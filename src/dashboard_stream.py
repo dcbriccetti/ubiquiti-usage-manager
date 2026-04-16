@@ -1,6 +1,6 @@
 '''Dashboard Server-Sent Events (SSE) stream helpers.
 
-This module provides the streaming loop used by `/dashboard-stream`.
+This module provides the streaming loop used by `/api/dashboard-stream`.
 It rebuilds dashboard data at a fixed interval and emits JSON payloads as
 SSE frames (`data: ...`) so connected browsers can update in near real time.
 
