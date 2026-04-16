@@ -67,8 +67,8 @@
                                 <td class="nowrap-col">{{ client.user_id or "" }}</td>
                                 <td>{{ client.name }}</td>
                                 <td class="mono mac-cell">
-                                    <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}">
-                                        {{ client.mac }}
+                                    <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}" title="{{ client.mac }}">
+                                        &hellip;{{ client.mac[-5:] }}
                                     </a>
                                 </td>
                                 <td>{{ client.vlan_name or "Unknown" }}</td>
@@ -130,6 +130,11 @@
                 const text = String(value || "");
                 return text.endsWith(" AP") ? text.slice(0, -3) : text;
             };
+            const formatMacShort = (value) => {
+                const text = String(value || "");
+                if (!text) return "";
+                return `…${text.slice(-5)}`;
+            };
             const escapeHtml = (value) =>
                 String(value)
                     .replaceAll("&", "&amp;")
@@ -158,7 +163,7 @@
                         <tr>
                             <td class="nowrap-col">${escapeHtml(client.user_id)}</td>
                             <td>${escapeHtml(client.name)}</td>
-                            <td class="mono mac-cell"><a class="mac-link" href="${detailHref}">${escapeHtml(client.mac)}</a></td>
+                            <td class="mono mac-cell"><a class="mac-link" href="${detailHref}" title="${escapeHtml(client.mac)}">${escapeHtml(formatMacShort(client.mac))}</a></td>
                             <td>${escapeHtml(client.vlan_name)}</td>
                             <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
                             <td>${escapeHtml(signal)}</td>
