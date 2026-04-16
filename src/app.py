@@ -159,8 +159,6 @@ def create_app() -> Flask:
                 detected_mac="",
             )
 
-        request_ip = '192.168.6.227'
-
         if not (detected_mac := find_client_mac_for_ip(request_ip)):
             return render_template(
                 "my_usage.html",
