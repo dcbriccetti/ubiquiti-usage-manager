@@ -9,6 +9,7 @@ This module keeps the web entrypoint intentionally small:
 Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
+from datetime import datetime
 from typing import TypedDict
 
 from flask import Flask, Response, abort, jsonify, render_template, request, stream_with_context
@@ -34,6 +35,7 @@ class ClientUsageContext(TypedDict):
     daily_total_mb: float
     last_7_days_total_mb: float
     calendar_month_total_mb: float
+    current_month_label: str
     speed_limit_display_by_name: dict[str, str]
 
 
@@ -84,6 +86,7 @@ def create_app() -> Flask:
             'daily_total_mb': db.get_daily_total(mac),
             'last_7_days_total_mb': db.get_last_7_days_total(mac),
             'calendar_month_total_mb': db.get_calendar_month_total(mac),
+            'current_month_label': datetime.now().strftime('%b'),
             'speed_limit_display_by_name': get_speed_limit_display_by_name(),
         }
 

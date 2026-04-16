@@ -17,22 +17,24 @@ in one place, so UI changes do not require route-level rewrites.
 '''
 
 from datetime import datetime
-from typing import TypedDict
+from typing import Literal, TypedDict, cast
 
 import database as db
 import unifi_api as api
 from monitor import get_connected_clients
 
-WINDOW_ONLINE_NOW = 'online_now'
-WINDOW_TODAY = 'today'
-WINDOW_LAST_7_DAYS = 'last_7_days'
-WINDOW_THIS_MONTH = 'this_month'
-ALLOWED_WINDOWS = {
+WindowName = Literal['online_now', 'today', 'last_7_days', 'this_month']
+
+WINDOW_ONLINE_NOW: WindowName = 'online_now'
+WINDOW_TODAY: WindowName = 'today'
+WINDOW_LAST_7_DAYS: WindowName = 'last_7_days'
+WINDOW_THIS_MONTH: WindowName = 'this_month'
+ALLOWED_WINDOWS: frozenset[WindowName] = frozenset({
     WINDOW_ONLINE_NOW,
     WINDOW_TODAY,
     WINDOW_LAST_7_DAYS,
     WINDOW_THIS_MONTH,
-}
+})
 
 
 class DashboardRow(TypedDict):
@@ -53,7 +55,7 @@ class DashboardRow(TypedDict):
 class DashboardData(TypedDict):
     'Canonical dashboard payload shared by template render, snapshot API, and SSE.'
     clients: list[DashboardRow]
-    selected_window: str
+    selected_window: WindowName
     current_month_label: str
     total_today_mb: float
     total_last_7_days_mb: float
@@ -61,10 +63,10 @@ class DashboardData(TypedDict):
     live_update_seconds: int
 
 
-def normalize_window(window_name: str | None) -> str:
+def normalize_window(window_name: str | None) -> WindowName:
     'Return a safe dashboard window key, defaulting to online_now.'
     if isinstance(window_name, str) and window_name in ALLOWED_WINDOWS:
-        return window_name
+        return cast(WindowName, window_name)
     return WINDOW_ONLINE_NOW
 
 
@@ -99,7 +101,7 @@ def build_rows_for_online_clients() -> list[DashboardRow]:
 
 
 def build_rows_for_historical_window(
-    window_name: str,
+    window_name: WindowName,
     speed_limits_by_name: dict[str, str],
 ) -> list[DashboardRow]:
     'Build dashboard rows from usage ledger summaries for non-live windows.'
@@ -129,7 +131,7 @@ def build_rows_for_historical_window(
     return rows
 
 
-def build_dashboard_data(window_name: str, live_update_seconds: int) -> DashboardData:
+def build_dashboard_data(window_name: WindowName, live_update_seconds: int) -> DashboardData:
     'Assemble all dashboard fields needed by HTML render, API snapshot, and SSE stream.'
     speed_limits_by_name = {
         limit.name: str(limit) for limit in api.get_speed_limits()

@@ -9,10 +9,21 @@
             <h1>{{ latest_record.name or mac }}</h1>
             <p class="mono">{{ mac }}</p>
         </div>
-        <div class="panel stat">
+    </section>
+
+    <section class="grid stats">
+        <article class="panel stat">
             <span class="label">Usage Today</span>
-            <span class="value">{{ "{:,.1f}".format(daily_total_mb) }} MB</span>
-        </div>
+            <span class="value">{{ "{:,.0f}".format(daily_total_mb) }} MB</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Usage 7 Days</span>
+            <span class="value">{{ "{:,.0f}".format(last_7_days_total_mb) }} MB</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Usage {{ current_month_label }}</span>
+            <span class="value">{{ "{:,.0f}".format(calendar_month_total_mb) }} MB</span>
+        </article>
     </section>
 
     {% set show_name_row = false %}
