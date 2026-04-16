@@ -13,7 +13,6 @@ from speedlimit import SpeedLimit
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- SHARED CONFIG ---
 BASE_URL = "https://192.168.0.1/proxy/network/api/s/default"
 HEADERS = {"X-API-KEY": API_KEY, "Accept": "application/json"}
 
@@ -32,21 +31,17 @@ def get_api_data(endpoint: str) -> list[dict[str, Any]]:
 def get_speed_limits() -> list[SpeedLimit]:
     'Return configured UniFi user groups as SpeedLimit objects.'
     return [
-        SpeedLimit(
-            id=str(g.get('_id', '')),
-            name=str(g.get('name', '')),
-            up_kbps=g.get('qos_rate_max_up'),
-            down_kbps=g.get('qos_rate_max_down')
-        )
+        SpeedLimit(id=g['_id'], name=g['name'],
+                   up_kbps=g.get('qos_rate_max_up'), down_kbps=g.get('qos_rate_max_down'))
         for g in get_api_data('list/usergroup')
-        if g.get('_id') and g.get('name')
+        if '_id' in g and 'name' in g and isinstance(g['_id'], str) and isinstance(g['name'], str)
     ]
 
 def get_ap_names_by_mac() -> dict[str, str]:
     'Return a mapping of AP MAC address to AP display name/model.'
     devices = get_api_data('stat/device')
     return {
-        str(d.get('mac', '')): str(d.get('name') or d.get('model') or '')
+        str(d['mac']): str(d.get('name') or d.get('model') or '')
         for d in devices
         if d.get('mac')
     }
@@ -55,13 +50,7 @@ def set_user_group(user_id: str, group_id: str | None) -> bool:
     "Update one client's UniFi group/profile."
     url = f"{BASE_URL}/upd/user/{user_id}"
     try:
-        res = requests.post(
-            url,
-            json={"usergroup_id": group_id},
-            headers=HEADERS,
-            verify=False,
-            timeout=10,
-        )
+        res = requests.post(url, json={"usergroup_id": group_id or ''}, headers=HEADERS, verify=False, timeout=10)
         return res.status_code == 200
     except Exception as e:
         print(f"⚠️ UniFi API Error (upd/user/{user_id}): {e}")
@@ -72,17 +61,21 @@ def get_vlan_ids_for_names(names: list[str]) -> list[str]:
     networks = get_api_data('rest/networkconf')
     return [str(n.get('_id')) for n in networks if n.get('name') in names and n.get('_id')]
 
-def release_all_from_limit(slow_group_id: str) -> None:
-    'Move all currently throttled clients back to the default group.'
+def release_all_from_limits(throttling_group_ids: set[str]) -> None:
+    'Move all clients assigned to any configured throttling group back to default.'
+    if not throttling_group_ids:
+        return
+
     clients = get_api_data('stat/sta')
     count = 0
     for c in clients:
         user_id = c.get('_id')
-        if c.get('usergroup_id') == slow_group_id and user_id:
-            if set_user_group(str(user_id), ""): # "" usually resets to Default
+        group_id = c.get('usergroup_id')
+        if group_id in throttling_group_ids and user_id:
+            if set_user_group(str(user_id), None):
                 count += 1
     if count > 0:
-        print(f"✅ Successfully released {count} user(s) from the speed limit.")
+        print(f"✅ Successfully released {count} user(s) from throttling speed limits.")
 
 def get_group_id_by_name(group_name: str) -> str | None:
     'Look up the UniFi group ID for a group name.'

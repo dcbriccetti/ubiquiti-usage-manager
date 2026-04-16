@@ -27,6 +27,8 @@ from lan_identity import find_client_mac_for_ip, get_request_ip
 from monitor import get_connected_clients
 from speedlimit import SpeedLimit
 
+SpeedLimitsByName = dict[str, SpeedLimit]
+
 
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
@@ -37,7 +39,7 @@ class ClientUsageContext(TypedDict):
     last_7_days_total_mb: float
     calendar_month_total_mb: float
     current_month_label: str
-    speed_limit_display_by_name: dict[str, str]
+    speed_limits_by_name: SpeedLimitsByName
 
 
 def create_app() -> Flask:
@@ -45,9 +47,9 @@ def create_app() -> Flask:
     flask_app = Flask(__name__)
     live_update_seconds = 15
 
-    def get_speed_limit_display_by_name() -> dict[str, str]:
-        'Return mapping of speed-limit profile name to rendered display label.'
-        return {limit.name: str(limit) for limit in api.get_speed_limits()}
+    def get_speed_limits_by_name() -> SpeedLimitsByName:
+        'Return mapping of speed-limit profile name to SpeedLimit object.'
+        return {limit.name: limit for limit in api.get_speed_limits()}
 
     def get_live_client_record_by_mac(mac: str) -> dict[str, Any] | None:
         'Return live UniFi station payload for one MAC, if currently connected.'
@@ -108,7 +110,7 @@ def create_app() -> Flask:
             'last_7_days_total_mb': db.get_last_7_days_total(mac),
             'calendar_month_total_mb': db.get_calendar_month_total(mac),
             'current_month_label': datetime.now().strftime('%b'),
-            'speed_limit_display_by_name': get_speed_limit_display_by_name(),
+            'speed_limits_by_name': get_speed_limits_by_name(),
         }
 
     @flask_app.route("/")

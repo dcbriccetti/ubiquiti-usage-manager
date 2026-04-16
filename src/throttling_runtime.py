@@ -64,5 +64,4 @@ def release_configured_limits(
         return
 
     print(f"Releasing throttled clients during {context}.")
-    for limit_id in throttling_limit_ids:
-        api.release_all_from_limit(limit_id)
+    api.release_all_from_limits(throttling_limit_ids)
