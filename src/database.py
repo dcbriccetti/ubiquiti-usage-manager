@@ -1,3 +1,9 @@
+'''Database access layer for usage metering and dashboard aggregation.
+
+This module owns SQLite/SQLAlchemy setup and all persisted usage queries so
+monitoring/runtime code does not need direct SQL concerns.
+'''
+
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
@@ -14,7 +20,7 @@ DB_URL = f"sqlite:///{DB_PATH}"
 engine = create_engine(DB_URL, echo=False)
 
 @event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, _connection_record):
+def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, _connection_record: object) -> None:
     'Apply SQLite pragmas for better concurrent read/write behavior.'
     cursor = dbapi_connection.cursor()
     try:
@@ -80,11 +86,11 @@ class UsageRecord(Base):
 
 
 # --- DATABASE API ---
-def init_db():
+def init_db() -> None:
     'Create database tables if they do not already exist.'
     Base.metadata.create_all(bind=engine)
 
-def log_usage(c: ClientInfo, interval_mb):
+def log_usage(c: ClientInfo, interval_mb: float) -> None:
     'Persist one usage interval for a client.'
     with SessionLocal() as session:
         record = UsageRecord(
@@ -362,4 +368,3 @@ def get_usage_window_summary(window: str) -> list[UsageWindowSummary]:
         key=lambda row: row.calendar_month_total_mb,
         reverse=True,
     )
-

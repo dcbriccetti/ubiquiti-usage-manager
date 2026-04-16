@@ -1,3 +1,9 @@
+'''UniFi controller HTTP helpers.
+
+Provides small, typed wrappers around the UniFi Network API endpoints used by
+monitoring and dashboard modules.
+'''
+
 from typing import Any
 
 import requests
@@ -8,8 +14,8 @@ from speedlimit import SpeedLimit
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- SHARED CONFIG ---
-BASE_URL      = "https://192.168.0.1/proxy/network/api/s/default"
-HEADERS       = {"X-API-KEY": API_KEY, "Accept": "application/json"}
+BASE_URL = "https://192.168.0.1/proxy/network/api/s/default"
+HEADERS = {"X-API-KEY": API_KEY, "Accept": "application/json"}
 
 def get_api_data(endpoint: str) -> list[dict[str, Any]]:
     'Fetch a UniFi endpoint and return its data array.'

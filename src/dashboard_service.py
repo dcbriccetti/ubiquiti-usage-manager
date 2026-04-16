@@ -17,7 +17,7 @@ in one place, so UI changes do not require route-level rewrites.
 '''
 
 from datetime import datetime
-from typing import Any
+from typing import TypedDict
 
 import database as db
 import unifi_api as api
@@ -35,17 +35,44 @@ ALLOWED_WINDOWS = {
 }
 
 
+class DashboardRow(TypedDict):
+    'Serialized row shape consumed by the dashboard table in HTML and JSON.'
+    user_id: str
+    name: str
+    ap_name: str
+    mac: str
+    vlan_name: str
+    signal: int | None
+    interval_mb: float
+    day_total_mb: float
+    last_7_days_total_mb: float
+    calendar_month_total_mb: float
+    effective_speed_limit: str
+
+
+class DashboardData(TypedDict):
+    'Canonical dashboard payload shared by template render, snapshot API, and SSE.'
+    clients: list[DashboardRow]
+    selected_window: str
+    current_month_label: str
+    total_today_mb: float
+    total_last_7_days_mb: float
+    total_calendar_month_mb: float
+    live_update_seconds: int
+
+
 def normalize_window(window_name: str | None) -> str:
     'Return a safe dashboard window key, defaulting to online_now.'
-    if window_name in ALLOWED_WINDOWS:
+    if isinstance(window_name, str) and window_name in ALLOWED_WINDOWS:
         return window_name
     return WINDOW_ONLINE_NOW
 
 
-def build_rows_for_online_clients() -> list[dict[str, Any]]:
+def build_rows_for_online_clients() -> list[DashboardRow]:
     'Build dashboard rows from live controller client snapshots.'
-    rows = [
-        {
+    rows: list[DashboardRow] = []
+    for snapshot in get_connected_clients():
+        row: DashboardRow = {
             'user_id': snapshot.client.user_id or '',
             'name': snapshot.client.name,
             'ap_name': snapshot.client.ap_name or '',
@@ -58,8 +85,7 @@ def build_rows_for_online_clients() -> list[dict[str, Any]]:
             'calendar_month_total_mb': snapshot.calendar_month_total_mb,
             'effective_speed_limit': str(snapshot.effective_speed_limit) if snapshot.effective_speed_limit else '',
         }
-        for snapshot in get_connected_clients()
-    ]
+        rows.append(row)
     # Sort for operational usefulness: users currently moving data the fastest float to top.
     return sorted(
         rows,
@@ -75,31 +101,35 @@ def build_rows_for_online_clients() -> list[dict[str, Any]]:
 def build_rows_for_historical_window(
     window_name: str,
     speed_limits_by_name: dict[str, str],
-) -> list[dict[str, Any]]:
+) -> list[DashboardRow]:
     'Build dashboard rows from usage ledger summaries for non-live windows.'
     summaries = db.get_usage_window_summary(window_name)
-    return [
-        {
-            'user_id': row.user_id or '',
-            'name': row.name or row.mac,
-            'ap_name': row.ap_name or '',
-            'mac': row.mac,
-            'vlan_name': row.vlan or 'Unknown',
+    rows: list[DashboardRow] = []
+    for summary in summaries:
+        effective_speed_limit = ''
+        if summary.profile:
+            effective_speed_limit = speed_limits_by_name.get(summary.profile, summary.profile)
+
+        row: DashboardRow = {
+            'user_id': summary.user_id or '',
+            'name': summary.name or summary.mac,
+            'ap_name': summary.ap_name or '',
+            'mac': summary.mac,
+            'vlan_name': summary.vlan or 'Unknown',
             'signal': None,
             'interval_mb': 0.0,
-            'day_total_mb': row.day_total_mb,
-            'last_7_days_total_mb': row.last_7_days_total_mb,
-            'calendar_month_total_mb': row.calendar_month_total_mb,
+            'day_total_mb': summary.day_total_mb,
+            'last_7_days_total_mb': summary.last_7_days_total_mb,
+            'calendar_month_total_mb': summary.calendar_month_total_mb,
             # Historical rows store only profile names in DB; map to current display text when possible.
-            'effective_speed_limit': (
-                speed_limits_by_name.get(row.profile, row.profile) if row.profile else ''
-            ),
+            'effective_speed_limit': effective_speed_limit,
         }
-        for row in summaries
-    ]
+        rows.append(row)
+
+    return rows
 
 
-def build_dashboard_data(window_name: str, live_update_seconds: int) -> dict[str, Any]:
+def build_dashboard_data(window_name: str, live_update_seconds: int) -> DashboardData:
     'Assemble all dashboard fields needed by HTML render, API snapshot, and SSE stream.'
     speed_limits_by_name = {
         limit.name: str(limit) for limit in api.get_speed_limits()
@@ -120,7 +150,7 @@ def build_dashboard_data(window_name: str, live_update_seconds: int) -> dict[str
     }
 
 
-def build_dashboard_payload(data: dict[str, Any]) -> dict[str, Any]:
+def build_dashboard_payload(data: DashboardData) -> DashboardData:
     'Project dashboard data into the lightweight JSON payload used by snapshot/SSE routes.'
     return {
         'selected_window': data['selected_window'],

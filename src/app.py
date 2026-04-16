@@ -9,11 +9,13 @@ This module keeps the web entrypoint intentionally small:
 Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
+from typing import TypedDict
 
 from flask import Flask, Response, abort, jsonify, render_template, request, stream_with_context
 
 import database as db
 import unifi_api as api
+from database import UsageRecord
 from dashboard_service import (
     build_dashboard_data,
     build_dashboard_payload,
@@ -22,6 +24,17 @@ from dashboard_service import (
 from dashboard_stream import event_stream
 from lan_identity import find_client_mac_for_ip, get_request_ip
 from monitor import get_connected_clients
+
+
+class ClientUsageContext(TypedDict):
+    'Template context for client-detail and my-usage pages.'
+    mac: str
+    latest_record: UsageRecord
+    usage_history: list[UsageRecord]
+    daily_total_mb: float
+    last_7_days_total_mb: float
+    calendar_month_total_mb: float
+    speed_limit_display_by_name: dict[str, str]
 
 
 def create_app() -> Flask:
@@ -33,7 +46,7 @@ def create_app() -> Flask:
         'Return mapping of speed-limit profile name to rendered display label.'
         return {limit.name: str(limit) for limit in api.get_speed_limits()}
 
-    def get_client_usage_context(mac: str) -> dict:
+    def get_client_usage_context(mac: str) -> ClientUsageContext:
         'Build shared usage/detail context used by both admin and self-service pages.'
         if usage_history := db.get_usage_history(mac):
             latest_record = usage_history[0]
