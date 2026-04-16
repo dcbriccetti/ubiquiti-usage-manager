@@ -8,7 +8,7 @@
             <h1>Network Usage Controller</h1>
             <p>
                 Live usage and management dashboard for UniFi clients, with switchable views
-                for online now, today, 7 days, and this month.
+                for active now, online now, today, 7 days, and this month.
             </p>
         </div>
     </section>
@@ -34,6 +34,7 @@
                 <h2>Clients</h2>
                 <label for="window-select" class="muted">Show:</label>
                 <select id="window-select">
+                    <option value="active_now" {% if selected_window == "active_now" %}selected{% endif %}>Active Now</option>
                     <option value="online_now" {% if selected_window == "online_now" %}selected{% endif %}>Online Now</option>
                     <option value="today" {% if selected_window == "today" %}selected{% endif %}>Today</option>
                     <option value="last_7_days" {% if selected_window == "last_7_days" %}selected{% endif %}>7 Days</option>
@@ -81,7 +82,13 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="11" class="muted">No clients match this window.</td>
+                                <td colspan="11" class="muted">
+                                    {% if selected_window == "active_now" %}
+                                        No clients are actively using data right now.
+                                    {% else %}
+                                        No clients found for this view yet.
+                                    {% endif %}
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>
@@ -130,10 +137,16 @@
                     .replaceAll(">", "&gt;")
                     .replaceAll('"', "&quot;")
                     .replaceAll("'", "&#39;");
+            const emptyWindowMessage = () => {
+                if (selectedWindow === "active_now") {
+                    return "No clients are actively using data right now.";
+                }
+                return "No clients found for this view yet.";
+            };
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = '<tr><td colspan="11" class="muted">No clients match this window.</td></tr>';
+                    connectedBody.innerHTML = `<tr><td colspan="11" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
                     return;
                 }
 

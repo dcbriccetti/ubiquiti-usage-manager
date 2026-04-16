@@ -23,13 +23,15 @@ import database as db
 import unifi_api as api
 from monitor import get_connected_clients
 
-WindowName = Literal['online_now', 'today', 'last_7_days', 'this_month']
+WindowName = Literal['active_now', 'online_now', 'today', 'last_7_days', 'this_month']
 
+WINDOW_ACTIVE_NOW: WindowName = 'active_now'
 WINDOW_ONLINE_NOW: WindowName = 'online_now'
 WINDOW_TODAY: WindowName = 'today'
 WINDOW_LAST_7_DAYS: WindowName = 'last_7_days'
 WINDOW_THIS_MONTH: WindowName = 'this_month'
 ALLOWED_WINDOWS: frozenset[WindowName] = frozenset({
+    WINDOW_ACTIVE_NOW,
     WINDOW_ONLINE_NOW,
     WINDOW_TODAY,
     WINDOW_LAST_7_DAYS,
@@ -64,13 +66,13 @@ class DashboardData(TypedDict):
 
 
 def normalize_window(window_name: str | None) -> WindowName:
-    'Return a safe dashboard window key, defaulting to online_now.'
+    'Return a safe dashboard window key, defaulting to active_now.'
     if isinstance(window_name, str) and window_name in ALLOWED_WINDOWS:
         return cast(WindowName, window_name)
-    return WINDOW_ONLINE_NOW
+    return WINDOW_ACTIVE_NOW
 
 
-def build_rows_for_online_clients() -> list[DashboardRow]:
+def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRow]:
     'Build dashboard rows from live controller client snapshots.'
     rows: list[DashboardRow] = []
     for snapshot in get_connected_clients():
@@ -88,6 +90,9 @@ def build_rows_for_online_clients() -> list[DashboardRow]:
             'effective_speed_limit': str(snapshot.effective_speed_limit) if snapshot.effective_speed_limit else '',
         }
         rows.append(row)
+    if active_only:
+        rows = [row for row in rows if row['interval_mb'] > 0.0]
+
     # Sort for operational usefulness: users currently moving data the fastest float to top.
     return sorted(
         rows,
@@ -136,11 +141,12 @@ def build_dashboard_data(window_name: WindowName, live_update_seconds: int) -> D
     speed_limits_by_name = {
         limit.name: str(limit) for limit in api.get_speed_limits()
     }
-    rows = (
-        build_rows_for_online_clients()
-        if window_name == WINDOW_ONLINE_NOW
-        else build_rows_for_historical_window(window_name, speed_limits_by_name)
-    )
+    if window_name == WINDOW_ONLINE_NOW:
+        rows = build_rows_for_online_clients()
+    elif window_name == WINDOW_ACTIVE_NOW:
+        rows = build_rows_for_online_clients(active_only=True)
+    else:
+        rows = build_rows_for_historical_window(window_name, speed_limits_by_name)
     return {
         'clients': rows,
         'selected_window': window_name,
