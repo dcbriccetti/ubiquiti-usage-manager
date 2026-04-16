@@ -130,7 +130,12 @@ class UsageMonitor:
         on_cycle: Callable[[list[ClientSnapshot]], None] | None = None,
     ) -> None:
         'Run the monitor loop continuously at the configured poll interval.'
+        first_cycle = True
         while True:
+            if first_cycle:
+                first_cycle = False
+            else:
+                self._sleep_until_next_poll_boundary(poll_interval_seconds)
             try:
                 self._handle_day_transition()
                 snapshots = self.process_connected_clients()
@@ -139,7 +144,15 @@ class UsageMonitor:
             except Exception as exc:
                 print(f"Error: {exc}")
 
-            time.sleep(poll_interval_seconds)
+    def _sleep_until_next_poll_boundary(self, poll_interval_seconds: int) -> None:
+        'Sleep until the next wall-clock poll boundary to keep timestamps aligned.'
+        if poll_interval_seconds <= 0:
+            return
+
+        now = time.time()
+        next_boundary = (int(now // poll_interval_seconds) + 1) * poll_interval_seconds
+        sleep_seconds = max(0.0, next_boundary - now)
+        time.sleep(sleep_seconds)
 
     def _handle_day_transition(self) -> None:
         now_date = datetime.now().date()
