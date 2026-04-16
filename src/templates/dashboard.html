@@ -42,27 +42,22 @@
                 <table>
                     <thead>
                         <tr>
+                            <th colspan="6"></th>
+                            <th colspan="4" class="usage-group">Usage (MB)</th>
+                            <th></th>
+                        </tr>
+                        <tr>
                             <th class="nowrap-col">User ID</th>
                             <th>Name</th>
                             <th>MAC</th>
                             <th>VLAN</th>
                             <th class="ap-col">Access Point</th>
                             <th>Sig</th>
-                            <th colspan="4" class="usage-group">Usage (MB)</th>
-                            <th class="nowrap-col">Speed Limit (kbps up/down)</th>
-                        </tr>
-                        <tr>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
-                            <th></th>
                             <th class="num usage-col usage-first">Minute</th>
                             <th class="num usage-col">Today</th>
                             <th class="num usage-col">7&nbsp;Days</th>
                             <th class="num usage-col usage-last" id="usage-month-header">{{ current_month_label }}</th>
-                            <th></th>
+                            <th class="nowrap-col">Speed Limit (kbps up/down)</th>
                         </tr>
                     </thead>
                     <tbody id="connected-clients-body">

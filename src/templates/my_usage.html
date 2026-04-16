@@ -3,7 +3,7 @@
 {% block title %}My Usage | UniFi Usage{% endblock %}
 
 {% block content %}
-    <section class="hero">
+    <section class="hero detail-hero">
         <div>
             <h1>My Usage</h1>
             <p class="mono">IP: {{ request_ip or "Unknown" }}{% if detected_mac %} &nbsp;|&nbsp; MAC: {{ detected_mac }}{% endif %}</p>

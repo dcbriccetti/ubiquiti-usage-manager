@@ -3,7 +3,7 @@
 {% block title %}{{ latest_record.name or mac }} | UniFi Usage{% endblock %}
 
 {% block content %}
-    <section class="hero">
+    <section class="hero detail-hero">
         <div>
             <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
             <h1>{{ latest_record.name or mac }}</h1>

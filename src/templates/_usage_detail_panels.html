@@ -41,22 +41,22 @@
         </div>
     </article>
 
-    <article class="panel">
+    <article class="panel usage-history-panel">
         <div class="panel-body">
             <h2>Recent Usage Entries</h2>
             <table>
                 <thead>
                     <tr>
-                        <th>Time</th>
-                        <th>MB Used</th>
+                        <th class="nowrap-col">Time</th>
+                        <th class="num">MB Used</th>
                         <th>Speed Limit</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in usage_history %}
                         <tr>
-                            <td>{{ row.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-                            <td>{{ "{:,.3f}".format(row.mb_used) }}</td>
+                            <td class="nowrap-col">{{ row.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+                            <td class="num">{{ "{:,.3f}".format(row.mb_used) }}</td>
                             <td>
                                 {% if row.profile %}
                                     {{ speed_limit_display_by_name.get(row.profile, row.profile) }}
