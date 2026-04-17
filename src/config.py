@@ -27,3 +27,5 @@ MONTHLY_USAGE_ADJUSTMENTS = [  # Ascending order
     MonthlyUsageAdjustment(4_000, 0.50),
     MonthlyUsageAdjustment(6_000, 0.35),
 ]
+
+PLUS_ADMINS = {'plus_admin_1', 'plus_admin_2', 'plus_admin_3'}

@@ -10,10 +10,12 @@ Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
 from datetime import datetime
+import os
 from typing import Any, TypedDict
 
-from flask import Flask, Response, abort, jsonify, render_template, request, stream_with_context
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, stream_with_context, url_for
 
+import config as cfg
 import database as db
 import unifi_api as api
 from database import UsageRecord
@@ -64,12 +66,48 @@ def create_app() -> Flask:
         'Return True when the VLAN/network label represents the Plus network.'
         return bool(vlan_name and vlan_name.strip().lower() == "plus")
 
+    def is_plus_admin_user(user_id: str | None, vlan_name: str | None) -> bool:
+        'Return True when requester is a Plus user whose RADIUS username is in admin allowlist.'
+        if not is_plus_network(vlan_name) or not user_id:
+            return False
+        return user_id.strip().lower() in cfg.PLUS_ADMINS
+
+    def resolve_request_ip() -> str | None:
+        'Return request IP, allowing DEV_REQUEST_IP override for local/remote testing.'
+        if dev_request_ip := os.getenv("DEV_REQUEST_IP", "").strip():
+            return dev_request_ip
+        return get_request_ip(request)
+
+    def dev_force_plus_admin_enabled() -> bool:
+        'Return True when DEV_FORCE_PLUS_ADMIN requests admin-access bypass for testing.'
+        return os.getenv("DEV_FORCE_PLUS_ADMIN", "").strip().lower() in {"1", "true", "yes", "on"}
+
     def speed_limit_option_label(limit: SpeedLimit) -> str:
         'Build select-option label for one speed-limit profile.'
         rendered = str(limit)
         if rendered:
             return rendered
         return f'{limit.name} (Unlimited)'
+
+    def requester_is_plus_admin() -> bool:
+        'Resolve current requester and return whether they are a Plus admin.'
+        if dev_force_plus_admin_enabled():
+            return True
+
+        if not (request_ip := resolve_request_ip()):
+            return False
+
+        detected_mac = find_client_mac_for_ip(request_ip)
+        if not detected_mac:
+            return False
+
+        try:
+            context = get_client_usage_context(detected_mac)
+        except LookupError:
+            return False
+
+        latest_record = context['latest_record']
+        return is_plus_admin_user(latest_record.user_id, latest_record.vlan)
 
     def get_client_usage_context(mac: str) -> ClientUsageContext:
         'Build shared usage/detail context used by both admin and self-service pages.'
@@ -116,6 +154,9 @@ def create_app() -> Flask:
     @flask_app.route("/")
     def dashboard():
         'Render the dashboard with live snapshots and daily usage summaries.'
+        if not requester_is_plus_admin():
+            return redirect(url_for("my_usage"))
+
         window_name = normalize_window(request.args.get("window"))
         return render_template(
             "dashboard.html",
@@ -125,6 +166,9 @@ def create_app() -> Flask:
     @flask_app.route("/api/dashboard-snapshot")
     def dashboard_snapshot():
         'Return dashboard snapshot data for incremental in-page refresh.'
+        if not requester_is_plus_admin():
+            abort(403)
+
         window_name = normalize_window(request.args.get("window"))
         data = build_dashboard_data(window_name, live_update_seconds)
         return jsonify(build_dashboard_payload(data))
@@ -132,6 +176,9 @@ def create_app() -> Flask:
     @flask_app.route("/api/dashboard-stream")
     def dashboard_stream():
         'Stream dashboard updates over Server-Sent Events.'
+        if not requester_is_plus_admin():
+            abort(403)
+
         window_name = normalize_window(request.args.get("window"))
         response = Response(
             stream_with_context(event_stream(window_name, live_update_seconds)),
@@ -144,6 +191,9 @@ def create_app() -> Flask:
     @flask_app.route("/clients/<mac>")
     def client_detail(mac: str):
         'Render detail view for one client MAC address.'
+        if not requester_is_plus_admin():
+            abort(403)
+
         try:
             return render_template("client_detail.html", **get_client_usage_context(mac))
         except LookupError:
@@ -152,7 +202,7 @@ def create_app() -> Flask:
     @flask_app.route("/my-usage", methods=["GET", "POST"])
     def my_usage():
         'Render usage details for the LAN client identified by request IP/MAC mapping.'
-        if not (request_ip := get_request_ip(request)):
+        if not (request_ip := resolve_request_ip()):
             return render_template(
                 "my_usage.html",
                 error_message="Could not determine your client IP address from this request.",
