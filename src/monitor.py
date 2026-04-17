@@ -83,9 +83,7 @@ class UsageMonitor:
         self.throttling_levels = build_throttling_levels(speed_limits)
         self.throttling_limit_ids = get_throttling_limit_ids(self.throttling_levels)
 
-        self.throttleable_vlan_ids = api.get_vlan_ids_for_names(
-            cfg.THROTTLEABLE_VLAN_NAMES
-        )
+        self.throttleable_vlan_ids = api.get_vlan_ids_for_names(cfg.THROTTLEABLE_VLAN_NAMES)
 
     def process_connected_clients(self) -> list[ClientSnapshot]:
         'Process all connected clients for one cycle and return current snapshots.'
@@ -93,9 +91,7 @@ class UsageMonitor:
         ap_names_by_mac = api.get_ap_names_by_mac()
 
         for raw_client in api.get_api_data("stat/sta"):
-            client = ClientInfo.create(
-                raw_client, self.speed_limits_by_id, ap_names_by_mac
-            )
+            client = ClientInfo.create(raw_client, self.speed_limits_by_id, ap_names_by_mac)
             interval_mb = self._update_client_usage(client)
             interval_kb = interval_mb * 1000
 
@@ -105,11 +101,7 @@ class UsageMonitor:
             day_total_mb = db.get_daily_total(client.mac)
             last_7_days_total_mb = db.get_last_7_days_total(client.mac)
             calendar_month_total_mb = db.get_calendar_month_total(client.mac)
-            is_throttled, effective_speed_limit = self._enforce_limit_if_needed(
-                client,
-                day_total_mb,
-                calendar_month_total_mb,
-            )
+            is_throttled, effective_speed_limit = self._enforce_limit_if_needed(client, day_total_mb, calendar_month_total_mb)
             snapshots.append(
                 ClientSnapshot(
                     client=client,
@@ -124,11 +116,7 @@ class UsageMonitor:
 
         return snapshots
 
-    def run_forever(
-        self,
-        poll_interval_seconds: int = 60,
-        on_cycle: Callable[[list[ClientSnapshot]], None] | None = None,
-    ) -> None:
+    def run_forever(self, poll_interval_seconds: int = 60, on_cycle: Callable[[list[ClientSnapshot]], None] | None = None) -> None:
         'Run the monitor loop continuously at the configured poll interval.'
         first_cycle = True
         while True:
@@ -158,15 +146,11 @@ class UsageMonitor:
         now_date = datetime.now().date()
         if now_date > self.current_day:
             print(f"Midnight Reset: {now_date}")
-            release_configured_limits(
-                self.throttling_limit_ids, "midnight"
-            )
+            release_configured_limits(self.throttling_limit_ids, "midnight")
             self.current_day = now_date
 
     def _update_client_usage(self, client: ClientInfo) -> float:
-        previous_total = self.last_totals_by_client_mac.get(
-            client.mac, client.mb_used_since_connection
-        )
+        previous_total = self.last_totals_by_client_mac.get(client.mac, client.mb_used_since_connection)
         # Connection reset/device reconnect can roll counters backward.
         if client.mb_used_since_connection < previous_total:
             previous_total = 0
@@ -175,32 +159,10 @@ class UsageMonitor:
         self.last_totals_by_client_mac[client.mac] = client.mb_used_since_connection
         return interval_mb
 
-    def _enforce_limit_if_needed(
-        self,
-        client: ClientInfo,
-        day_total_mb: float,
-        calendar_month_total_mb: float,
-    ) -> tuple[bool, SpeedLimit | None]:
-        target_profile_name = target_profile_name_for_usage(
-            client.vlan_id,
-            day_total_mb,
-            calendar_month_total_mb,
-            self.throttleable_vlan_ids,
-        )
-        target_limit = (
-            self.speed_limits_by_name.get(target_profile_name)
-            if target_profile_name
-            else None
-        )
-
-        return enforce_target_limit(
-            client.name,
-            client.unifi_client_id,
-            client.speed_limit,
-            target_limit,
-            self.throttling_limit_ids,
-        )
-
+    def _enforce_limit_if_needed(self, client: ClientInfo, day_total_mb: float, calendar_month_total_mb: float) -> tuple[bool, SpeedLimit | None]:
+        target_profile_name = target_profile_name_for_usage(client.vlan_id, day_total_mb, calendar_month_total_mb, self.throttleable_vlan_ids)
+        target_limit = self.speed_limits_by_name.get(target_profile_name) if target_profile_name else None
+        return enforce_target_limit(client.name, client.unifi_client_id, client.speed_limit, target_limit, self.throttling_limit_ids)
 
 if __name__ == "__main__":
     db.init_db()
