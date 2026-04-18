@@ -85,10 +85,11 @@
                                 <td class="activity-col">
                                     {% set series = client.recent_activity %}
                                     {% set peak = (series|max) if series else 0 %}
-                                    <div class="sparkline" title="Recent activity (MB per bucket)">
+                                    {% set bucket_label = "MB/day" if selected_activity_span == "12d" else ("MB/hour" if selected_activity_span == "12h" else "MB/min") %}
+                                    <div class="sparkline" title="Recent activity ({{ bucket_label }})">
                                         {% for value in series %}
                                             {% set height = ((value / peak) * 100) if peak > 0 else 14 %}
-                                            <span class="bar{% if value <= 0 %} zero{% endif %}" style="height: {{ '%.1f'|format(height) }}%" title="{{ '{:,.3f}'.format(value) }} MB"></span>
+                                            <span class="bar{% if value <= 0 %} zero{% endif %}" style="height: {{ '%.1f'|format(height) }}%" title="{{ '{:,.3f}'.format(value) }} {{ bucket_label }}"></span>
                                         {% endfor %}
                                     </div>
                                 </td>
