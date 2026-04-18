@@ -48,7 +48,8 @@ class ClientUsageContext(TypedDict):
 def create_app() -> Flask:
     'Create and configure the Flask web application.'
     flask_app = Flask(__name__)
-    live_update_seconds = 15
+    live_update_seconds = 60
+    live_update_boundary_offset_seconds = 3
 
     def get_speed_limits_by_name() -> SpeedLimitsByName:
         'Return mapping of speed-limit profile name to SpeedLimit object.'
@@ -185,7 +186,14 @@ def create_app() -> Flask:
         window_name = normalize_window(request.args.get("window"))
         activity_span = normalize_activity_span(request.args.get("activity_span"))
         response = Response(
-            stream_with_context(event_stream(window_name, activity_span, live_update_seconds)),
+            stream_with_context(
+                event_stream(
+                    window_name,
+                    activity_span,
+                    live_update_seconds,
+                    live_update_boundary_offset_seconds,
+                )
+            ),
             mimetype="text/event-stream",
         )
         response.headers["Cache-Control"] = "no-cache"
