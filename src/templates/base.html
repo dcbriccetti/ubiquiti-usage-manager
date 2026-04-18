@@ -181,6 +181,29 @@
             white-space: nowrap;
         }
 
+        th.activity-col,
+        td.activity-col {
+            min-width: 92px;
+        }
+
+        .sparkline {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 20px;
+        }
+
+        .sparkline .bar {
+            flex: 1 1 0;
+            min-width: 4px;
+            border-radius: 2px 2px 0 0;
+            background: rgba(15, 118, 110, 0.75);
+        }
+
+        .sparkline .bar.zero {
+            background: rgba(31, 41, 51, 0.16);
+        }
+
         tbody tr:last-child td {
             border-bottom: 0;
         }

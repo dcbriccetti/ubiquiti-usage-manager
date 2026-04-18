@@ -22,6 +22,7 @@ from database import UsageRecord
 from dashboard_service import (
     build_dashboard_data,
     build_dashboard_payload,
+    normalize_activity_span,
     normalize_window,
 )
 from dashboard_stream import event_stream
@@ -158,9 +159,10 @@ def create_app() -> Flask:
             return redirect(url_for("my_usage"))
 
         window_name = normalize_window(request.args.get("window"))
+        activity_span = normalize_activity_span(request.args.get("activity_span"))
         return render_template(
             "dashboard.html",
-            **build_dashboard_data(window_name, live_update_seconds),
+            **build_dashboard_data(window_name, activity_span, live_update_seconds),
         )
 
     @flask_app.route("/api/dashboard-snapshot")
@@ -170,7 +172,8 @@ def create_app() -> Flask:
             abort(403)
 
         window_name = normalize_window(request.args.get("window"))
-        data = build_dashboard_data(window_name, live_update_seconds)
+        activity_span = normalize_activity_span(request.args.get("activity_span"))
+        data = build_dashboard_data(window_name, activity_span, live_update_seconds)
         return jsonify(build_dashboard_payload(data))
 
     @flask_app.route("/api/dashboard-stream")
@@ -180,8 +183,9 @@ def create_app() -> Flask:
             abort(403)
 
         window_name = normalize_window(request.args.get("window"))
+        activity_span = normalize_activity_span(request.args.get("activity_span"))
         response = Response(
-            stream_with_context(event_stream(window_name, live_update_seconds)),
+            stream_with_context(event_stream(window_name, activity_span, live_update_seconds)),
             mimetype="text/event-stream",
         )
         response.headers["Cache-Control"] = "no-cache"

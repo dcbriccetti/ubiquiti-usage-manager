@@ -218,6 +218,42 @@ def get_recent_interval_totals(window_seconds: int = 90) -> dict[str, float]:
     return {str(mac): float(total or 0.0) for mac, total in rows}
 
 
+def get_recent_activity_series(macs: list[str], buckets: int = 12, bucket_seconds: int = 60) -> dict[str, list[float]]:
+    'Return per-client recent MB buckets ordered oldest to newest.'
+    if not macs or buckets <= 0 or bucket_seconds <= 0:
+        return {}
+
+    now = datetime.now()
+    window_start = now - timedelta(seconds=buckets * bucket_seconds)
+    stmt = (
+        select(UsageRecord.mac, UsageRecord.timestamp, UsageRecord.mb_used)
+        .where(
+            UsageRecord.timestamp >= window_start,
+            UsageRecord.timestamp <= now,
+            UsageRecord.mac.in_(macs),
+        )
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    series_by_mac = {mac: [0.0] * buckets for mac in macs}
+    for mac, timestamp, mb_used in rows:
+        if not isinstance(mac, str) or not isinstance(timestamp, datetime):
+            continue
+
+        delta_seconds = (timestamp - window_start).total_seconds()
+        bucket_index = int(delta_seconds // bucket_seconds)
+        if bucket_index < 0:
+            bucket_index = 0
+        elif bucket_index >= buckets:
+            bucket_index = buckets - 1
+
+        series_by_mac[mac][bucket_index] += float(mb_used or 0.0)
+
+    return series_by_mac
+
+
 def get_daily_usage_summary() -> list[DailyUsageSummary]:
     'Return per-client usage summaries for today, sorted by total descending.'
     today_start = datetime.combine(datetime.now().date(), time.min)

@@ -40,10 +40,16 @@
                     <option value="last_7_days" {% if selected_window == "last_7_days" %}selected{% endif %}>7 Days</option>
                     <option value="this_month" {% if selected_window == "this_month" %}selected{% endif %}>{{ current_month_label }}</option>
                 </select>
+                <label for="activity-span-select" class="muted" style="margin-left: 14px;">Activity:</label>
+                <select id="activity-span-select">
+                    <option value="12m" {% if selected_activity_span == "12m" %}selected{% endif %}>12 mins</option>
+                    <option value="12h" {% if selected_activity_span == "12h" %}selected{% endif %}>12 hours</option>
+                    <option value="12d" {% if selected_activity_span == "12d" %}selected{% endif %}>12 days</option>
+                </select>
                 <table>
                     <thead>
                         <tr>
-                            <th colspan="7"></th>
+                            <th colspan="8"></th>
                             <th colspan="4" class="usage-group">Usage (MB)</th>
                             <th></th>
                         </tr>
@@ -54,6 +60,7 @@
                             <th>VLAN</th>
                             <th class="ap-col">Access Point</th>
                             <th>Sig</th>
+                            <th class="activity-col" title="Recent activity bars for the selected range.">Activity</th>
                             <th class="num nowrap-col" title="Average throughput over the last minute (megabits per second).">Mbps</th>
                             <th class="num usage-col usage-first">Minute</th>
                             <th class="num usage-col">Today</th>
@@ -75,6 +82,16 @@
                                 <td>{{ client.vlan_name or "Unknown" }}</td>
                                 <td class="ap-col">{{ (client.ap_name or "").removesuffix(" AP") }}</td>
                                 <td>{% if client.signal %}{{ client.signal }}{% endif %}</td>
+                                <td class="activity-col">
+                                    {% set series = client.recent_activity %}
+                                    {% set peak = (series|max) if series else 0 %}
+                                    <div class="sparkline" title="Recent activity (MB per bucket)">
+                                        {% for value in series %}
+                                            {% set height = ((value / peak) * 100) if peak > 0 else 14 %}
+                                            <span class="bar{% if value <= 0 %} zero{% endif %}" style="height: {{ '%.1f'|format(height) }}%" title="{{ '{:,.3f}'.format(value) }} MB"></span>
+                                        {% endfor %}
+                                    </div>
+                                </td>
                                 <td class="num nowrap-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format((client.interval_mb * 8.0) / 60.0) }}{% endif %}</td>
                                 <td class="num usage-col usage-first">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
@@ -84,7 +101,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="12" class="muted">
+                                <td colspan="13" class="muted">
                                     {% if selected_window == "active_now" %}
                                         No clients are actively using data right now.
                                     {% else %}
@@ -103,6 +120,7 @@
         (function () {
             const connectedBody = document.getElementById("connected-clients-body");
             const windowSelect = document.getElementById("window-select");
+            const activitySpanSelect = document.getElementById("activity-span-select");
             const statUsageToday = document.getElementById("stat-usage-today");
             const statUsage7Days = document.getElementById("stat-usage-7-days");
             const statUsageThisMonth = document.getElementById("stat-usage-this-month");
@@ -114,6 +132,7 @@
             let fallbackTimer = null;
             let stream = null;
             let selectedWindow = windowSelect.value;
+            let selectedActivitySpan = activitySpanSelect.value;
 
             const formatInt = (value) => Math.round(value).toLocaleString();
             const formatMinute = (value) => {
@@ -145,6 +164,19 @@
                 if (!text) return "";
                 return text.slice(-5);
             };
+            const renderRecentActivity = (series) => {
+                const values = Array.isArray(series) ? series : [];
+                if (!values.length) return "";
+                const peak = Math.max(...values, 0);
+                const bucketLabel = selectedActivitySpan === "12d" ? "MB/day" : (selectedActivitySpan === "12h" ? "MB/hour" : "MB/min");
+                const bars = values.map((value) => {
+                    const numeric = Number(value) || 0;
+                    const height = peak > 0 ? (numeric / peak) * 100 : 14;
+                    const klass = numeric > 0 ? "bar" : "bar zero";
+                    return `<span class="${klass}" style="height:${height.toFixed(1)}%" title="${numeric.toFixed(3)} ${bucketLabel}"></span>`;
+                }).join("");
+                return `<div class="sparkline" title="Recent activity (${bucketLabel})">${bars}</div>`;
+            };
             const escapeHtml = (value) =>
                 String(value)
                     .replaceAll("&", "&amp;")
@@ -161,7 +193,7 @@
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = `<tr><td colspan="12" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+                    connectedBody.innerHTML = `<tr><td colspan="13" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
                     return;
                 }
 
@@ -177,6 +209,7 @@
                             <td>${escapeHtml(client.vlan_name)}</td>
                             <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
                             <td>${escapeHtml(signal)}</td>
+                            <td class="activity-col">${renderRecentActivity(client.recent_activity)}</td>
                             <td class="num nowrap-col">${formatAvgMbps(client.interval_mb)}</td>
                             <td class="num usage-col usage-first">${formatMinute(client.interval_mb)}</td>
                             <td class="num usage-col">${formatWhole(client.day_total_mb)}</td>
@@ -188,8 +221,8 @@
                 }).join("");
             };
 
-            const getStreamUrl = () => `${streamBaseUrl}?window=${encodeURIComponent(selectedWindow)}`;
-            const getSnapshotUrl = () => `${snapshotBaseUrl}?window=${encodeURIComponent(selectedWindow)}`;
+            const getStreamUrl = () => `${streamBaseUrl}?window=${encodeURIComponent(selectedWindow)}&activity_span=${encodeURIComponent(selectedActivitySpan)}`;
+            const getSnapshotUrl = () => `${snapshotBaseUrl}?window=${encodeURIComponent(selectedWindow)}&activity_span=${encodeURIComponent(selectedActivitySpan)}`;
 
             const applyPayload = (data) => {
                 statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
@@ -207,6 +240,10 @@
                 if (data.selected_window && data.selected_window !== selectedWindow) {
                     selectedWindow = data.selected_window;
                     windowSelect.value = selectedWindow;
+                }
+                if (data.selected_activity_span && data.selected_activity_span !== selectedActivitySpan) {
+                    selectedActivitySpan = data.selected_activity_span;
+                    activitySpanSelect.value = selectedActivitySpan;
                 }
 
                 renderConnectedClients(data.clients);
@@ -254,8 +291,9 @@
                 };
             };
 
-            windowSelect.addEventListener("change", () => {
+            const reconnectForNewSelection = () => {
                 selectedWindow = windowSelect.value;
+                selectedActivitySpan = activitySpanSelect.value;
                 if (stream) {
                     stream.close();
                 }
@@ -265,7 +303,10 @@
                 }
                 fetchSnapshot();
                 connectStream();
-            });
+            };
+
+            windowSelect.addEventListener("change", reconnectForNewSelection);
+            activitySpanSelect.addEventListener("change", reconnectForNewSelection);
 
             connectStream();
         })();

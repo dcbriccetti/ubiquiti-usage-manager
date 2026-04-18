@@ -24,6 +24,7 @@ import unifi_api as api
 from monitor import get_connected_clients
 
 WindowName = Literal['active_now', 'online_now', 'today', 'last_7_days', 'this_month']
+ActivitySpan = Literal['12m', '12h', '12d']
 
 WINDOW_ACTIVE_NOW: WindowName = 'active_now'
 WINDOW_ONLINE_NOW: WindowName = 'online_now'
@@ -37,6 +38,10 @@ ALLOWED_WINDOWS: frozenset[WindowName] = frozenset({
     WINDOW_LAST_7_DAYS,
     WINDOW_THIS_MONTH,
 })
+ACTIVITY_SPAN_12_MIN: ActivitySpan = '12m'
+ACTIVITY_SPAN_12_HOUR: ActivitySpan = '12h'
+ACTIVITY_SPAN_12_DAY: ActivitySpan = '12d'
+ALLOWED_ACTIVITY_SPANS: frozenset[ActivitySpan] = frozenset({ACTIVITY_SPAN_12_MIN, ACTIVITY_SPAN_12_HOUR, ACTIVITY_SPAN_12_DAY})
 
 
 class DashboardRow(TypedDict):
@@ -47,6 +52,7 @@ class DashboardRow(TypedDict):
     mac: str
     vlan_name: str
     signal: int | None
+    recent_activity: list[float]
     interval_mb: float
     day_total_mb: float
     last_7_days_total_mb: float
@@ -58,6 +64,7 @@ class DashboardData(TypedDict):
     'Canonical dashboard payload shared by template render, snapshot API, and SSE.'
     clients: list[DashboardRow]
     selected_window: WindowName
+    selected_activity_span: ActivitySpan
     current_month_label: str
     total_today_mb: float
     total_last_7_days_mb: float
@@ -72,6 +79,13 @@ def normalize_window(window_name: str | None) -> WindowName:
     return WINDOW_ACTIVE_NOW
 
 
+def normalize_activity_span(activity_span: str | None) -> ActivitySpan:
+    'Return a safe activity-span key, defaulting to 12m.'
+    if isinstance(activity_span, str) and activity_span in ALLOWED_ACTIVITY_SPANS:
+        return cast(ActivitySpan, activity_span)
+    return ACTIVITY_SPAN_12_MIN
+
+
 def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRow]:
     'Build dashboard rows from live controller client snapshots.'
     rows: list[DashboardRow] = []
@@ -83,6 +97,7 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
             'mac': snapshot.client.mac,
             'vlan_name': snapshot.client.vlan_name or 'Unknown',
             'signal': snapshot.client.signal if snapshot.client.signal else None,
+            'recent_activity': [],
             'interval_mb': snapshot.interval_mb,
             'day_total_mb': snapshot.day_total_mb,
             'last_7_days_total_mb': snapshot.last_7_days_total_mb,
@@ -124,6 +139,7 @@ def build_rows_for_historical_window(
             'mac': summary.mac,
             'vlan_name': summary.vlan or 'Unknown',
             'signal': None,
+            'recent_activity': [],
             'interval_mb': 0.0,
             'day_total_mb': summary.day_total_mb,
             'last_7_days_total_mb': summary.last_7_days_total_mb,
@@ -136,7 +152,23 @@ def build_rows_for_historical_window(
     return rows
 
 
-def build_dashboard_data(window_name: WindowName, live_update_seconds: int) -> DashboardData:
+def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -> None:
+    'Attach recent activity series to each dashboard row in-place.'
+    buckets = 12
+    if activity_span == ACTIVITY_SPAN_12_MIN:
+        bucket_seconds = 60
+    elif activity_span == ACTIVITY_SPAN_12_HOUR:
+        bucket_seconds = 3600
+    else:
+        bucket_seconds = 86400
+    macs = [row['mac'] for row in rows if row.get('mac')]
+    series_by_mac: dict[str, list[float]] = db.get_recent_activity_series(macs, buckets=buckets, bucket_seconds=bucket_seconds)
+    default_series = [0.0] * buckets
+    for row in rows:
+        row['recent_activity'] = series_by_mac.get(row['mac'], default_series.copy())
+
+
+def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, live_update_seconds: int) -> DashboardData:
     'Assemble all dashboard fields needed by HTML render, API snapshot, and SSE stream.'
     speed_limits_by_name = {
         limit.name: str(limit) for limit in api.get_speed_limits()
@@ -147,9 +179,11 @@ def build_dashboard_data(window_name: WindowName, live_update_seconds: int) -> D
         rows = build_rows_for_online_clients(active_only=True)
     else:
         rows = build_rows_for_historical_window(window_name, speed_limits_by_name)
+    add_recent_activity(rows, activity_span)
     return {
         'clients': rows,
         'selected_window': window_name,
+        'selected_activity_span': activity_span,
         'current_month_label': datetime.now().strftime('%b'),
         'total_today_mb': db.get_total_today_usage(),
         'total_last_7_days_mb': db.get_total_last_7_days_usage(),
@@ -162,6 +196,7 @@ def build_dashboard_payload(data: DashboardData) -> DashboardData:
     'Project dashboard data into the lightweight JSON payload used by snapshot/SSE routes.'
     return {
         'selected_window': data['selected_window'],
+        'selected_activity_span': data['selected_activity_span'],
         'current_month_label': data['current_month_label'],
         'total_today_mb': data['total_today_mb'],
         'total_last_7_days_mb': data['total_last_7_days_mb'],
