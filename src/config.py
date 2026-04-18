@@ -29,3 +29,4 @@ MONTHLY_USAGE_ADJUSTMENTS = [  # Ascending order
 ]
 
 PLUS_ADMINS = {'plus_admin_1', 'plus_admin_2', 'plus_admin_3'}
+SELF_SERVICE_SPEED_LIMIT_ENABLED = False

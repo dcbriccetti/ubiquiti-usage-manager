@@ -244,13 +244,14 @@ def create_app() -> Flask:
             )
 
         plus_user = is_plus_network(context['latest_record'].vlan)
-        speed_limits = api.get_speed_limits()
+        can_set_speed_limit = plus_user and cfg.SELF_SERVICE_SPEED_LIMIT_ENABLED
+        speed_limits = api.get_speed_limits() if can_set_speed_limit else []
         selected_speed_limit_name = context['latest_record'].profile or ''
         speed_limit_form_message = ''
 
         if request.method == "POST":
-            if not plus_user:
-                speed_limit_form_message = 'Speed-limit changes are available only on the Plus network.'
+            if not can_set_speed_limit:
+                speed_limit_form_message = 'Speed-limit changes are temporarily unavailable.'
             else:
                 requested_limit_name = request.form.get("speed_limit_name", "").strip()
                 speed_limits_by_name = {limit.name: limit for limit in speed_limits}
@@ -280,7 +281,7 @@ def create_app() -> Flask:
             "my_usage.html",
             request_ip=request_ip,
             detected_mac=detected_mac,
-            can_set_speed_limit=plus_user,
+            can_set_speed_limit=can_set_speed_limit,
             speed_limit_options=speed_limit_options,
             selected_speed_limit_name=selected_speed_limit_name,
             speed_limit_form_message=speed_limit_form_message,
@@ -294,4 +295,4 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1", port=5051)
+    app.run(debug=True, host="0.0.0.0", port=5051)
