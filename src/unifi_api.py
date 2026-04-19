@@ -5,6 +5,7 @@ monitoring and dashboard modules.
 '''
 
 from typing import Any
+import time
 
 import requests
 import urllib3
@@ -15,18 +16,36 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_URL = "https://192.168.0.1/proxy/network/api/s/default"
 HEADERS = {"X-API-KEY": API_KEY, "Accept": "application/json"}
+API_RETRY_ATTEMPTS = 3
+API_RETRY_BACKOFF_SECONDS = 0.35
+TRANSIENT_STATUS_CODES = {500, 502, 503, 504}
+
+
+def _is_transient_unifi_error(exc: requests.RequestException) -> bool:
+    'Return True when request exception is likely temporary and worth retrying.'
+    if isinstance(exc, (requests.Timeout, requests.ConnectionError)):
+        return True
+    if isinstance(exc, requests.HTTPError):
+        response = exc.response
+        return bool(response and response.status_code in TRANSIENT_STATUS_CODES)
+    return False
 
 def get_api_data(endpoint: str) -> list[dict[str, Any]]:
     'Fetch a UniFi endpoint and return its data array.'
-    try:
-        response = requests.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, verify=False, timeout=10)
-        response.raise_for_status()
-        payload = response.json()
-        data = payload.get('data', []) if isinstance(payload, dict) else []
-        return [item for item in data if isinstance(item, dict)]
-    except Exception as e:
-        print(f"⚠️ UniFi API Error ({endpoint}): {e}")
-        return []
+    for attempt in range(1, API_RETRY_ATTEMPTS + 1):
+        try:
+            response = requests.get(f"{BASE_URL}/{endpoint}", headers=HEADERS, verify=False, timeout=10)
+            response.raise_for_status()
+            payload = response.json()
+            data = payload.get('data', []) if isinstance(payload, dict) else []
+            return [item for item in data if isinstance(item, dict)]
+        except requests.RequestException as exc:
+            should_retry = attempt < API_RETRY_ATTEMPTS and _is_transient_unifi_error(exc)
+            if should_retry:
+                time.sleep(API_RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            print(f"⚠️ UniFi API Error ({endpoint}) after {attempt} attempt(s): {exc}")
+            return []
 
 def get_speed_limits() -> list[SpeedLimit]:
     'Return configured UniFi user groups as SpeedLimit objects.'
