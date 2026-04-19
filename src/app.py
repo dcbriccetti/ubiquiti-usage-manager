@@ -91,6 +91,22 @@ def create_app() -> Flask:
             return rendered
         return f'{limit.name} (Unlimited)'
 
+    def warn_missing_radius_identity(record: UsageRecord, request_ip: str | None, detected_mac: str | None) -> None:
+        'Log warning when Plus-network client metadata is missing RADIUS user_id.'
+        if is_plus_network(record.vlan) and not (record.user_id and record.user_id.strip()):
+            flask_app.logger.warning(
+                (
+                    'Plus-network client missing RADIUS user_id '
+                    '(request_ip=%s detected_mac=%s record_mac=%s vlan=%s name=%s ap_name=%s)'
+                ),
+                request_ip or '',
+                detected_mac or '',
+                record.mac,
+                record.vlan or '',
+                record.name or '',
+                record.ap_name or '',
+            )
+
     def requester_is_plus_admin() -> bool:
         'Resolve current requester and return whether they are a Plus admin.'
         if dev_force_plus_admin_enabled():
@@ -109,6 +125,7 @@ def create_app() -> Flask:
             return False
 
         latest_record = context['latest_record']
+        warn_missing_radius_identity(latest_record, request_ip, detected_mac)
         return is_plus_admin_user(latest_record.user_id, latest_record.vlan)
 
     def get_client_usage_context(mac: str) -> ClientUsageContext:
@@ -243,6 +260,7 @@ def create_app() -> Flask:
                 detected_mac=detected_mac,
             )
 
+        warn_missing_radius_identity(context['latest_record'], request_ip, detected_mac)
         plus_user = is_plus_network(context['latest_record'].vlan)
         can_set_speed_limit = plus_user and cfg.SELF_SERVICE_SPEED_LIMIT_ENABLED
         speed_limits = api.get_speed_limits() if can_set_speed_limit else []
