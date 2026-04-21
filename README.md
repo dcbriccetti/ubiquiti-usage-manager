@@ -107,6 +107,9 @@ LOG_LEVEL=DEBUG DEV_FORCE_PLUS_ADMIN=1 python3 src/app.py
 
 - `meter.db` is created in the repo root on first run.
 - Throttling actions are live changes against UniFi groups, so test carefully.
+- Styling cohesion conventions:
+  - shared spacing/radius tokens are defined in `src/templates/base.html` (`--space-*`, `--radius-*`),
+  - prefer shared layout/component classes (for example `control-row`, `month-chart-wrap`, `insights-table`) over inline style tweaks.
 - Main files:
   - `src/app.py` web routes/UI
   - `src/monitor.py` polling + enforcement loop

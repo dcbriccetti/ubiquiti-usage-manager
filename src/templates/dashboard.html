@@ -34,20 +34,22 @@
         <article class="panel">
             <div class="panel-body">
                 <h2>Clients</h2>
-                <label for="window-select" class="muted">Show:</label>
-                <select id="window-select">
-                    <option value="active_now" {% if selected_window == "active_now" %}selected{% endif %}>Active Now</option>
-                    <option value="online_now" {% if selected_window == "online_now" %}selected{% endif %}>Online Now</option>
-                    <option value="today" {% if selected_window == "today" %}selected{% endif %}>Today</option>
-                    <option value="last_7_days" {% if selected_window == "last_7_days" %}selected{% endif %}>7 Days</option>
-                    <option value="this_month" {% if selected_window == "this_month" %}selected{% endif %}>{{ current_month_label }}</option>
-                </select>
-                <label for="activity-span-select" class="muted" style="margin-left: 14px;">Activity:</label>
-                <select id="activity-span-select">
-                    <option value="12m" {% if selected_activity_span == "12m" %}selected{% endif %}>12 mins</option>
-                    <option value="12h" {% if selected_activity_span == "12h" %}selected{% endif %}>12 hours</option>
-                    <option value="12d" {% if selected_activity_span == "12d" %}selected{% endif %}>12 days</option>
-                </select>
+                <div class="control-row">
+                    <label for="window-select" class="muted">Show:</label>
+                    <select id="window-select">
+                        <option value="active_now" {% if selected_window == "active_now" %}selected{% endif %}>Active Now</option>
+                        <option value="online_now" {% if selected_window == "online_now" %}selected{% endif %}>Online Now</option>
+                        <option value="today" {% if selected_window == "today" %}selected{% endif %}>Today</option>
+                        <option value="last_7_days" {% if selected_window == "last_7_days" %}selected{% endif %}>7 Days</option>
+                        <option value="this_month" {% if selected_window == "this_month" %}selected{% endif %}>{{ current_month_label }}</option>
+                    </select>
+                    <label for="activity-span-select" class="muted">Activity:</label>
+                    <select id="activity-span-select">
+                        <option value="12m" {% if selected_activity_span == "12m" %}selected{% endif %}>12 mins</option>
+                        <option value="12h" {% if selected_activity_span == "12h" %}selected{% endif %}>12 hours</option>
+                        <option value="12d" {% if selected_activity_span == "12d" %}selected{% endif %}>12 days</option>
+                    </select>
+                </div>
                 <div class="table-wrap">
                     <table
                         id="clients-table"

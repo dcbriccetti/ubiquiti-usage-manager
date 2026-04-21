@@ -14,6 +14,16 @@
             --accent-soft: #d6f5ef;
             --warn: #c2410c;
             --line: rgba(31, 41, 51, 0.12);
+            --space-1: 4px;
+            --space-2: 8px;
+            --space-3: 12px;
+            --space-4: 16px;
+            --space-5: 20px;
+            --space-6: 24px;
+            --space-7: 32px;
+            --radius-sm: 12px;
+            --radius-md: 16px;
+            --radius-lg: 20px;
         }
 
         * {
@@ -49,7 +59,7 @@
         .page {
             max-width: 1120px;
             margin: 0 auto;
-            padding: 32px 20px 48px;
+            padding: var(--space-7) var(--space-5) 48px;
         }
 
         .page.wide-page {
@@ -59,16 +69,16 @@
         .hero {
             display: flex;
             justify-content: space-between;
-            gap: 20px;
+            gap: var(--space-5);
             align-items: end;
-            margin-bottom: 24px;
+            margin-bottom: var(--space-6);
         }
 
         .detail-hero {
             justify-content: flex-start;
             align-items: flex-start;
-            gap: 24px;
-            margin-bottom: 16px;
+            gap: var(--space-6);
+            margin-bottom: var(--space-4);
         }
 
         .detail-hero .stat {
@@ -83,31 +93,31 @@
         }
 
         .hero p {
-            margin: 10px 0 0;
+            margin: var(--space-3) 0 0;
             color: var(--muted);
             max-width: 1000px;
         }
 
         .grid {
             display: grid;
-            gap: 18px;
+            gap: var(--space-5);
         }
 
         .stats {
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            margin-bottom: 24px;
+            margin-bottom: var(--space-6);
         }
 
         .panel {
             background: var(--panel);
             border: 1px solid var(--line);
-            border-radius: 20px;
+            border-radius: var(--radius-lg);
             backdrop-filter: blur(10px);
             box-shadow: 0 20px 45px rgba(31, 41, 51, 0.08);
         }
 
         .stat {
-            padding: 20px;
+            padding: var(--space-5);
         }
 
         .stat .label {
@@ -120,7 +130,7 @@
 
         .stat .value {
             display: block;
-            margin-top: 10px;
+            margin-top: var(--space-3);
             font-size: 2rem;
             font-weight: 700;
         }
@@ -131,12 +141,18 @@
         }
 
         .panel h2 {
-            margin: 0 0 16px;
+            margin: 0 0 var(--space-4);
             font-size: 1.1rem;
         }
 
         .panel-body {
-            padding: 20px;
+            padding: var(--space-5);
+        }
+
+        .panel h3 {
+            margin: var(--space-4) 0 var(--space-3);
+            font-size: 0.98rem;
+            color: var(--muted);
         }
 
         .table-wrap {
@@ -157,7 +173,7 @@
         th,
         td {
             text-align: left;
-            padding: 6px 4px;
+            padding: 6px var(--space-1);
             border-bottom: 1px solid var(--line);
             vertical-align: top;
             line-height: 1.2;
@@ -247,10 +263,10 @@
         }
 
         .month-chart-wrap {
-            margin: 0 0 12px;
-            padding: 12px 14px;
+            margin: 0 0 var(--space-3);
+            padding: var(--space-3) 14px;
             border: 1px solid var(--line);
-            border-radius: 12px;
+            border-radius: var(--radius-sm);
             background: rgba(255, 255, 255, 0.55);
             overflow-x: auto;
             height: 330px;
@@ -297,17 +313,17 @@
 
         .stack {
             display: grid;
-            gap: 16px;
+            gap: var(--space-4);
         }
 
         .list {
             display: grid;
-            gap: 10px;
+            gap: var(--space-3);
         }
 
         .list-item {
-            padding: 14px 16px;
-            border-radius: 16px;
+            padding: 14px var(--space-4);
+            border-radius: var(--radius-md);
             border: 1px solid var(--line);
             background: rgba(255, 255, 255, 0.55);
         }
@@ -351,15 +367,15 @@
         .insights-kpis {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-            gap: 10px;
-            margin-bottom: 10px;
+            gap: var(--space-3);
+            margin-bottom: var(--space-3);
         }
 
         .insight-kpi {
             border: 1px solid var(--line);
-            border-radius: 12px;
+            border-radius: var(--radius-sm);
             background: rgba(255, 255, 255, 0.55);
-            padding: 10px 12px;
+            padding: var(--space-3);
         }
 
         .insight-kpi .label {
@@ -377,17 +393,23 @@
             font-weight: 700;
         }
 
-        .panel h3 {
-            margin: 10px 0 10px;
-            font-size: 0.98rem;
-            color: var(--muted);
+        .control-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: var(--space-3);
+            margin-bottom: var(--space-3);
+        }
+
+        .control-row label {
+            margin: 0;
         }
 
         .insights-tables {
             grid-template-columns: minmax(520px, 1.65fr) minmax(320px, 1fr) minmax(320px, 1fr);
             justify-content: stretch;
             align-items: start;
-            gap: 14px;
+            gap: var(--space-4);
         }
 
         .insights-tables article {
@@ -489,15 +511,15 @@
         table.organization-clients-table th.network-col,
         table.organization-clients-table td.network-col {
             width: 5ch;
-            padding-left: 8px;
-            padding-right: 8px;
+            padding-left: var(--space-2);
+            padding-right: var(--space-2);
         }
 
         .concurrency-heatmap-wrap {
-            margin: 0 0 12px;
-            padding: 10px 12px;
+            margin: 0 0 var(--space-3);
+            padding: var(--space-3);
             border: 1px solid var(--line);
-            border-radius: 12px;
+            border-radius: var(--radius-sm);
             background: rgba(255, 255, 255, 0.50);
             overflow-x: auto;
         }
@@ -535,11 +557,6 @@
         .concurrency-heatmap-grid .cell.value {
             border: 1px solid rgba(51, 65, 85, 0.14);
             font-variant-numeric: tabular-nums;
-        }
-
-        .throttling-impact-table {
-            width: 100%;
-            table-layout: auto;
         }
 
         @media (max-width: 900px) {
