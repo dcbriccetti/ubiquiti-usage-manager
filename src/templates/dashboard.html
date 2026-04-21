@@ -53,7 +53,7 @@
                         <tr>
                             <th colspan="10"></th>
                             <th colspan="4" class="usage-group">Usage (MB)</th>
-                            <th></th>
+                            <th colspan="3" class="speed-group">Speed Limit (kbps)</th>
                         </tr>
                         <tr>
                             <th class="nowrap-col">User ID</th>
@@ -70,7 +70,9 @@
                             <th class="num usage-col">Today</th>
                             <th class="num usage-col">7&nbsp;Days</th>
                             <th class="num usage-col usage-last" id="usage-month-header">{{ current_month_label }}</th>
-                            <th class="nowrap-col">Speed Limit (kbps up/down)</th>
+                            <th class="nowrap-col speed-col">Profile</th>
+                            <th class="num nowrap-col speed-col">Up</th>
+                            <th class="num nowrap-col speed-col">Down</th>
                         </tr>
                         </thead>
                         <tbody id="connected-clients-body">
@@ -108,11 +110,13 @@
                                 <td class="num usage-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
                                 <td class="num usage-col usage-last">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
-                                <td class="nowrap-col">{{ client.effective_speed_limit or "" }}</td>
+                                <td class="nowrap-col speed-col">{{ client.speed_limit_name or "" }}</td>
+                                <td class="num nowrap-col speed-col">{% if client.speed_limit_up_kbps is not none %}{{ "{:,.0f}".format(client.speed_limit_up_kbps) }}{% endif %}</td>
+                                <td class="num nowrap-col speed-col">{% if client.speed_limit_down_kbps is not none %}{{ "{:,.0f}".format(client.speed_limit_down_kbps) }}{% endif %}</td>
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="15" class="muted">
+                                <td colspan="17" class="muted">
                                     {% if selected_window == "active_now" %}
                                         No clients are actively using data right now.
                                     {% else %}
@@ -205,7 +209,7 @@
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = `<tr><td colspan="15" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+                    connectedBody.innerHTML = `<tr><td colspan="17" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
                     return;
                 }
 
@@ -229,7 +233,9 @@
                             <td class="num usage-col">${formatWhole(client.day_total_mb)}</td>
                             <td class="num usage-col">${formatWhole(client.last_7_days_total_mb)}</td>
                             <td class="num usage-col usage-last">${formatWhole(client.calendar_month_total_mb)}</td>
-                            <td class="nowrap-col">${escapeHtml(client.effective_speed_limit)}</td>
+                            <td class="nowrap-col speed-col">${escapeHtml(client.speed_limit_name || "")}</td>
+                            <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_up_kbps) ? Math.round(client.speed_limit_up_kbps).toLocaleString() : ""}</td>
+                            <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_down_kbps) ? Math.round(client.speed_limit_down_kbps).toLocaleString() : ""}</td>
                         </tr>
                     `;
                 }).join("");

@@ -22,6 +22,7 @@ from typing import Literal, TypedDict, cast
 import database as db
 import unifi_api as api
 from monitor import get_connected_clients
+from speedlimit import SpeedLimit
 
 WindowName = Literal['active_now', 'online_now', 'today', 'last_7_days', 'this_month']
 ActivitySpan = Literal['12m', '12h', '12d']
@@ -59,7 +60,9 @@ class DashboardRow(TypedDict):
     day_total_mb: float
     last_7_days_total_mb: float
     calendar_month_total_mb: float
-    effective_speed_limit: str
+    speed_limit_name: str
+    speed_limit_up_kbps: int | None
+    speed_limit_down_kbps: int | None
 
 
 class DashboardData(TypedDict):
@@ -98,6 +101,7 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
 
     rows: list[DashboardRow] = []
     for snapshot in get_connected_clients():
+        speed_limit = snapshot.effective_speed_limit
         row: DashboardRow = {
             'user_id': snapshot.client.user_id or '',
             'name': snapshot.client.name,
@@ -112,7 +116,9 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
             'day_total_mb': snapshot.day_total_mb,
             'last_7_days_total_mb': snapshot.last_7_days_total_mb,
             'calendar_month_total_mb': snapshot.calendar_month_total_mb,
-            'effective_speed_limit': str(snapshot.effective_speed_limit) if snapshot.effective_speed_limit else '',
+            'speed_limit_name': speed_limit.name if speed_limit else '',
+            'speed_limit_up_kbps': speed_limit.up_kbps if speed_limit else None,
+            'speed_limit_down_kbps': speed_limit.down_kbps if speed_limit else None,
         }
         rows.append(row)
     if active_only:
@@ -132,15 +138,22 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
 
 def build_rows_for_historical_window(
     window_name: WindowName,
-    speed_limits_by_name: dict[str, str],
+    speed_limits_by_name: dict[str, SpeedLimit],
 ) -> list[DashboardRow]:
     'Build dashboard rows from usage ledger summaries for non-live windows.'
     summaries = db.get_usage_window_summary(window_name)
     rows: list[DashboardRow] = []
     for summary in summaries:
-        effective_speed_limit = ''
+        speed_limit_name = ''
+        speed_limit_up_kbps: int | None = None
+        speed_limit_down_kbps: int | None = None
         if summary.profile:
-            effective_speed_limit = speed_limits_by_name.get(summary.profile, summary.profile)
+            speed_limit_name = summary.profile
+            speed_limit = speed_limits_by_name.get(summary.profile)
+            if speed_limit is not None:
+                speed_limit_name = speed_limit.name
+                speed_limit_up_kbps = speed_limit.up_kbps
+                speed_limit_down_kbps = speed_limit.down_kbps
 
         row: DashboardRow = {
             'user_id': summary.user_id or '',
@@ -156,8 +169,9 @@ def build_rows_for_historical_window(
             'day_total_mb': summary.day_total_mb,
             'last_7_days_total_mb': summary.last_7_days_total_mb,
             'calendar_month_total_mb': summary.calendar_month_total_mb,
-            # Historical rows store only profile names in DB; map to current display text when possible.
-            'effective_speed_limit': effective_speed_limit,
+            'speed_limit_name': speed_limit_name,
+            'speed_limit_up_kbps': speed_limit_up_kbps,
+            'speed_limit_down_kbps': speed_limit_down_kbps,
         }
         rows.append(row)
 
@@ -265,7 +279,7 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
 def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, live_update_seconds: int) -> DashboardData:
     'Assemble all dashboard fields needed by HTML render, API snapshot, and SSE stream.'
     speed_limits_by_name = {
-        limit.name: str(limit) for limit in api.get_speed_limits()
+        limit.name: limit for limit in api.get_speed_limits()
     }
     if window_name == WINDOW_ONLINE_NOW:
         rows = build_rows_for_online_clients()
