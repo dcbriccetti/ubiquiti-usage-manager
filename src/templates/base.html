@@ -493,6 +493,55 @@
             padding-right: 8px;
         }
 
+        .concurrency-heatmap-wrap {
+            margin: 0 0 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.50);
+            overflow-x: auto;
+        }
+
+        .concurrency-heatmap-grid {
+            display: grid;
+            grid-template-columns: 56px repeat(24, minmax(26px, 1fr));
+            gap: 3px;
+            align-items: center;
+            min-width: 860px;
+        }
+
+        .concurrency-heatmap-grid .cell {
+            min-height: 24px;
+            border-radius: 4px;
+            font-size: 0.68rem;
+            line-height: 1.1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #243447;
+        }
+
+        .concurrency-heatmap-grid .cell.header {
+            background: transparent;
+            font-weight: 700;
+            color: var(--muted);
+        }
+
+        .concurrency-heatmap-grid .cell.header.day {
+            justify-content: flex-start;
+            padding-left: 4px;
+        }
+
+        .concurrency-heatmap-grid .cell.value {
+            border: 1px solid rgba(51, 65, 85, 0.14);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .throttling-impact-table {
+            width: 100%;
+            table-layout: auto;
+        }
+
         @media (max-width: 900px) {
             .columns {
                 grid-template-columns: 1fr;

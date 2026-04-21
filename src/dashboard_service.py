@@ -102,6 +102,18 @@ class DashboardData(TypedDict):
     organization_paid_vlan_criteria: list[str]
     organization_paid_mac_criteria: list[str]
     organization_paid_user_id_criteria: list[str]
+    peak_concurrency_x_labels: list[int]
+    peak_concurrency_full_labels: list[str]
+    peak_concurrency_counts: list[int]
+    peak_concurrency_time_labels: list[str]
+    concurrency_heatmap_day_labels: list[str]
+    concurrency_heatmap_hour_labels: list[str]
+    concurrency_heatmap_values: list[list[float]]
+    throttling_profile_labels: list[str]
+    throttling_profile_minutes: list[int]
+    throttling_total_active_minutes: int
+    throttling_minutes: int
+    throttling_pct: float
     live_update_seconds: int
 
 
@@ -143,6 +155,15 @@ def calculate_month_cost_cents(calendar_month_total_mb: float) -> float:
     'Return month cost in cents based on configured cents-per-GB rate.'
     month_total_gb = calendar_month_total_mb / 1000.0
     return month_total_gb * float(cfg.COST_IN_CENTS_PER_GB)
+
+
+def profile_display_label(profile_key: str, speed_limits_by_name: dict[str, SpeedLimit]) -> str:
+    'Render a readable label for one stored profile key.'
+    if not profile_key:
+        return 'Default'
+    if matched_limit := speed_limits_by_name.get(profile_key):
+        return f'{matched_limit.name} ({matched_limit.up_kbps}/{matched_limit.down_kbps})'
+    return profile_key
 
 
 def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRow]:
@@ -406,6 +427,18 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
     speed_limits_by_name = {
         limit.name: limit for limit in api.get_speed_limits()
     }
+    concurrency_insights = db.get_global_concurrency_insights_current_month()
+    throttling_effectiveness = db.get_global_throttling_effectiveness_current_month()
+    allowed_throttling_profiles = {level.profile_name for level in cfg.THROTTLING_LEVELS}
+    throttling_profile_totals = sorted(
+        (
+            (profile_key, minutes)
+            for profile_key, minutes in throttling_effectiveness.profile_minutes.items()
+            if profile_key in allowed_throttling_profiles
+        ),
+        key=lambda pair: pair[1],
+        reverse=True,
+    )
     if window_name == WINDOW_ONLINE_NOW:
         rows = build_rows_for_online_clients()
     elif window_name == WINDOW_ACTIVE_NOW:
@@ -472,6 +505,21 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         'organization_paid_vlan_criteria': organization_paid_vlan_criteria,
         'organization_paid_mac_criteria': organization_paid_mac_criteria,
         'organization_paid_user_id_criteria': organization_paid_user_id_criteria,
+        'peak_concurrency_x_labels': concurrency_insights.daily_x_labels,
+        'peak_concurrency_full_labels': concurrency_insights.daily_full_labels,
+        'peak_concurrency_counts': concurrency_insights.daily_peak_counts,
+        'peak_concurrency_time_labels': concurrency_insights.daily_peak_time_labels,
+        'concurrency_heatmap_day_labels': concurrency_insights.heatmap_day_labels,
+        'concurrency_heatmap_hour_labels': concurrency_insights.heatmap_hour_labels,
+        'concurrency_heatmap_values': concurrency_insights.heatmap_values,
+        'throttling_profile_labels': [
+            profile_display_label(profile_key, speed_limits_by_name)
+            for profile_key, _ in throttling_profile_totals
+        ],
+        'throttling_profile_minutes': [minutes for _, minutes in throttling_profile_totals],
+        'throttling_total_active_minutes': throttling_effectiveness.total_active_minutes,
+        'throttling_minutes': throttling_effectiveness.throttled_minutes,
+        'throttling_pct': throttling_effectiveness.throttled_pct,
         'live_update_seconds': live_update_seconds,
     }
 

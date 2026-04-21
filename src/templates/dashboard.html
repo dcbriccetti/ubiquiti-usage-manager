@@ -189,6 +189,32 @@
                 <div class="month-chart-wrap">
                     <canvas id="global-daily-minutes-chart" class="month-chart-canvas" role="img" aria-label="Daily active minutes stacked by Basic and Plus"></canvas>
                 </div>
+                <h3>Peak Simultaneous Users by Day</h3>
+                <div class="month-chart-wrap">
+                    <canvas id="global-peak-concurrency-chart" class="month-chart-canvas" role="img" aria-label="Daily peak simultaneous users"></canvas>
+                </div>
+                <h3>Time-of-Day Concurrent Users Heatmap</h3>
+                <div class="concurrency-heatmap-wrap">
+                    <div id="global-concurrency-heatmap" class="concurrency-heatmap-grid" aria-label="Heatmap of average concurrent users by weekday and hour"></div>
+                </div>
+                <h3>Throttling Coverage & Impact</h3>
+                <section class="insights-kpis">
+                    <div class="insight-kpi">
+                        <span class="label">Minutes Throttled</span>
+                        <span class="value">{{ "{:,.0f}".format(throttling_minutes) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">Total Active Minutes</span>
+                        <span class="value">{{ "{:,.0f}".format(throttling_total_active_minutes) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">% Time Throttled</span>
+                        <span class="value">{{ "{:.1f}%".format(throttling_pct) }}</span>
+                    </div>
+                </section>
+                <div class="month-chart-wrap">
+                    <canvas id="global-throttling-profile-minutes-chart" class="month-chart-canvas" role="img" aria-label="Minutes spent at each throttling profile"></canvas>
+                </div>
 
                 <section class="grid columns insights-tables">
                     <article class="insights-summary">
@@ -346,6 +372,15 @@
             const activeUsersXLabels = {{ active_users_chart_x_labels|tojson }};
             const activeUsersFullLabels = {{ active_users_chart_full_labels|tojson }};
             const activeUsersCounts = {{ active_users_chart_counts|tojson }};
+            const peakConcurrencyXLabels = {{ peak_concurrency_x_labels|tojson }};
+            const peakConcurrencyFullLabels = {{ peak_concurrency_full_labels|tojson }};
+            const peakConcurrencyCounts = {{ peak_concurrency_counts|tojson }};
+            const peakConcurrencyTimeLabels = {{ peak_concurrency_time_labels|tojson }};
+            const heatmapDayLabels = {{ concurrency_heatmap_day_labels|tojson }};
+            const heatmapHourLabels = {{ concurrency_heatmap_hour_labels|tojson }};
+            const heatmapValues = {{ concurrency_heatmap_values|tojson }};
+            const throttlingProfileLabels = {{ throttling_profile_labels|tojson }};
+            const throttlingProfileMinutes = {{ throttling_profile_minutes|tojson }};
 
             const sharedStackedOptions = {
                 responsive: true,
@@ -518,6 +553,121 @@
                         }
                     }
                 });
+            }
+
+            const peakConcurrencyCanvas = document.getElementById("global-peak-concurrency-chart");
+            if (peakConcurrencyCanvas) {
+                new Chart(peakConcurrencyCanvas, {
+                    type: "bar",
+                    data: {
+                        labels: peakConcurrencyXLabels,
+                        datasets: [
+                            {
+                                label: "Peak simultaneous users",
+                                data: peakConcurrencyCounts,
+                                backgroundColor: "rgba(2, 132, 199, 0.76)"
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    title: (tooltipItems) => {
+                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                        return peakConcurrencyFullLabels[idx] || "";
+                                    },
+                                    afterBody: (tooltipItems) => {
+                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                        const peakTime = peakConcurrencyTimeLabels[idx] || "n/a";
+                                        return `Peak time: ${peakTime}`;
+                                    },
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: "Day of month" },
+                                grid: { display: false },
+                                ticks: {
+                                    maxRotation: 0,
+                                    autoSkip: true,
+                                    maxTicksLimit: 12
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: "Peak concurrent users" },
+                                grid: { color: "rgba(31, 41, 51, 0.20)" }
+                            }
+                        }
+                    }
+                });
+            }
+
+            const profileMinutesCanvas = document.getElementById("global-throttling-profile-minutes-chart");
+            if (profileMinutesCanvas && throttlingProfileLabels.length) {
+                new Chart(profileMinutesCanvas, {
+                    type: "bar",
+                    data: {
+                        labels: throttlingProfileLabels,
+                        datasets: [
+                            {
+                                label: "Minutes",
+                                data: throttlingProfileMinutes,
+                                backgroundColor: "rgba(194, 65, 12, 0.72)"
+                            }
+                        ]
+                    },
+                    options: {
+                        indexAxis: "y",
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                title: { display: true, text: "Active minutes this month" },
+                                grid: { color: "rgba(31, 41, 51, 0.20)" }
+                            },
+                            y: {
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+            }
+
+            const heatmapContainer = document.getElementById("global-concurrency-heatmap");
+            if (heatmapContainer) {
+                const flatValues = heatmapValues.flat();
+                const maxValue = Math.max(...flatValues, 0);
+                const minValue = Math.min(...flatValues, 0);
+                const colorForValue = (value) => {
+                    if (maxValue <= minValue) return "rgba(148, 163, 184, 0.24)";
+                    const ratio = (value - minValue) / (maxValue - minValue);
+                    const alpha = 0.12 + (ratio * 0.78);
+                    return `rgba(14, 116, 144, ${alpha.toFixed(3)})`;
+                };
+                let html = '<div class="cell header"></div>';
+                for (const hourLabel of heatmapHourLabels) {
+                    html += `<div class="cell header hour">${hourLabel.slice(0, 2)}</div>`;
+                }
+                for (let dayIndex = 0; dayIndex < heatmapDayLabels.length; dayIndex += 1) {
+                    html += `<div class="cell header day">${heatmapDayLabels[dayIndex]}</div>`;
+                    const row = heatmapValues[dayIndex] || [];
+                    for (let hourIndex = 0; hourIndex < heatmapHourLabels.length; hourIndex += 1) {
+                        const value = Number(row[hourIndex] || 0);
+                        const title = `${heatmapDayLabels[dayIndex]} ${heatmapHourLabels[hourIndex]} avg concurrent users: ${value.toFixed(2)}`;
+                        html += `<div class="cell value" style="background:${colorForValue(value)}" title="${title}">${value >= 0.5 ? value.toFixed(1) : ""}</div>`;
+                    }
+                }
+                heatmapContainer.innerHTML = html;
             }
         })();
 

@@ -123,6 +123,45 @@ class GlobalPayerSplit:
     user_paid_total_mb: float
     user_paid_minutes: int
 
+
+@dataclass(frozen=True, kw_only=True)
+class GlobalConcurrencyInsights:
+    'Month-to-date concurrency analytics for peak and heatmap visuals.'
+    daily_x_labels: list[int]
+    daily_full_labels: list[str]
+    daily_peak_counts: list[int]
+    daily_peak_time_labels: list[str]
+    heatmap_day_labels: list[str]
+    heatmap_hour_labels: list[str]
+    heatmap_values: list[list[float]]
+
+
+@dataclass(frozen=True, kw_only=True)
+class ThrottlingChangeImpact:
+    'Before/after usage metrics around one profile-change event.'
+    changed_at: datetime
+    mac: str
+    user_id: str
+    name: str
+    from_profile: str
+    to_profile: str
+    before_avg_mb_per_day: float
+    after_avg_mb_per_day: float
+    before_throttled_pct: float
+    after_throttled_pct: float
+    before_active_minutes: int
+    after_active_minutes: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class GlobalThrottlingEffectiveness:
+    'Month-to-date throttling effectiveness aggregates and profile-change deltas.'
+    profile_minutes: dict[str, int]
+    total_active_minutes: int
+    throttled_minutes: int
+    throttled_pct: float
+    change_events: list[ThrottlingChangeImpact]
+
 # --- MODELS ---
 class UsageRecord(Base):
     'Ledger row storing one non-zero usage interval.'
@@ -919,3 +958,207 @@ def get_global_organization_paid_clients_current_month(
     )
 
     return results[:max(1, limit)]
+
+
+def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights:
+    'Return daily peak concurrency and day/hour heatmap averages for current month.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.mac)
+        .where(
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+    )
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    minute_clients: dict[datetime, set[str]] = {}
+    for row_timestamp, row_mac in rows:
+        if not isinstance(row_timestamp, datetime) or not isinstance(row_mac, str):
+            continue
+        minute_bucket = row_timestamp.replace(second=0, microsecond=0)
+        minute_clients.setdefault(minute_bucket, set()).add(row_mac)
+
+    daily_peak_map: dict[date, tuple[int, datetime | None]] = {}
+    heatmap_totals: dict[tuple[int, int], float] = {}
+    heatmap_counts: dict[tuple[int, int], int] = {}
+
+    for minute_bucket, macs in minute_clients.items():
+        concurrent_count = len(macs)
+        usage_day = minute_bucket.date()
+        peak_count, peak_minute = daily_peak_map.get(usage_day, (0, None))
+        if concurrent_count > peak_count:
+            daily_peak_map[usage_day] = (concurrent_count, minute_bucket)
+
+        day_of_week = minute_bucket.weekday()  # Monday=0
+        hour = minute_bucket.hour
+        cell_key = (day_of_week, hour)
+        heatmap_totals[cell_key] = float(heatmap_totals.get(cell_key, 0.0)) + float(concurrent_count)
+        heatmap_counts[cell_key] = int(heatmap_counts.get(cell_key, 0)) + 1
+
+    daily_x_labels: list[int] = []
+    daily_full_labels: list[str] = []
+    daily_peak_counts: list[int] = []
+    daily_peak_time_labels: list[str] = []
+    day_cursor = month_start
+    while day_cursor <= today:
+        peak_count, peak_minute = daily_peak_map.get(day_cursor, (0, None))
+        daily_x_labels.append(day_cursor.day)
+        daily_full_labels.append(f'{day_cursor.strftime("%b")} {day_cursor.day}')
+        daily_peak_counts.append(int(peak_count))
+        daily_peak_time_labels.append(peak_minute.strftime('%H:%M') if peak_minute else '')
+        day_cursor += timedelta(days=1)
+
+    heatmap_day_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    heatmap_hour_labels = [f'{hour:02d}:00' for hour in range(24)]
+    heatmap_values: list[list[float]] = []
+    for day_of_week in range(7):
+        row: list[float] = []
+        for hour in range(24):
+            cell_key = (day_of_week, hour)
+            total = float(heatmap_totals.get(cell_key, 0.0))
+            count = int(heatmap_counts.get(cell_key, 0))
+            row.append((total / count) if count > 0 else 0.0)
+        heatmap_values.append(row)
+
+    return GlobalConcurrencyInsights(
+        daily_x_labels=daily_x_labels,
+        daily_full_labels=daily_full_labels,
+        daily_peak_counts=daily_peak_counts,
+        daily_peak_time_labels=daily_peak_time_labels,
+        heatmap_day_labels=heatmap_day_labels,
+        heatmap_hour_labels=heatmap_hour_labels,
+        heatmap_values=heatmap_values,
+    )
+
+
+def get_global_throttling_effectiveness_current_month(
+    before_after_days: int = 7,
+    max_events: int = 8,
+) -> GlobalThrottlingEffectiveness:
+    'Return throttling profile minutes and before/after impact around profile changes.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    month_start_dt = datetime.combine(month_start, time.min)
+    window_days = max(1, before_after_days)
+    lookback_start = now - timedelta(days=(window_days * 3))
+
+    stmt = (
+        select(
+            UsageRecord.timestamp,
+            UsageRecord.mac,
+            UsageRecord.user_id,
+            UsageRecord.name,
+            UsageRecord.profile,
+            UsageRecord.mb_used,
+        )
+        .where(
+            UsageRecord.timestamp >= lookback_start,
+            UsageRecord.timestamp <= now,
+        )
+        .order_by(UsageRecord.mac.asc(), UsageRecord.timestamp.asc())
+    )
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    profile_minutes: dict[str, int] = {}
+    total_active_minutes = 0
+    throttled_minutes = 0
+
+    per_mac_rows: dict[str, list[tuple[datetime, str, float]]] = {}
+    change_events_raw: list[tuple[datetime, str, str, str, str, str]] = []
+    previous_profile_by_mac: dict[str, str] = {}
+
+    for row_timestamp, row_mac, row_user_id, row_name, row_profile, row_mb_used in rows:
+        if not isinstance(row_timestamp, datetime) or not isinstance(row_mac, str):
+            continue
+
+        mac = row_mac
+        user_id = row_user_id.strip() if isinstance(row_user_id, str) and row_user_id.strip() else ''
+        name = row_name.strip() if isinstance(row_name, str) and row_name.strip() else mac
+        profile_key = row_profile.strip() if isinstance(row_profile, str) and row_profile.strip() else ''
+        mb_used = float(row_mb_used or 0.0)
+
+        per_mac_rows.setdefault(mac, []).append((row_timestamp, profile_key, mb_used))
+
+        if row_timestamp >= month_start_dt:
+            profile_minutes[profile_key] = int(profile_minutes.get(profile_key, 0)) + 1
+            total_active_minutes += 1
+            if profile_key:
+                throttled_minutes += 1
+
+        previous_profile = previous_profile_by_mac.get(mac)
+        if (
+            previous_profile is not None
+            and previous_profile != profile_key
+            and row_timestamp >= month_start_dt
+            and profile_key
+        ):
+            change_events_raw.append((row_timestamp, mac, user_id, name, previous_profile, profile_key))
+        previous_profile_by_mac[mac] = profile_key
+
+    def calculate_window_metrics(
+        mac_rows: list[tuple[datetime, str, float]],
+        start_at: datetime,
+        end_at: datetime,
+    ) -> tuple[float, float, int]:
+        window_total_mb = 0.0
+        window_active_minutes = 0
+        window_throttled_minutes = 0
+        for row_timestamp, profile_key, mb_used in mac_rows:
+            if row_timestamp < start_at or row_timestamp >= end_at:
+                continue
+            window_total_mb += mb_used
+            window_active_minutes += 1
+            if profile_key:
+                window_throttled_minutes += 1
+        window_avg_mb_per_day = window_total_mb / float(window_days)
+        window_throttled_pct = (
+            (window_throttled_minutes * 100.0 / float(window_active_minutes))
+            if window_active_minutes > 0
+            else 0.0
+        )
+        return window_avg_mb_per_day, window_throttled_pct, window_active_minutes
+
+    change_events: list[ThrottlingChangeImpact] = []
+    for changed_at, mac, user_id, name, from_profile, to_profile in sorted(change_events_raw, key=lambda row: row[0], reverse=True):
+        if len(change_events) >= max(1, max_events):
+            break
+        mac_rows = per_mac_rows.get(mac, [])
+        before_start = changed_at - timedelta(days=window_days)
+        before_end = changed_at
+        after_start = changed_at
+        after_end = changed_at + timedelta(days=window_days)
+        before_avg_mb_per_day, before_throttled_pct, before_active_minutes = calculate_window_metrics(mac_rows, before_start, before_end)
+        after_avg_mb_per_day, after_throttled_pct, after_active_minutes = calculate_window_metrics(mac_rows, after_start, after_end)
+        change_events.append(
+            ThrottlingChangeImpact(
+                changed_at=changed_at,
+                mac=mac,
+                user_id=user_id,
+                name=name,
+                from_profile=from_profile,
+                to_profile=to_profile,
+                before_avg_mb_per_day=before_avg_mb_per_day,
+                after_avg_mb_per_day=after_avg_mb_per_day,
+                before_throttled_pct=before_throttled_pct,
+                after_throttled_pct=after_throttled_pct,
+                before_active_minutes=before_active_minutes,
+                after_active_minutes=after_active_minutes,
+            )
+        )
+
+    throttled_pct = ((throttled_minutes * 100.0) / float(total_active_minutes)) if total_active_minutes > 0 else 0.0
+    return GlobalThrottlingEffectiveness(
+        profile_minutes=profile_minutes,
+        total_active_minutes=total_active_minutes,
+        throttled_minutes=throttled_minutes,
+        throttled_pct=throttled_pct,
+        change_events=change_events,
+    )
