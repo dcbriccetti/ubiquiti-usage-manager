@@ -48,11 +48,23 @@
                     <option value="12d" {% if selected_activity_span == "12d" %}selected{% endif %}>12 days</option>
                 </select>
                 <div class="table-wrap">
-                    <table class="compact-table">
+                    <table
+                        id="clients-table"
+                        class="compact-table{% if selected_window in ('active_now', 'online_now') %} realtime-window{% else %} non-realtime-window{% endif %}"
+                    >
                         <thead>
                         <tr>
-                            <th colspan="10"></th>
-                            <th colspan="7" class="usage-group">Usage (MB)</th>
+                            <th
+                                id="pre-usage-group-header"
+                                colspan="{% if selected_window in ('active_now', 'online_now') %}10{% else %}9{% endif %}"
+                            ></th>
+                            <th
+                                id="usage-group-header"
+                                colspan="{% if selected_window in ('active_now', 'online_now') %}7{% else %}4{% endif %}"
+                                class="usage-group"
+                            >
+                                Usage (MB)
+                            </th>
                             <th colspan="3" class="speed-group">Speed Limit (kbps)</th>
                         </tr>
                         <tr>
@@ -65,20 +77,20 @@
                             <th rowspan="2">Sig</th>
                             <th class="activity-col" rowspan="2" title="Recent activity bars for the selected range.">Activity</th>
                             <th class="nowrap-col" rowspan="2" title="Current duration from recent UniFi query (positive = connected, negative = disconnected).">Connected</th>
-                            <th class="num nowrap-col" rowspan="2" title="Average throughput over the last minute (megabits per second).">Mbps</th>
-                            <th class="usage-group" colspan="3">Minute</th>
-                            <th class="num usage-col" rowspan="2">Today</th>
-                            <th class="num usage-col" rowspan="2">7&nbsp;Days</th>
-                            <th class="num usage-col usage-last" rowspan="2" id="usage-month-header">{{ current_month_label }}</th>
+                            <th class="num nowrap-col mbps-col" rowspan="2" title="Average throughput over the last minute (megabits per second).">Mbps</th>
+                            <th class="usage-group minute-group" colspan="3">Minute</th>
+                            <th class="num usage-col today-col" rowspan="2">Today</th>
+                            <th class="num usage-col seven-days-col" rowspan="2">7&nbsp;Days</th>
+                            <th class="num usage-col month-col" rowspan="2" id="usage-month-header">{{ current_month_label }}</th>
                             <th class="num usage-col usage-last" rowspan="2">Cost</th>
                             <th class="nowrap-col speed-col" rowspan="2">Profile</th>
                             <th class="num nowrap-col speed-col" rowspan="2">Up</th>
                             <th class="num nowrap-col speed-col" rowspan="2">Down</th>
                         </tr>
                         <tr>
-                            <th class="num usage-col usage-first">Up</th>
-                            <th class="num usage-col">Down</th>
-                            <th class="num usage-col">Total</th>
+                            <th class="num usage-col usage-first minute-col">Up</th>
+                            <th class="num usage-col minute-col">Down</th>
+                            <th class="num usage-col minute-col minute-total-col">Total</th>
                         </tr>
                         </thead>
                         <tbody id="connected-clients-body">
@@ -111,13 +123,13 @@
                                     </div>
                                 </td>
                                 <td class="nowrap-col">{{ client.connection_duration }}</td>
-                                <td class="num nowrap-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format((client.interval_mb * 8.0) / 60.0) }}{% endif %}</td>
-                                <td class="num usage-col usage-first">{% if client.minute_tx_mb is not none %}{{ "{:,.3f}".format(client.minute_tx_mb) }}{% endif %}</td>
-                                <td class="num usage-col">{% if client.minute_rx_mb is not none %}{{ "{:,.3f}".format(client.minute_rx_mb) }}{% endif %}</td>
-                                <td class="num usage-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
-                                <td class="num usage-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
-                                <td class="num usage-col">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
-                                <td class="num usage-col">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
+                                <td class="num nowrap-col mbps-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format((client.interval_mb * 8.0) / 60.0) }}{% endif %}</td>
+                                <td class="num usage-col usage-first minute-col">{% if client.minute_tx_mb is not none %}{{ "{:,.3f}".format(client.minute_tx_mb) }}{% endif %}</td>
+                                <td class="num usage-col minute-col">{% if client.minute_rx_mb is not none %}{{ "{:,.3f}".format(client.minute_rx_mb) }}{% endif %}</td>
+                                <td class="num usage-col minute-col minute-total-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
+                                <td class="num usage-col today-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
+                                <td class="num usage-col seven-days-col">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
+                                <td class="num usage-col month-col">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
                                 <td class="num usage-col usage-last">{% if client.month_cost_cents >= 0.5 %}${{ "{:,.2f}".format(client.month_cost_cents / 100.0) }}{% endif %}</td>
                                 <td class="nowrap-col speed-col">{{ client.speed_limit_name or "" }}</td>
                                 <td class="num nowrap-col speed-col">{% if client.speed_limit_up_kbps is not none %}{{ "{:,.0f}".format(client.speed_limit_up_kbps) }}{% endif %}</td>
@@ -143,6 +155,9 @@
     </section>
     <script>
         (function () {
+            const clientsTable = document.getElementById("clients-table");
+            const preUsageGroupHeader = document.getElementById("pre-usage-group-header");
+            const usageGroupHeader = document.getElementById("usage-group-header");
             const connectedBody = document.getElementById("connected-clients-body");
             const windowSelect = document.getElementById("window-select");
             const activitySpanSelect = document.getElementById("activity-span-select");
@@ -158,6 +173,31 @@
             let stream = null;
             let selectedWindow = windowSelect.value;
             let selectedActivitySpan = activitySpanSelect.value;
+            const realtimeWindows = new Set(["active_now", "online_now"]);
+            const windowFocusClassByWindow = {
+                active_now: "focus-minute-total",
+                online_now: "focus-minute-total",
+                today: "focus-today",
+                last_7_days: "focus-7-days",
+                this_month: "focus-month"
+            };
+
+            const applyWindowColumnVisibility = () => {
+                if (!clientsTable) return;
+                const isRealtime = realtimeWindows.has(selectedWindow);
+                clientsTable.classList.toggle("realtime-window", isRealtime);
+                clientsTable.classList.toggle("non-realtime-window", !isRealtime);
+                if (preUsageGroupHeader) {
+                    preUsageGroupHeader.colSpan = isRealtime ? 10 : 9;
+                }
+                if (usageGroupHeader) {
+                    usageGroupHeader.colSpan = isRealtime ? 7 : 4;
+                }
+                clientsTable.classList.remove("focus-minute-total", "focus-today", "focus-7-days", "focus-month");
+                if (windowFocusClassByWindow[selectedWindow]) {
+                    clientsTable.classList.add(windowFocusClassByWindow[selectedWindow]);
+                }
+            };
 
             const formatInt = (value) => Math.round(value).toLocaleString();
             const formatMinute = (value) => {
@@ -247,13 +287,13 @@
                             <td>${escapeHtml(signal)}</td>
                             <td class="activity-col">${renderRecentActivity(client.recent_activity)}</td>
                             <td class="nowrap-col">${escapeHtml(client.connection_duration || "")}</td>
-                            <td class="num nowrap-col">${formatAvgMbps(client.interval_mb)}</td>
-                            <td class="num usage-col usage-first">${formatMinute(client.minute_tx_mb)}</td>
-                            <td class="num usage-col">${formatMinute(client.minute_rx_mb)}</td>
-                            <td class="num usage-col">${formatMinute(client.interval_mb)}</td>
-                            <td class="num usage-col">${formatWhole(client.day_total_mb)}</td>
-                            <td class="num usage-col">${formatWhole(client.last_7_days_total_mb)}</td>
-                            <td class="num usage-col">${formatWhole(client.calendar_month_total_mb)}</td>
+                            <td class="num nowrap-col mbps-col">${formatAvgMbps(client.interval_mb)}</td>
+                            <td class="num usage-col usage-first minute-col">${formatMinute(client.minute_tx_mb)}</td>
+                            <td class="num usage-col minute-col">${formatMinute(client.minute_rx_mb)}</td>
+                            <td class="num usage-col minute-col minute-total-col">${formatMinute(client.interval_mb)}</td>
+                            <td class="num usage-col today-col">${formatWhole(client.day_total_mb)}</td>
+                            <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
+                            <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
                             <td class="num usage-col usage-last">${formatCost(client.month_cost_cents)}</td>
                             <td class="nowrap-col speed-col">${escapeHtml(client.speed_limit_name || "")}</td>
                             <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_up_kbps) ? Math.round(client.speed_limit_up_kbps).toLocaleString() : ""}</td>
@@ -288,6 +328,7 @@
                     activitySpanSelect.value = selectedActivitySpan;
                 }
 
+                applyWindowColumnVisibility();
                 renderConnectedClients(data.clients);
             };
 
@@ -350,6 +391,7 @@
             windowSelect.addEventListener("change", reconnectForNewSelection);
             activitySpanSelect.addEventListener("change", reconnectForNewSelection);
 
+            applyWindowColumnVisibility();
             connectStream();
         })();
     </script>
