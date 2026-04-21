@@ -50,9 +50,11 @@ class DashboardRow(TypedDict):
     name: str
     ap_name: str
     mac: str
+    ip_half: str
     vlan_name: str
     signal: int | None
     recent_activity: list[float]
+    connection_duration: str
     interval_mb: float
     day_total_mb: float
     last_7_days_total_mb: float
@@ -88,6 +90,12 @@ def normalize_activity_span(activity_span: str | None) -> ActivitySpan:
 
 def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRow]:
     'Build dashboard rows from live controller client snapshots.'
+    def right_half_ip(ip_address: str) -> str:
+        parts = ip_address.split('.')
+        if len(parts) == 4:
+            return '.'.join(parts[2:])
+        return ''
+
     rows: list[DashboardRow] = []
     for snapshot in get_connected_clients():
         row: DashboardRow = {
@@ -95,9 +103,11 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
             'name': snapshot.client.name,
             'ap_name': snapshot.client.ap_name or '',
             'mac': snapshot.client.mac,
+            'ip_half': right_half_ip(snapshot.client.ip_address),
             'vlan_name': snapshot.client.vlan_name or 'Unknown',
             'signal': snapshot.client.signal if snapshot.client.signal else None,
             'recent_activity': [],
+            'connection_duration': '',
             'interval_mb': snapshot.interval_mb,
             'day_total_mb': snapshot.day_total_mb,
             'last_7_days_total_mb': snapshot.last_7_days_total_mb,
@@ -137,9 +147,11 @@ def build_rows_for_historical_window(
             'name': summary.name or summary.mac,
             'ap_name': summary.ap_name or '',
             'mac': summary.mac,
+            'ip_half': '',
             'vlan_name': summary.vlan or 'Unknown',
             'signal': None,
             'recent_activity': [],
+            'connection_duration': '',
             'interval_mb': 0.0,
             'day_total_mb': summary.day_total_mb,
             'last_7_days_total_mb': summary.last_7_days_total_mb,
@@ -150,6 +162,88 @@ def build_rows_for_historical_window(
         rows.append(row)
 
     return rows
+
+
+def add_current_connection_minutes(rows: list[DashboardRow]) -> None:
+    'Attach current online/offline minutes from recent UniFi client queries.'
+    if not rows:
+        return
+
+    def parse_non_negative_int(value: object) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value if value >= 0 else None
+        if isinstance(value, float):
+            return int(value) if value >= 0 else None
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return None
+            try:
+                parsed = int(float(text))
+            except ValueError:
+                return None
+            return parsed if parsed >= 0 else None
+        return None
+
+    def normalize_online_seconds(raw_value: object, now_seconds: int) -> int | None:
+        parsed = parse_non_negative_int(raw_value)
+        if parsed is None:
+            return None
+        # If this looks like an epoch timestamp, convert to elapsed duration.
+        if parsed > 10_000_000_000:
+            parsed = parsed // 1000
+        if 946684800 <= parsed <= now_seconds + 86400:
+            return max(0, now_seconds - parsed)
+        return parsed
+
+    def parse_epoch_seconds(value: object) -> int | None:
+        parsed = parse_non_negative_int(value)
+        if parsed is None:
+            return None
+        # UniFi may expose last_seen in milliseconds; normalize to seconds.
+        if parsed > 10_000_000_000:
+            parsed = parsed // 1000
+        return parsed
+
+    def format_signed_hhmm(total_minutes: int) -> str:
+        sign = '-' if total_minutes < 0 else ''
+        absolute_minutes = abs(total_minutes)
+        hours = absolute_minutes // 60
+        minutes = absolute_minutes % 60
+        return f'{sign}{hours:02d}:{minutes:02d}'
+
+    now_seconds = int(datetime.now().timestamp())
+    online_assoc_minutes_by_mac: dict[str, int] = {}
+    for client in api.get_api_data('stat/sta'):
+        mac = client.get('mac')
+        if not isinstance(mac, str):
+            continue
+        assoc_seconds = normalize_online_seconds(client.get('assoc_time'), now_seconds)
+        if assoc_seconds is None:
+            assoc_seconds = normalize_online_seconds(client.get('latest_assoc_time'), now_seconds)
+        online_assoc_minutes_by_mac[mac.lower()] = (assoc_seconds // 60) if assoc_seconds is not None else 0
+
+    offline_minutes_by_mac: dict[str, int] = {}
+    for client in api.get_api_data('stat/alluser'):
+        mac = client.get('mac')
+        if not isinstance(mac, str):
+            continue
+        key = mac.lower()
+        if key in online_assoc_minutes_by_mac:
+            continue
+        last_seen = parse_epoch_seconds(client.get('last_seen'))
+        if last_seen is None:
+            continue
+        offline_minutes_by_mac[key] = max(0, (now_seconds - last_seen) // 60)
+
+    for row in rows:
+        key = row['mac'].lower()
+        if key in online_assoc_minutes_by_mac:
+            row['connection_duration'] = format_signed_hhmm(online_assoc_minutes_by_mac[key])
+        elif key in offline_minutes_by_mac:
+            row['connection_duration'] = format_signed_hhmm(-offline_minutes_by_mac[key])
 
 
 def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -> None:
@@ -179,6 +273,7 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         rows = build_rows_for_online_clients(active_only=True)
     else:
         rows = build_rows_for_historical_window(window_name, speed_limits_by_name)
+    add_current_connection_minutes(rows)
     add_recent_activity(rows, activity_span)
     return {
         'clients': rows,

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Dashboard | UniFi Usage{% endblock %}
+{% block page_class %} wide-page{% endblock %}
 
 {% block content %}
     <section class="hero">
@@ -46,10 +47,11 @@
                     <option value="12h" {% if selected_activity_span == "12h" %}selected{% endif %}>12 hours</option>
                     <option value="12d" {% if selected_activity_span == "12d" %}selected{% endif %}>12 days</option>
                 </select>
-                <table>
-                    <thead>
+                <div class="table-wrap">
+                    <table class="compact-table">
+                        <thead>
                         <tr>
-                            <th colspan="8"></th>
+                            <th colspan="10"></th>
                             <th colspan="4" class="usage-group">Usage (MB)</th>
                             <th></th>
                         </tr>
@@ -57,10 +59,12 @@
                             <th class="nowrap-col">User ID</th>
                             <th>Name</th>
                             <th>MAC</th>
+                            <th class="nowrap-col" title="Right half of client IPv4 address (last two octets).">IP</th>
                             <th>VLAN</th>
                             <th class="ap-col">Access Point</th>
                             <th>Sig</th>
                             <th class="activity-col" title="Recent activity bars for the selected range.">Activity</th>
+                            <th class="nowrap-col" title="Current duration from recent UniFi query (positive = connected, negative = disconnected).">Connected</th>
                             <th class="num nowrap-col" title="Average throughput over the last minute (megabits per second).">Mbps</th>
                             <th class="num usage-col usage-first">Minute</th>
                             <th class="num usage-col">Today</th>
@@ -68,17 +72,22 @@
                             <th class="num usage-col usage-last" id="usage-month-header">{{ current_month_label }}</th>
                             <th class="nowrap-col">Speed Limit (kbps up/down)</th>
                         </tr>
-                    </thead>
-                    <tbody id="connected-clients-body">
+                        </thead>
+                        <tbody id="connected-clients-body">
                         {% for client in clients %}
                             <tr>
                                 <td class="nowrap-col">{{ client.user_id or "" }}</td>
-                                <td>{{ client.name }}</td>
+                                <td>
+                                    <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}" title="Usage details">
+                                        {{ client.name }}
+                                    </a>
+                                </td>
                                 <td class="mono mac-cell">
-                                    <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}" title="{{ client.mac }}">
+                                    <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}" title="Usage details">
                                         {{ client.mac[-5:] }}
                                     </a>
                                 </td>
+                                <td class="nowrap-col">{{ client.ip_half }}</td>
                                 <td>{{ client.vlan_name or "Unknown" }}</td>
                                 <td class="ap-col">{{ (client.ap_name or "").removesuffix(" AP") }}</td>
                                 <td>{% if client.signal %}{{ client.signal }}{% endif %}</td>
@@ -93,6 +102,7 @@
                                         {% endfor %}
                                     </div>
                                 </td>
+                                <td class="nowrap-col">{{ client.connection_duration }}</td>
                                 <td class="num nowrap-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format((client.interval_mb * 8.0) / 60.0) }}{% endif %}</td>
                                 <td class="num usage-col usage-first">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
@@ -102,7 +112,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="13" class="muted">
+                                <td colspan="15" class="muted">
                                     {% if selected_window == "active_now" %}
                                         No clients are actively using data right now.
                                     {% else %}
@@ -111,8 +121,9 @@
                                 </td>
                             </tr>
                         {% endfor %}
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </article>
 
@@ -194,7 +205,7 @@
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = `<tr><td colspan="13" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+                    connectedBody.innerHTML = `<tr><td colspan="15" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
                     return;
                 }
 
@@ -205,12 +216,14 @@
                     return `
                         <tr>
                             <td class="nowrap-col">${escapeHtml(client.user_id)}</td>
-                            <td>${escapeHtml(client.name)}</td>
-                            <td class="mono mac-cell"><a class="mac-link" href="${detailHref}" title="${escapeHtml(client.mac)}">${escapeHtml(formatMacShort(client.mac))}</a></td>
+                            <td><a class="mac-link" href="${detailHref}" title="Usage details">${escapeHtml(client.name)}</a></td>
+                            <td class="mono mac-cell"><a class="mac-link" href="${detailHref}" title="Usage details">${escapeHtml(formatMacShort(client.mac))}</a></td>
+                            <td class="nowrap-col">${escapeHtml(client.ip_half || "")}</td>
                             <td>${escapeHtml(client.vlan_name)}</td>
                             <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
                             <td>${escapeHtml(signal)}</td>
                             <td class="activity-col">${renderRecentActivity(client.recent_activity)}</td>
+                            <td class="nowrap-col">${escapeHtml(client.connection_duration || "")}</td>
                             <td class="num nowrap-col">${formatAvgMbps(client.interval_mb)}</td>
                             <td class="num usage-col usage-first">${formatMinute(client.interval_mb)}</td>
                             <td class="num usage-col">${formatWhole(client.day_total_mb)}</td>

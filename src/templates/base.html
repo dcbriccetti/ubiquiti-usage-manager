@@ -52,6 +52,10 @@
             padding: 32px 20px 48px;
         }
 
+        .page.wide-page {
+            max-width: 1440px;
+        }
+
         .hero {
             display: flex;
             justify-content: space-between;
@@ -135,16 +139,25 @@
             padding: 20px;
         }
 
+        .table-wrap {
+            overflow-x: auto;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
             font-size: 0.95rem;
         }
 
+        table.compact-table {
+            width: max-content;
+            min-width: 1180px;
+        }
+
         th,
         td {
             text-align: left;
-            padding: 8px 10px;
+            padding: 6px 4px;
             border-bottom: 1px solid var(--line);
             vertical-align: top;
             line-height: 1.2;
@@ -299,7 +312,7 @@
     </style>
 </head>
 <body>
-    <main class="page">
+    <main class="page{% block page_class %}{% endblock %}">
         {% block content %}{% endblock %}
     </main>
 </body>
