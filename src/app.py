@@ -53,6 +53,13 @@ def create_app() -> Flask:
     live_update_seconds = 60
     live_update_boundary_offset_seconds = 3
 
+    def render_month_label(now: datetime) -> str:
+        'Return full month name unless it is long, then use abbreviation.'
+        full_label = now.strftime('%B')
+        if len(full_label) > 5:
+            return now.strftime('%b')
+        return full_label
+
     def get_speed_limits_by_name() -> SpeedLimitsByName:
         'Return mapping of speed-limit profile name to SpeedLimit object.'
         return {limit.name: limit for limit in api.get_speed_limits()}
@@ -168,7 +175,7 @@ def create_app() -> Flask:
             'daily_total_mb': db.get_daily_total(mac),
             'last_7_days_total_mb': db.get_last_7_days_total(mac),
             'calendar_month_total_mb': db.get_calendar_month_total(mac),
-            'current_month_label': datetime.now().strftime('%b'),
+            'current_month_label': render_month_label(datetime.now()),
             'speed_limits_by_name': get_speed_limits_by_name(),
         }
 

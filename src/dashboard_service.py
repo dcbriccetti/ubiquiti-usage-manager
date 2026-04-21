@@ -93,6 +93,14 @@ def normalize_activity_span(activity_span: str | None) -> ActivitySpan:
     return ACTIVITY_SPAN_12_MIN
 
 
+def render_month_label(now: datetime) -> str:
+    'Return full month name unless it is long, then use abbreviation.'
+    full_label = now.strftime('%B')
+    if len(full_label) > 5:
+        return now.strftime('%b')
+    return full_label
+
+
 def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRow]:
     'Build dashboard rows from live controller client snapshots.'
     def right_half_ip(ip_address: str) -> str:
@@ -307,7 +315,7 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         'clients': rows,
         'selected_window': window_name,
         'selected_activity_span': activity_span,
-        'current_month_label': datetime.now().strftime('%b'),
+        'current_month_label': render_month_label(datetime.now()),
         'total_today_mb': db.get_total_today_usage(),
         'total_last_7_days_mb': db.get_total_last_7_days_usage(),
         'total_calendar_month_mb': db.get_total_calendar_month_usage(),
