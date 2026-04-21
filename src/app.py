@@ -42,6 +42,12 @@ class DailyUsagePoint(TypedDict):
     active_minutes: int
 
 
+class ThrottleChartDataset(TypedDict):
+    'One stacked-bar series for monthly throttling chart.'
+    label: str
+    data: list[int]
+
+
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
     mac: str
@@ -52,6 +58,9 @@ class ClientUsageContext(TypedDict):
     calendar_month_total_mb: float
     month_cost_cents: float
     month_daily_usage: list[DailyUsagePoint]
+    month_throttle_day_labels: list[str]
+    month_throttle_x_labels: list[int]
+    month_throttle_datasets: list[ThrottleChartDataset]
     current_month_label: str
     speed_limits_by_name: SpeedLimitsByName
 
@@ -113,6 +122,30 @@ def create_app() -> Flask:
         if rendered:
             return rendered
         return f'{limit.name} (Unlimited)'
+
+    def profile_display_label(profile_key: str, speed_limits_by_name: SpeedLimitsByName) -> str:
+        'Render chart/display label for one stored profile name key.'
+        if not profile_key:
+            return 'Default'
+        if matched_limit := speed_limits_by_name.get(profile_key):
+            return speed_limit_option_label(matched_limit)
+        return profile_key
+
+    def profile_throttling_impact(profile_key: str, speed_limits_by_name: SpeedLimitsByName) -> float:
+        'Return throttling-impact score where larger means more restrictive.'
+        if not profile_key:
+            return -1.0
+
+        matched_limit = speed_limits_by_name.get(profile_key)
+        if not matched_limit:
+            return -0.5
+
+        caps = [cap for cap in (matched_limit.up_kbps, matched_limit.down_kbps) if isinstance(cap, int) and cap > 0]
+        if not caps:
+            return 0.0
+
+        strictest_cap_kbps = min(caps)
+        return 1_000_000.0 / float(strictest_cap_kbps)
 
     def warn_missing_radius_identity(record: UsageRecord, request_ip: str | None, detected_mac: str | None) -> None:
         'Log warning when Plus-network client metadata is missing RADIUS user_id.'
@@ -182,6 +215,7 @@ def create_app() -> Flask:
             )
             usage_history = []
 
+        speed_limits_by_name = get_speed_limits_by_name()
         calendar_month_total_mb = db.get_calendar_month_total(mac)
         month_daily_usage = [
             {
@@ -191,6 +225,29 @@ def create_app() -> Flask:
                 'active_minutes': active_minutes,
             }
             for usage_day, total_mb, active_minutes in db.get_calendar_month_daily_totals(mac)
+        ]
+        month_throttle_rows = db.get_calendar_month_daily_profile_minutes(mac)
+        month_throttle_day_labels = [f'{usage_day.strftime("%b")} {usage_day.day}' for usage_day, _ in month_throttle_rows]
+        month_throttle_x_labels = [usage_day.day for usage_day, _ in month_throttle_rows]
+
+        totals_by_profile_key: dict[str, int] = {}
+        for _, daily_counts in month_throttle_rows:
+            for profile_key, minutes in daily_counts.items():
+                totals_by_profile_key[profile_key] = totals_by_profile_key.get(profile_key, 0) + minutes
+
+        sorted_profile_keys = sorted(
+            totals_by_profile_key.keys(),
+            key=lambda key: (
+                profile_throttling_impact(key, speed_limits_by_name),
+                totals_by_profile_key[key],
+            ),
+        )
+        month_throttle_datasets: list[ThrottleChartDataset] = [
+            {
+                'label': profile_display_label(profile_key, speed_limits_by_name),
+                'data': [daily_counts.get(profile_key, 0) for _, daily_counts in month_throttle_rows],
+            }
+            for profile_key in sorted_profile_keys
         ]
 
         return {
@@ -202,8 +259,11 @@ def create_app() -> Flask:
             'calendar_month_total_mb': calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
             'month_daily_usage': month_daily_usage,
+            'month_throttle_day_labels': month_throttle_day_labels,
+            'month_throttle_x_labels': month_throttle_x_labels,
+            'month_throttle_datasets': month_throttle_datasets,
             'current_month_label': render_month_label(datetime.now()),
-            'speed_limits_by_name': get_speed_limits_by_name(),
+            'speed_limits_by_name': speed_limits_by_name,
         }
 
     @flask_app.route("/")

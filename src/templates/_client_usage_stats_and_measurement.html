@@ -17,10 +17,20 @@
     </article>
 </section>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+
 <article class="panel">
     <div class="panel-body">
         <h2>{{ current_month_label }} Usage</h2>
         {% include "_month_usage_chart.html" %}
         <p class="muted">Daily totals for this month. Use browser print to save as PDF.</p>
+    </div>
+</article>
+
+<article class="panel">
+    <div class="panel-body">
+        <h2>{{ current_month_label }} Throttling Levels</h2>
+        {% include "_month_throttling_chart.html" %}
+        <p class="muted">Stacked active minutes by speed-limit profile for each day this month.</p>
     </div>
 </article>

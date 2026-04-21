@@ -1,0 +1,110 @@
+{% set throttle_chart_id = "month-throttle-chart-" ~ (mac or "client")|replace(":", "") %}
+{% if month_throttle_datasets %}
+    <div class="month-chart-wrap">
+        <canvas id="{{ throttle_chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily throttling levels for the month"></canvas>
+    </div>
+    <script>
+        (() => {
+            const canvas = document.getElementById({{ throttle_chart_id|tojson }});
+            if (!canvas || typeof Chart === "undefined") {
+                return;
+            }
+
+            const labels = {{ month_throttle_x_labels|tojson }};
+            const fullLabels = {{ month_throttle_day_labels|tojson }};
+            const rawDatasets = {{ month_throttle_datasets|tojson }};
+            const colors = [
+                "rgba(194, 65, 12, 0.82)",
+                "rgba(15, 118, 110, 0.72)",
+                "rgba(59, 130, 246, 0.76)",
+                "rgba(161, 98, 7, 0.78)",
+                "rgba(2, 132, 199, 0.78)",
+                "rgba(190, 24, 93, 0.78)",
+                "rgba(22, 163, 74, 0.78)",
+                "rgba(107, 114, 128, 0.78)"
+            ];
+
+            const datasets = rawDatasets.map((series, idx) => ({
+                label: series.label,
+                data: series.data,
+                backgroundColor: series.label === "Default"
+                    ? "rgba(107, 114, 128, 0.38)"
+                    : colors[idx % colors.length],
+                borderRadius: 2,
+                barPercentage: 0.9,
+                categoryPercentage: 0.82,
+                stack: "throttle"
+            }));
+
+            new Chart(canvas, {
+                type: "bar",
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: "top",
+                            align: "start",
+                            labels: {
+                                boxWidth: 20,
+                                boxHeight: 10,
+                                useBorderRadius: true,
+                                borderRadius: 3
+                            }
+                        },
+                        tooltip: {
+                            filter(tooltipItem) {
+                                return (tooltipItem.parsed?.y || 0) > 0;
+                            },
+                            callbacks: {
+                                title(tooltipItems) {
+                                    const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                    return fullLabels[idx] || "";
+                                },
+                                afterBody(tooltipItems) {
+                                    const total = tooltipItems.reduce((sum, item) => sum + (item.parsed?.y || 0), 0);
+                                    return `Total active minutes: ${total}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            title: {
+                                display: true,
+                                text: "Day of month"
+                            },
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 12
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: "Active minutes/day"
+                            },
+                            grid: {
+                                color: "rgba(31, 41, 51, 0.20)"
+                            }
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
+{% else %}
+    <p class="muted">No throttling-level measurements for this month yet.</p>
+{% endif %}

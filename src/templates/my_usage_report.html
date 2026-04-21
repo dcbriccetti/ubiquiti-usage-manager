@@ -39,14 +39,12 @@
         <article class="panel">
             <div class="panel-body">
                 <h2>{{ current_month_label }} Daily Usage</h2>
+                <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
                 {% include "_month_usage_chart.html" %}
                 <p class="muted">Use your browser print dialog and choose "Save as PDF" for a bill-ready export.</p>
             </div>
         </article>
 
-        {% set show_name_row = true %}
-        {% set show_signal_row = false %}
-        {% set name_fallback = detected_mac %}
         {% set empty_usage_message = "No historical usage entries are stored for this device yet." %}
         {% include "_usage_detail_panels.html" %}
     {% endif %}

@@ -7,9 +7,6 @@
     {% include "_client_usage_hero.html" %}
     {% include "_client_usage_stats_and_measurement.html" %}
 
-    {% set show_name_row = true %}
-    {% set show_signal_row = false %}
-    {% set name_fallback = mac %}
     {% set empty_usage_message = "No historical usage entries are stored for this device yet." %}
     {% include "_usage_detail_panels.html" %}
 {% endblock %}

@@ -445,3 +445,43 @@ def get_calendar_month_daily_totals(mac: str) -> list[tuple[date, float, int]]:
         day += timedelta(days=1)
 
     return series
+
+
+def get_calendar_month_daily_profile_minutes(mac: str) -> list[tuple[date, dict[str, int]]]:
+    'Return per-day active-minute counts grouped by profile for current month.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.profile)
+        .where(
+            UsageRecord.mac == mac,
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    day_profile_counts: dict[date, dict[str, int]] = {}
+    for row_timestamp, row_profile in rows:
+        if not isinstance(row_timestamp, datetime):
+            continue
+
+        usage_day = row_timestamp.date()
+        profile_key = row_profile.strip() if isinstance(row_profile, str) and row_profile.strip() else ''
+        profile_counts = day_profile_counts.setdefault(usage_day, {})
+        profile_counts[profile_key] = profile_counts.get(profile_key, 0) + 1
+
+    day = month_start
+    series: list[tuple[date, dict[str, int]]] = []
+    while day <= today:
+        series.append((day, day_profile_counts.get(day, {})))
+        day += timedelta(days=1)
+
+    return series

@@ -38,9 +38,6 @@
             </article>
         {% endif %}
 
-        {% set show_name_row = true %}
-        {% set show_signal_row = false %}
-        {% set name_fallback = detected_mac %}
         {% set empty_usage_message = "No historical usage entries are stored for this device yet." %}
         {% include "_usage_detail_panels.html" %}
     {% endif %}
