@@ -7,6 +7,25 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
 - Stores usage history in SQLite (`meter.db`).
 - Applies throttle profiles by usage policy (configured in `src/config.py`).
 
+## Current Dashboard Features
+
+- Client table with live/historical windows: Active Now, Online Now, Today, 7 Days, and current month.
+- Per-client usage details page for admins and self-service users with daily charts and usage history.
+- Organization-paid analytics split:
+  - payer split (organization-paid vs user-paid),
+  - organization-paid client list,
+  - inclusion criteria display based on configured VLAN/MAC/User ID rules.
+- Global month analytics:
+  - daily active clients,
+  - daily MB and minutes split by Basic/Plus,
+  - peak simultaneous users by day,
+  - weekday/hour concurrent-user heatmap.
+- Throttling coverage panel:
+  - minutes throttled,
+  - total active minutes,
+  - percent time throttled,
+  - minutes by profile chart (includes only profiles defined in `THROTTLING_LEVELS`).
+
 ## Prerequisites
 
 - Python 3.11+ recommended
