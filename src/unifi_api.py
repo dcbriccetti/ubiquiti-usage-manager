@@ -6,6 +6,7 @@ monitoring and dashboard modules.
 
 from typing import Any
 import time
+import logging
 
 import requests
 import urllib3
@@ -19,6 +20,7 @@ HEADERS = {"X-API-KEY": API_KEY, "Accept": "application/json"}
 API_RETRY_ATTEMPTS = 3
 API_RETRY_BACKOFF_SECONDS = 0.35
 TRANSIENT_STATUS_CODES = {500, 502, 503, 504}
+logger = logging.getLogger(__name__)
 
 
 def _is_transient_unifi_error(exc: requests.RequestException) -> bool:
@@ -44,7 +46,7 @@ def get_api_data(endpoint: str) -> list[dict[str, Any]]:
             if should_retry:
                 time.sleep(API_RETRY_BACKOFF_SECONDS * attempt)
                 continue
-            print(f"⚠️ UniFi API Error ({endpoint}) after {attempt} attempt(s): {exc}")
+            logger.warning("UniFi API error endpoint=%s attempts=%s error=%s", endpoint, attempt, exc)
             return []
 
 def get_speed_limits() -> list[SpeedLimit]:
@@ -71,8 +73,8 @@ def set_user_group(user_id: str, group_id: str | None) -> bool:
     try:
         res = requests.post(url, json={"usergroup_id": group_id or ''}, headers=HEADERS, verify=False, timeout=10)
         return res.status_code == 200
-    except Exception as e:
-        print(f"⚠️ UniFi API Error (upd/user/{user_id}): {e}")
+    except requests.RequestException as exc:
+        logger.warning("UniFi API error endpoint=upd/user/%s error=%s", user_id, exc)
         return False
 
 def get_vlan_ids_for_names(names: list[str]) -> list[str]:
@@ -94,7 +96,7 @@ def release_all_from_limits(throttling_group_ids: set[str]) -> None:
             if set_user_group(str(user_id), None):
                 count += 1
     if count > 0:
-        print(f"✅ Successfully released {count} user(s) from throttling speed limits.")
+        logger.info("Released %s user(s) from throttling speed limits", count)
 
 def get_group_id_by_name(group_name: str) -> str | None:
     'Look up the UniFi group ID for a group name.'

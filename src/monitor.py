@@ -1,4 +1,5 @@
 import time
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -7,6 +8,7 @@ import config as cfg
 import database as db
 import unifi_api as api
 from clientinfo import ClientInfo
+from logging_config import configure_logging
 from speedlimit import SpeedLimit
 from throttling_policy import target_profile_name_for_usage
 from throttling_runtime import (
@@ -16,6 +18,8 @@ from throttling_runtime import (
     is_speed_limit_throttled,
     release_configured_limits,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -130,7 +134,7 @@ class UsageMonitor:
                 if on_cycle:
                     on_cycle(snapshots)
             except Exception as exc:
-                print(f"Error: {exc}")
+                logger.exception("Monitor cycle failed: %s", exc)
 
     def _sleep_until_next_poll_boundary(self, poll_interval_seconds: int) -> None:
         'Sleep until the next wall-clock poll boundary to keep timestamps aligned.'
@@ -145,7 +149,7 @@ class UsageMonitor:
     def _handle_day_transition(self) -> None:
         now_date = datetime.now().date()
         if now_date > self.current_day:
-            print(f"Midnight Reset: {now_date}")
+            logger.info("Midnight reset date=%s", now_date)
             release_configured_limits(self.throttling_limit_ids, "midnight")
             self.current_day = now_date
 
@@ -165,5 +169,6 @@ class UsageMonitor:
         return enforce_target_limit(client.name, client.unifi_client_id, client.speed_limit, target_limit, self.throttling_limit_ids)
 
 if __name__ == "__main__":
+    configure_logging()
     db.init_db()
     UsageMonitor().run_forever()

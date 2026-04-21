@@ -27,6 +27,7 @@ from dashboard_service import (
 )
 from dashboard_stream import event_stream
 from lan_identity import find_client_mac_for_ip, get_request_ip
+from logging_config import configure_logging
 from monitor import get_connected_clients
 from speedlimit import SpeedLimit
 
@@ -47,6 +48,7 @@ class ClientUsageContext(TypedDict):
 
 def create_app() -> Flask:
     'Create and configure the Flask web application.'
+    configure_logging()
     flask_app = Flask(__name__)
     live_update_seconds = 60
     live_update_boundary_offset_seconds = 3

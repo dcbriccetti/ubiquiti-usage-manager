@@ -1,8 +1,12 @@
 'Throttle runtime helpers for resolving and applying UniFi speed-limit profiles.'
 
+import logging
+
 import unifi_api as api
 from config import THROTTLING_LEVELS
 from speedlimit import SpeedLimit
+
+logger = logging.getLogger(__name__)
 
 
 def build_throttling_levels(speed_limits: list[SpeedLimit]) -> list[tuple[int, SpeedLimit]]:
@@ -34,7 +38,7 @@ def enforce_target_limit(client_name: str, unifi_client_id: str, current_limit: 
     effective_limit = current_limit
 
     if target_limit and (not effective_limit or effective_limit.id != target_limit.id):
-        print(f"LIMIT REACHED: Throttling {client_name} to {target_limit.name}")
+        logger.info("Limit reached: throttling client=%s target=%s", client_name, target_limit.name)
         if api.set_user_group(unifi_client_id, target_limit.id):
             effective_limit = target_limit
 
@@ -47,5 +51,5 @@ def release_configured_limits(throttling_limit_ids: set[str], context: str) -> N
     if not throttling_limit_ids:
         return
 
-    print(f"Releasing throttled clients during {context}.")
+    logger.info("Releasing throttled clients during context=%s", context)
     api.release_all_from_limits(throttling_limit_ids)

@@ -5,6 +5,7 @@ monitoring/runtime code does not need direct SQL concerns.
 '''
 
 import sqlite3
+import logging
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -18,6 +19,7 @@ from clientinfo import ClientInfo
 DB_PATH = Path(__file__).resolve().parent.parent / "meter.db"
 DB_URL = f"sqlite:///{DB_PATH}"
 engine = create_engine(DB_URL, echo=False)
+logger = logging.getLogger(__name__)
 
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, _connection_record: object) -> None:
@@ -28,7 +30,7 @@ def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, _connection_record: 
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA synchronous=NORMAL")
     except sqlite3.OperationalError as exc:
-        print(f"⚠️ SQLite PRAGMA setup skipped: {exc}")
+        logger.warning("SQLite PRAGMA setup skipped: %s", exc)
     finally:
         cursor.close()
 
