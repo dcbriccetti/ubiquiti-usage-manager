@@ -19,6 +19,7 @@ in one place, so UI changes do not require route-level rewrites.
 from datetime import datetime
 from typing import Literal, TypedDict, cast
 
+import config as cfg
 import database as db
 import unifi_api as api
 from monitor import get_connected_clients
@@ -62,6 +63,7 @@ class DashboardRow(TypedDict):
     day_total_mb: float
     last_7_days_total_mb: float
     calendar_month_total_mb: float
+    month_cost_cents: float
     speed_limit_name: str
     speed_limit_up_kbps: int | None
     speed_limit_down_kbps: int | None
@@ -101,6 +103,12 @@ def render_month_label(now: datetime) -> str:
     return full_label
 
 
+def calculate_month_cost_cents(calendar_month_total_mb: float) -> float:
+    'Return month cost in cents based on configured cents-per-GB rate.'
+    month_total_gb = calendar_month_total_mb / 1000.0
+    return month_total_gb * float(cfg.COST_IN_CENTS_PER_GB)
+
+
 def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRow]:
     'Build dashboard rows from live controller client snapshots.'
     def right_half_ip(ip_address: str) -> str:
@@ -136,6 +144,7 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
             'day_total_mb': snapshot.day_total_mb,
             'last_7_days_total_mb': snapshot.last_7_days_total_mb,
             'calendar_month_total_mb': snapshot.calendar_month_total_mb,
+            'month_cost_cents': calculate_month_cost_cents(snapshot.calendar_month_total_mb),
             'speed_limit_name': speed_limit.name if speed_limit else '',
             'speed_limit_up_kbps': speed_limit.up_kbps if speed_limit else None,
             'speed_limit_down_kbps': speed_limit.down_kbps if speed_limit else None,
@@ -191,6 +200,7 @@ def build_rows_for_historical_window(
             'day_total_mb': summary.day_total_mb,
             'last_7_days_total_mb': summary.last_7_days_total_mb,
             'calendar_month_total_mb': summary.calendar_month_total_mb,
+            'month_cost_cents': calculate_month_cost_cents(summary.calendar_month_total_mb),
             'speed_limit_name': speed_limit_name,
             'speed_limit_up_kbps': speed_limit_up_kbps,
             'speed_limit_down_kbps': speed_limit_down_kbps,

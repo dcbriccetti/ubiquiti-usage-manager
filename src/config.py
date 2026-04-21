@@ -28,5 +28,6 @@ MONTHLY_USAGE_ADJUSTMENTS = [  # Ascending order
     MonthlyUsageAdjustment(6_000, 0.35),
 ]
 
+COST_IN_CENTS_PER_GB = 50
 PLUS_ADMINS = {'plus_admin_1', 'plus_admin_2', 'plus_admin_3'}
 SELF_SERVICE_SPEED_LIMIT_ENABLED = False
