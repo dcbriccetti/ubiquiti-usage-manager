@@ -56,6 +56,8 @@ class DashboardRow(TypedDict):
     signal: int | None
     recent_activity: list[float]
     connection_duration: str
+    minute_rx_mb: float | None
+    minute_tx_mb: float | None
     interval_mb: float
     day_total_mb: float
     last_7_days_total_mb: float
@@ -102,6 +104,14 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
     rows: list[DashboardRow] = []
     for snapshot in get_connected_clients():
         speed_limit = snapshot.effective_speed_limit
+        direction_total_mb = snapshot.client.tx_mb_since_connection + snapshot.client.rx_mb_since_connection
+        minute_tx_mb: float | None = None
+        minute_rx_mb: float | None = None
+        if snapshot.interval_mb > 0 and direction_total_mb > 0:
+            tx_ratio = snapshot.client.tx_mb_since_connection / direction_total_mb
+            minute_tx_mb = snapshot.interval_mb * tx_ratio
+            minute_rx_mb = max(0.0, snapshot.interval_mb - minute_tx_mb)
+
         row: DashboardRow = {
             'user_id': snapshot.client.user_id or '',
             'name': snapshot.client.name,
@@ -112,6 +122,8 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
             'signal': snapshot.client.signal if snapshot.client.signal else None,
             'recent_activity': [],
             'connection_duration': '',
+            'minute_rx_mb': minute_rx_mb,
+            'minute_tx_mb': minute_tx_mb,
             'interval_mb': snapshot.interval_mb,
             'day_total_mb': snapshot.day_total_mb,
             'last_7_days_total_mb': snapshot.last_7_days_total_mb,
@@ -165,6 +177,8 @@ def build_rows_for_historical_window(
             'signal': None,
             'recent_activity': [],
             'connection_duration': '',
+            'minute_rx_mb': None,
+            'minute_tx_mb': None,
             'interval_mb': 0.0,
             'day_total_mb': summary.day_total_mb,
             'last_7_days_total_mb': summary.last_7_days_total_mb,

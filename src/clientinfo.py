@@ -14,6 +14,8 @@ class ClientInfo:
     speed_limit: SpeedLimit | None
     ap_name: str
     signal: int
+    tx_mb_since_connection: float
+    rx_mb_since_connection: float
     mb_used_since_connection: float
     assoc_time_seconds: int | None
 
@@ -84,6 +86,9 @@ class ClientInfo:
             speed_limit     = speed_limit,
             ap_name=ap_name,
             signal=c.get('signal', 0),
+            # UniFi station tx/rx counters are AP-centric; flip for client-centric semantics.
+            tx_mb_since_connection=c.get('rx_bytes', 0) / (1000 * 1000),
+            rx_mb_since_connection=c.get('tx_bytes', 0) / (1000 * 1000),
             mb_used_since_connection=(c.get('tx_bytes', 0) + c.get('rx_bytes', 0)) / (1000 * 1000),
             assoc_time_seconds=assoc_time_seconds,
         )

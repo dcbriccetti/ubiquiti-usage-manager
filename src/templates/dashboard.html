@@ -52,27 +52,32 @@
                         <thead>
                         <tr>
                             <th colspan="10"></th>
-                            <th colspan="4" class="usage-group">Usage (MB)</th>
+                            <th colspan="6" class="usage-group">Usage (MB)</th>
                             <th colspan="3" class="speed-group">Speed Limit (kbps)</th>
                         </tr>
                         <tr>
-                            <th class="nowrap-col">User ID</th>
-                            <th>Name</th>
-                            <th>MAC</th>
-                            <th class="nowrap-col" title="Right half of client IPv4 address (last two octets).">IP</th>
-                            <th>VLAN</th>
-                            <th class="ap-col">Access Point</th>
-                            <th>Sig</th>
-                            <th class="activity-col" title="Recent activity bars for the selected range.">Activity</th>
-                            <th class="nowrap-col" title="Current duration from recent UniFi query (positive = connected, negative = disconnected).">Connected</th>
-                            <th class="num nowrap-col" title="Average throughput over the last minute (megabits per second).">Mbps</th>
-                            <th class="num usage-col usage-first">Minute</th>
-                            <th class="num usage-col">Today</th>
-                            <th class="num usage-col">7&nbsp;Days</th>
-                            <th class="num usage-col usage-last" id="usage-month-header">{{ current_month_label }}</th>
-                            <th class="nowrap-col speed-col">Profile</th>
-                            <th class="num nowrap-col speed-col">Up</th>
-                            <th class="num nowrap-col speed-col">Down</th>
+                            <th class="nowrap-col" rowspan="2">User ID</th>
+                            <th rowspan="2">Name</th>
+                            <th rowspan="2">MAC</th>
+                            <th class="nowrap-col" rowspan="2" title="Right half of client IPv4 address (last two octets).">IP</th>
+                            <th rowspan="2">VLAN</th>
+                            <th class="ap-col" rowspan="2">Access Point</th>
+                            <th rowspan="2">Sig</th>
+                            <th class="activity-col" rowspan="2" title="Recent activity bars for the selected range.">Activity</th>
+                            <th class="nowrap-col" rowspan="2" title="Current duration from recent UniFi query (positive = connected, negative = disconnected).">Connected</th>
+                            <th class="num nowrap-col" rowspan="2" title="Average throughput over the last minute (megabits per second).">Mbps</th>
+                            <th class="usage-group" colspan="3">Minute</th>
+                            <th class="num usage-col" rowspan="2">Today</th>
+                            <th class="num usage-col" rowspan="2">7&nbsp;Days</th>
+                            <th class="num usage-col usage-last" rowspan="2" id="usage-month-header">{{ current_month_label }}</th>
+                            <th class="nowrap-col speed-col" rowspan="2">Profile</th>
+                            <th class="num nowrap-col speed-col" rowspan="2">Up</th>
+                            <th class="num nowrap-col speed-col" rowspan="2">Down</th>
+                        </tr>
+                        <tr>
+                            <th class="num usage-col usage-first">Up</th>
+                            <th class="num usage-col">Down</th>
+                            <th class="num usage-col">Tot</th>
                         </tr>
                         </thead>
                         <tbody id="connected-clients-body">
@@ -106,7 +111,9 @@
                                 </td>
                                 <td class="nowrap-col">{{ client.connection_duration }}</td>
                                 <td class="num nowrap-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format((client.interval_mb * 8.0) / 60.0) }}{% endif %}</td>
-                                <td class="num usage-col usage-first">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
+                                <td class="num usage-col usage-first">{% if client.minute_tx_mb is not none %}{{ "{:,.3f}".format(client.minute_tx_mb) }}{% endif %}</td>
+                                <td class="num usage-col">{% if client.minute_rx_mb is not none %}{{ "{:,.3f}".format(client.minute_rx_mb) }}{% endif %}</td>
+                                <td class="num usage-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
                                 <td class="num usage-col">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
                                 <td class="num usage-col usage-last">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
@@ -116,7 +123,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="17" class="muted">
+                                <td colspan="19" class="muted">
                                     {% if selected_window == "active_now" %}
                                         No clients are actively using data right now.
                                     {% else %}
@@ -209,7 +216,7 @@
 
             const renderConnectedClients = (clients) => {
                 if (!clients.length) {
-                    connectedBody.innerHTML = `<tr><td colspan="17" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+                    connectedBody.innerHTML = `<tr><td colspan="19" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
                     return;
                 }
 
@@ -229,7 +236,9 @@
                             <td class="activity-col">${renderRecentActivity(client.recent_activity)}</td>
                             <td class="nowrap-col">${escapeHtml(client.connection_duration || "")}</td>
                             <td class="num nowrap-col">${formatAvgMbps(client.interval_mb)}</td>
-                            <td class="num usage-col usage-first">${formatMinute(client.interval_mb)}</td>
+                            <td class="num usage-col usage-first">${formatMinute(client.minute_tx_mb)}</td>
+                            <td class="num usage-col">${formatMinute(client.minute_rx_mb)}</td>
+                            <td class="num usage-col">${formatMinute(client.interval_mb)}</td>
                             <td class="num usage-col">${formatWhole(client.day_total_mb)}</td>
                             <td class="num usage-col">${formatWhole(client.last_7_days_total_mb)}</td>
                             <td class="num usage-col usage-last">${formatWhole(client.calendar_month_total_mb)}</td>
