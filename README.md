@@ -1,45 +1,92 @@
-An application to control and bill for usage in a Ubiquiti local area network.
+UniFi usage dashboard + monitor for tracking client usage and applying policy-based speed limits.
 
-## Branch Direction
+## What This App Does
 
-The `codex-flask-webapp` branch starts the move from a single long-running script
-to a small Flask web application plus a separate background monitor.
+- Shows live and historical client usage in a Flask web dashboard.
+- Polls UniFi clients continuously via a background monitor.
+- Stores usage history in SQLite (`meter.db`).
+- Applies throttle profiles by usage policy (configured in `src/config.py`).
 
-## Running The Web App
+## Prerequisites
 
-Install dependencies:
+- Python 3.11+ recommended
+- Access to a UniFi controller/gateway API
+- Valid UniFi API key in `src/keys.py`
+
+## 1) Install Dependencies
 
 ```bash
 python3 -m pip install -r requirements.txt
 ```
 
-Start the Flask dashboard:
+## 2) Configure The App
 
-```bash
-python3 src/app.py
+Edit `src/keys.py`:
+
+```python
+API_KEY = "your-unifi-api-key"
 ```
 
-## Running The Monitor
+Review `src/config.py` for your environment:
 
-Run the polling/throttling worker separately:
+- `THROTTLEABLE_VLAN_NAMES`
+- `THROTTLING_LEVELS`
+- `MONTHLY_USAGE_ADJUSTMENTS`
+- `COST_IN_CENTS_PER_GB`
+- `PLUS_ADMINS`
+
+## 3) Start The Monitor (required for live data)
 
 ```bash
 python3 src/monitor.py
 ```
 
-## Safe Mode
+The monitor:
 
-`src/config.py` now includes `SAFE_MODE = True` by default.
+- polls connected clients (`stat/sta`)
+- writes usage intervals to `meter.db`
+- can apply UniFi user-group changes when policy thresholds are reached
 
-In safe mode:
+## 4) Start The Web App
 
-- No database write calls are executed from the monitor/web startup path.
-- No UniFi group changes are sent (`set_user_group` / `release_all_from_limit` are skipped).
+In a second terminal:
 
-Set `SAFE_MODE = False` only when you are ready to allow live network changes.
+```bash
+python3 src/app.py
+```
 
-## Current Shape
+Open:
 
-- `src/app.py` serves the Flask dashboard.
-- `src/monitor.py` owns the background usage polling and throttling loop.
-- `src/database.py` stores usage records and provides dashboard queries.
+- `http://localhost:5051`
+
+If your request is not recognized as an admin, `/` redirects to `/my-usage`.
+
+## Helpful Environment Variables
+
+- `LOG_LEVEL=DEBUG` to increase log detail
+- `DEV_REQUEST_IP=<ip>` to force request IP resolution (testing)
+- `DEV_FORCE_PLUS_ADMIN=1` to bypass admin check (testing)
+
+Example:
+
+```bash
+LOG_LEVEL=DEBUG DEV_FORCE_PLUS_ADMIN=1 python3 src/app.py
+```
+
+## First-Time Tryout Checklist
+
+1. Start monitor and web app.
+2. Generate traffic from a test client.
+3. Confirm dashboard rows appear and minute usage updates.
+4. Open a client detail page from Name/MAC links.
+5. Verify month cost values match `COST_IN_CENTS_PER_GB`.
+
+## Notes
+
+- `meter.db` is created in the repo root on first run.
+- Throttling actions are live changes against UniFi groups, so test carefully.
+- Main files:
+  - `src/app.py` web routes/UI
+  - `src/monitor.py` polling + enforcement loop
+  - `src/dashboard_service.py` dashboard row shaping
+  - `src/database.py` persistence/query layer
