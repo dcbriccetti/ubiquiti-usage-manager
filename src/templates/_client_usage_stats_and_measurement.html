@@ -1,0 +1,26 @@
+<section class="grid stats">
+    <article class="panel stat">
+        <span class="label">Usage Today</span>
+        <span class="value">{{ "{:,.0f}".format(daily_total_mb) }} MB</span>
+    </article>
+    <article class="panel stat">
+        <span class="label">Usage 7 Days</span>
+        <span class="value">{{ "{:,.0f}".format(last_7_days_total_mb) }} MB</span>
+    </article>
+    <article class="panel stat">
+        <span class="label">Usage {{ current_month_label }}</span>
+        <span class="value">{{ "{:,.0f}".format(calendar_month_total_mb) }} MB</span>
+    </article>
+    <article class="panel stat">
+        <span class="label">Month Cost</span>
+        <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
+    </article>
+</section>
+
+<article class="panel">
+    <div class="panel-body">
+        <h2>{{ current_month_label }} Usage</h2>
+        {% include "_month_usage_chart.html" %}
+        <p class="muted">Daily totals for this month. Use browser print to save as PDF.</p>
+    </div>
+</article>

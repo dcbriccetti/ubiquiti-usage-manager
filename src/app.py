@@ -34,6 +34,14 @@ from speedlimit import SpeedLimit
 SpeedLimitsByName = dict[str, SpeedLimit]
 
 
+class DailyUsagePoint(TypedDict):
+    'One day point for month usage chart.'
+    day_label: str
+    day_of_month: int
+    total_mb: float
+    active_minutes: int
+
+
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
     mac: str
@@ -42,6 +50,8 @@ class ClientUsageContext(TypedDict):
     daily_total_mb: float
     last_7_days_total_mb: float
     calendar_month_total_mb: float
+    month_cost_cents: float
+    month_daily_usage: list[DailyUsagePoint]
     current_month_label: str
     speed_limits_by_name: SpeedLimitsByName
 
@@ -59,6 +69,10 @@ def create_app() -> Flask:
         if len(full_label) > 5:
             return now.strftime('%b')
         return full_label
+
+    def calculate_month_cost_cents(calendar_month_total_mb: float) -> float:
+        'Return estimated month cost in cents using configured rate.'
+        return (calendar_month_total_mb / 1000.0) * float(cfg.COST_IN_CENTS_PER_GB)
 
     def get_speed_limits_by_name() -> SpeedLimitsByName:
         'Return mapping of speed-limit profile name to SpeedLimit object.'
@@ -168,13 +182,26 @@ def create_app() -> Flask:
             )
             usage_history = []
 
+        calendar_month_total_mb = db.get_calendar_month_total(mac)
+        month_daily_usage = [
+            {
+                'day_label': f'{usage_day.strftime("%b")} {usage_day.day}',
+                'day_of_month': usage_day.day,
+                'total_mb': total_mb,
+                'active_minutes': active_minutes,
+            }
+            for usage_day, total_mb, active_minutes in db.get_calendar_month_daily_totals(mac)
+        ]
+
         return {
             'mac': mac,
             'latest_record': latest_record,
             'usage_history': usage_history,
             'daily_total_mb': db.get_daily_total(mac),
             'last_7_days_total_mb': db.get_last_7_days_total(mac),
-            'calendar_month_total_mb': db.get_calendar_month_total(mac),
+            'calendar_month_total_mb': calendar_month_total_mb,
+            'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
+            'month_daily_usage': month_daily_usage,
             'current_month_label': render_month_label(datetime.now()),
             'speed_limits_by_name': get_speed_limits_by_name(),
         }
@@ -312,6 +339,46 @@ def create_app() -> Flask:
             speed_limit_options=speed_limit_options,
             selected_speed_limit_name=selected_speed_limit_name,
             speed_limit_form_message=speed_limit_form_message,
+            **context,
+        )
+
+    @flask_app.route("/my-usage/report")
+    def my_usage_report():
+        'Render print-friendly monthly billing report for the current requester.'
+        if not (request_ip := resolve_request_ip()):
+            return render_template(
+                "my_usage_report.html",
+                error_message="Could not determine your client IP address from this request.",
+                request_ip="",
+                detected_mac="",
+            )
+
+        if not (detected_mac := find_client_mac_for_ip(request_ip)):
+            return render_template(
+                "my_usage_report.html",
+                error_message=(
+                    "Could not map your IP to a UniFi client right now. "
+                    "Try again in a moment after generating some network activity."
+                ),
+                request_ip=request_ip,
+                detected_mac="",
+            )
+
+        try:
+            context = get_client_usage_context(detected_mac)
+        except LookupError:
+            return render_template(
+                "my_usage_report.html",
+                error_message="We identified your device, but no usage record is available yet.",
+                request_ip=request_ip,
+                detected_mac=detected_mac,
+            )
+
+        return render_template(
+            "my_usage_report.html",
+            request_ip=request_ip,
+            detected_mac=detected_mac,
+            generated_at=datetime.now(),
             **context,
         )
 

@@ -7,7 +7,7 @@ monitoring/runtime code does not need direct SQL concerns.
 import sqlite3
 import logging
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime, date, time, timedelta
 from pathlib import Path
 from typing import Optional, cast
 from sqlalchemy import create_engine, String, func, select, event
@@ -406,3 +406,42 @@ def get_usage_window_summary(window: str) -> list[UsageWindowSummary]:
         key=lambda row: row.calendar_month_total_mb,
         reverse=True,
     )
+
+
+def get_calendar_month_daily_totals(mac: str) -> list[tuple[date, float, int]]:
+    'Return per-day usage totals and active-minute counts for current month, oldest to newest.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.mb_used)
+        .where(
+            UsageRecord.mac == mac,
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    totals_by_day: dict[date, float] = {}
+    active_minutes_by_day: dict[date, int] = {}
+    for row_timestamp, row_mb_used in rows:
+        if not isinstance(row_timestamp, datetime):
+            continue
+        usage_day = row_timestamp.date()
+        totals_by_day[usage_day] = totals_by_day.get(usage_day, 0.0) + float(row_mb_used or 0.0)
+        active_minutes_by_day[usage_day] = active_minutes_by_day.get(usage_day, 0) + 1
+
+    day = month_start
+    series: list[tuple[date, float, int]] = []
+    while day <= today:
+        series.append((day, totals_by_day.get(day, 0.0), active_minutes_by_day.get(day, 0)))
+        day += timedelta(days=1)
+
+    return series

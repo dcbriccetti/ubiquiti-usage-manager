@@ -3,12 +3,8 @@
 {% block title %}My Usage | UniFi Usage{% endblock %}
 
 {% block content %}
-    <section class="hero detail-hero">
-        <div>
-            <h1>My Usage</h1>
-            <p class="mono">IP: {{ request_ip or "Unknown" }}{% if detected_mac %} &nbsp;|&nbsp; MAC: {{ detected_mac }}{% endif %}</p>
-        </div>
-    </section>
+    {% set display_mac = detected_mac %}
+    {% include "_client_usage_hero.html" %}
 
     {% if error_message %}
         <article class="panel">
@@ -18,20 +14,7 @@
             </div>
         </article>
     {% else %}
-        <section class="grid stats">
-            <article class="panel stat">
-                <span class="label">Usage Today</span>
-                <span class="value">{{ "{:,.0f}".format(daily_total_mb) }} MB</span>
-            </article>
-            <article class="panel stat">
-                <span class="label">Usage 7 Days</span>
-                <span class="value">{{ "{:,.0f}".format(last_7_days_total_mb) }} MB</span>
-            </article>
-            <article class="panel stat">
-                <span class="label">Usage This Month</span>
-                <span class="value">{{ "{:,.0f}".format(calendar_month_total_mb) }} MB</span>
-            </article>
-        </section>
+        {% include "_client_usage_stats_and_measurement.html" %}
 
         {% if can_set_speed_limit %}
             <article class="panel">

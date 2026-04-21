@@ -1,0 +1,123 @@
+{% set month_points = month_daily_usage or [] %}
+{% if month_points %}
+    {% set chart_id = "month-usage-chart-" ~ (mac or "client")|replace(":", "") %}
+    {% set labels = month_points | map(attribute='day_of_month') | list %}
+    {% set mb_series = month_points | map(attribute='total_mb') | list %}
+    {% set minutes_series = month_points | map(attribute='active_minutes') | list %}
+    {% set full_labels = month_points | map(attribute='day_label') | list %}
+
+    <div class="month-chart-wrap">
+        <canvas id="{{ chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily usage measurements for the month"></canvas>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+    <script>
+        (() => {
+            const canvas = document.getElementById({{ chart_id|tojson }});
+            if (!canvas || typeof Chart === "undefined") {
+                return;
+            }
+
+            const labels = {{ labels|tojson }};
+            const mbSeries = {{ mb_series|tojson }};
+            const minutesSeries = {{ minutes_series|tojson }};
+            const fullLabels = {{ full_labels|tojson }};
+
+            new Chart(canvas, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: "Usage MB/day",
+                            data: mbSeries,
+                            yAxisID: "yMb",
+                            backgroundColor: "rgba(15, 118, 110, 0.72)",
+                            borderRadius: 3,
+                            barPercentage: 0.9,
+                            categoryPercentage: 0.82
+                        },
+                        {
+                            label: "Active minutes/day",
+                            data: minutesSeries,
+                            yAxisID: "yMin",
+                            backgroundColor: "rgba(194, 65, 12, 0.82)",
+                            borderRadius: 3,
+                            barPercentage: 0.9,
+                            categoryPercentage: 0.82
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: "top",
+                            align: "start",
+                            labels: {
+                                boxWidth: 20,
+                                boxHeight: 10,
+                                useBorderRadius: true,
+                                borderRadius: 3
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title(tooltipItems) {
+                                    const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                    return fullLabels[idx] || "";
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: "Day of month"
+                            },
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 12
+                            }
+                        },
+                        yMb: {
+                            type: "linear",
+                            position: "left",
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: "MB/day"
+                            },
+                            grid: {
+                                color: "rgba(31, 41, 51, 0.20)"
+                            }
+                        },
+                        yMin: {
+                            type: "linear",
+                            position: "right",
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: "minutes/day"
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
+{% else %}
+    <p class="muted">No daily usage measurements for this month yet.</p>
+{% endif %}

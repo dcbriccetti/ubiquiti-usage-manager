@@ -3,32 +3,13 @@
 {% block title %}{{ latest_record.name or mac }} | UniFi Usage{% endblock %}
 
 {% block content %}
-    <section class="hero detail-hero">
-        <div>
-            <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
-            <h1>{{ latest_record.name or mac }}</h1>
-            <p class="mono">{{ mac }}</p>
-        </div>
-    </section>
+    {% set display_mac = mac %}
+    {% include "_client_usage_hero.html" %}
+    {% include "_client_usage_stats_and_measurement.html" %}
 
-    <section class="grid stats">
-        <article class="panel stat">
-            <span class="label">Usage Today</span>
-            <span class="value">{{ "{:,.0f}".format(daily_total_mb) }} MB</span>
-        </article>
-        <article class="panel stat">
-            <span class="label">Usage 7 Days</span>
-            <span class="value">{{ "{:,.0f}".format(last_7_days_total_mb) }} MB</span>
-        </article>
-        <article class="panel stat">
-            <span class="label">Usage {{ current_month_label }}</span>
-            <span class="value">{{ "{:,.0f}".format(calendar_month_total_mb) }} MB</span>
-        </article>
-    </section>
-
-    {% set show_name_row = false %}
-    {% set show_signal_row = true %}
+    {% set show_name_row = true %}
+    {% set show_signal_row = false %}
     {% set name_fallback = mac %}
-    {% set empty_usage_message = "No historical usage entries are stored for this client yet." %}
+    {% set empty_usage_message = "No historical usage entries are stored for this device yet." %}
     {% include "_usage_detail_panels.html" %}
 {% endblock %}

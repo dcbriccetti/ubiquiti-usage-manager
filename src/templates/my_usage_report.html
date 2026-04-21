@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Billing Report | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero detail-hero">
+        <div>
+            <h1>Billing Report</h1>
+            <p class="mono">IP: {{ request_ip or "Unknown" }}{% if detected_mac %} &nbsp;|&nbsp; MAC: {{ detected_mac }}{% endif %}</p>
+            {% if generated_at %}
+                <p class="muted">Generated {{ generated_at.strftime("%Y-%m-%d %H:%M:%S") }}</p>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if error_message %}
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Unavailable</h2>
+                <p class="muted">{{ error_message }}</p>
+            </div>
+        </article>
+    {% else %}
+        <section class="grid stats">
+            <article class="panel stat">
+                <span class="label">Usage {{ current_month_label }}</span>
+                <span class="value">{{ "{:,.0f}".format(calendar_month_total_mb) }} MB</span>
+            </article>
+            <article class="panel stat">
+                <span class="label">Est. Cost</span>
+                <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
+            </article>
+            <article class="panel stat">
+                <span class="label">User ID</span>
+                <span class="value">{{ latest_record.user_id or "Unknown" }}</span>
+            </article>
+        </section>
+
+        <article class="panel">
+            <div class="panel-body">
+                <h2>{{ current_month_label }} Daily Usage</h2>
+                {% include "_month_usage_chart.html" %}
+                <p class="muted">Use your browser print dialog and choose "Save as PDF" for a bill-ready export.</p>
+            </div>
+        </article>
+
+        {% set show_name_row = true %}
+        {% set show_signal_row = false %}
+        {% set name_fallback = detected_mac %}
+        {% set empty_usage_message = "No historical usage entries are stored for this device yet." %}
+        {% include "_usage_detail_panels.html" %}
+    {% endif %}
+{% endblock %}
