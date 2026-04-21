@@ -48,6 +48,7 @@ def get_api_data(endpoint: str) -> list[dict[str, Any]]:
                 continue
             logger.warning("UniFi API error endpoint=%s attempts=%s error=%s", endpoint, attempt, exc)
             return []
+    return []
 
 def get_speed_limits() -> list[SpeedLimit]:
     'Return configured UniFi user groups as SpeedLimit objects.'

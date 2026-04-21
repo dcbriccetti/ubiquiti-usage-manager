@@ -140,11 +140,14 @@ def create_app() -> Flask:
         if not matched_limit:
             return -0.5
 
-        caps = [cap for cap in (matched_limit.up_kbps, matched_limit.down_kbps) if isinstance(cap, int) and cap > 0]
+        caps: list[int] = []
+        for cap in (matched_limit.up_kbps, matched_limit.down_kbps):
+            if isinstance(cap, int) and cap > 0:
+                caps.append(cap)
         if not caps:
             return 0.0
 
-        strictest_cap_kbps = min(caps)
+        strictest_cap_kbps: int = min(caps)
         return 1_000_000.0 / float(strictest_cap_kbps)
 
     def warn_missing_radius_identity(record: UsageRecord, request_ip: str | None, detected_mac: str | None) -> None:
@@ -217,7 +220,7 @@ def create_app() -> Flask:
 
         speed_limits_by_name = get_speed_limits_by_name()
         calendar_month_total_mb = db.get_calendar_month_total(mac)
-        month_daily_usage = [
+        month_daily_usage: list[DailyUsagePoint] = [
             {
                 'day_label': f'{usage_day.strftime("%b")} {usage_day.day}',
                 'day_of_month': usage_day.day,

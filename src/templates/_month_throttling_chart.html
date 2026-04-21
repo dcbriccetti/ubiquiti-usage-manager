@@ -4,6 +4,8 @@
         <canvas id="{{ throttle_chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily throttling levels for the month"></canvas>
     </div>
     <script>
+        // @ts-nocheck
+        /* global Chart */
         (() => {
             const canvas = document.getElementById({{ throttle_chart_id|tojson }});
             if (!canvas || typeof Chart === "undefined") {
@@ -58,18 +60,16 @@
                             }
                         },
                         tooltip: {
-                            filter(tooltipItem) {
-                                return (tooltipItem.parsed?.y || 0) > 0;
-                            },
+                            filter: (tooltipItem) => (tooltipItem.parsed?.y || 0) > 0,
                             callbacks: {
-                                title(tooltipItems) {
+                                title: (tooltipItems) => {
                                     const idx = tooltipItems[0]?.dataIndex ?? 0;
                                     return fullLabels[idx] || "";
                                 },
-                                afterBody(tooltipItems) {
+                                afterBody: (tooltipItems) => {
                                     const total = tooltipItems.reduce((sum, item) => sum + (item.parsed?.y || 0), 0);
                                     return `Total active minutes: ${total}`;
-                                }
+                                },
                             }
                         }
                     },

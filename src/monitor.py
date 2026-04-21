@@ -136,7 +136,8 @@ class UsageMonitor:
             except Exception as exc:
                 logger.exception("Monitor cycle failed: %s", exc)
 
-    def _sleep_until_next_poll_boundary(self, poll_interval_seconds: int) -> None:
+    @staticmethod
+    def _sleep_until_next_poll_boundary(poll_interval_seconds: int) -> None:
         'Sleep until the next wall-clock poll boundary to keep timestamps aligned.'
         if poll_interval_seconds <= 0:
             return

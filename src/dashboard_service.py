@@ -78,6 +78,34 @@ class DashboardData(TypedDict):
     total_today_mb: float
     total_last_7_days_mb: float
     total_calendar_month_mb: float
+    active_users_daily_min: int
+    active_users_daily_mean: float
+    active_users_daily_max: int
+    active_users_today: int
+    active_users_days_in_period: int
+    active_users_chart_x_labels: list[int]
+    active_users_chart_full_labels: list[str]
+    active_users_chart_counts: list[int]
+    top_users_this_month: list[dict[str, object]]
+    top_access_points_this_month: list[dict[str, object]]
+    daily_network_x_labels: list[int]
+    daily_network_full_labels: list[str]
+    daily_network_basic_mb: list[float]
+    daily_network_plus_mb: list[float]
+    daily_network_basic_minutes: list[int]
+    daily_network_plus_minutes: list[int]
+    live_update_seconds: int
+
+
+class DashboardPayload(TypedDict):
+    'Subset payload returned by snapshot/SSE endpoints.'
+    selected_window: WindowName
+    selected_activity_span: ActivitySpan
+    current_month_label: str
+    total_today_mb: float
+    total_last_7_days_mb: float
+    total_calendar_month_mb: float
+    clients: list[DashboardRow]
     live_update_seconds: int
 
 
@@ -156,11 +184,11 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
     # Sort for operational usefulness: users currently moving data the fastest float to top.
     return sorted(
         rows,
-        key=lambda row: (
-            -row['interval_mb'],
-            -row['day_total_mb'],
-            str(row['name']).lower(),
-            str(row['mac']).lower(),
+        key=lambda entry: (
+            -entry['interval_mb'],
+            -entry['day_total_mb'],
+            str(entry['name']).lower(),
+            str(entry['mac']).lower(),
         ),
     )
 
@@ -233,15 +261,15 @@ def add_current_connection_minutes(rows: list[DashboardRow]) -> None:
             return parsed if parsed >= 0 else None
         return None
 
-    def normalize_online_seconds(raw_value: object, now_seconds: int) -> int | None:
+    def normalize_online_seconds(raw_value: object, now_epoch_seconds: int) -> int | None:
         parsed = parse_non_negative_int(raw_value)
         if parsed is None:
             return None
         # If this looks like an epoch timestamp, convert to elapsed duration.
         if parsed > 10_000_000_000:
             parsed = parsed // 1000
-        if 946684800 <= parsed <= now_seconds + 86400:
-            return max(0, now_seconds - parsed)
+        if 946684800 <= parsed <= now_epoch_seconds + 86400:
+            return max(0, now_epoch_seconds - parsed)
         return parsed
 
     def parse_epoch_seconds(value: object) -> int | None:
@@ -310,6 +338,8 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
 
 def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, live_update_seconds: int) -> DashboardData:
     'Assemble all dashboard fields needed by HTML render, API snapshot, and SSE stream.'
+    insights = db.get_global_month_insights(top_limit=6)
+    daily_network_usage = db.get_global_daily_network_usage_current_month()
     speed_limits_by_name = {
         limit.name: limit for limit in api.get_speed_limits()
     }
@@ -329,11 +359,43 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         'total_today_mb': db.get_total_today_usage(),
         'total_last_7_days_mb': db.get_total_last_7_days_usage(),
         'total_calendar_month_mb': db.get_total_calendar_month_usage(),
+        'active_users_daily_min': insights.active_users_min,
+        'active_users_daily_mean': insights.active_users_mean,
+        'active_users_daily_max': insights.active_users_max,
+        'active_users_today': insights.active_users_today,
+        'active_users_days_in_period': insights.days_in_period,
+        'active_users_chart_x_labels': insights.active_users_daily_x_labels,
+        'active_users_chart_full_labels': insights.active_users_daily_full_labels,
+        'active_users_chart_counts': insights.active_users_daily_counts,
+        'top_users_this_month': [
+            {
+                'mac': insight_row.mac,
+                'name': insight_row.name,
+                'user_id': insight_row.user_id,
+                'total_mb': insight_row.total_mb,
+                'active_minutes': insight_row.active_minutes,
+            }
+            for insight_row in insights.top_users
+        ],
+        'top_access_points_this_month': [
+            {
+                'ap_name': insight_row.ap_name,
+                'total_mb': insight_row.total_mb,
+                'active_minutes': insight_row.active_minutes,
+            }
+            for insight_row in insights.top_access_points
+        ],
+        'daily_network_x_labels': [network_row.usage_day.day for network_row in daily_network_usage],
+        'daily_network_full_labels': [f'{network_row.usage_day.strftime("%b")} {network_row.usage_day.day}' for network_row in daily_network_usage],
+        'daily_network_basic_mb': [network_row.basic_mb for network_row in daily_network_usage],
+        'daily_network_plus_mb': [network_row.plus_mb for network_row in daily_network_usage],
+        'daily_network_basic_minutes': [network_row.basic_minutes for network_row in daily_network_usage],
+        'daily_network_plus_minutes': [network_row.plus_minutes for network_row in daily_network_usage],
         'live_update_seconds': live_update_seconds,
     }
 
 
-def build_dashboard_payload(data: DashboardData) -> DashboardData:
+def build_dashboard_payload(data: DashboardData) -> DashboardPayload:
     'Project dashboard data into the lightweight JSON payload used by snapshot/SSE routes.'
     return {
         'selected_window': data['selected_window'],

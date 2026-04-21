@@ -39,7 +39,7 @@
         <article class="panel">
             <div class="panel-body">
                 <h2>{{ current_month_label }} Daily Usage</h2>
-                <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+                <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
                 {% include "_month_usage_chart.html" %}
                 <p class="muted">Use your browser print dialog and choose "Save as PDF" for a bill-ready export.</p>
             </div>

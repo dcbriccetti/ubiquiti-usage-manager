@@ -322,10 +322,16 @@
             overflow: auto;
         }
 
+        .usage-history-panel table {
+            width: max-content;
+            min-width: 0;
+        }
+
         .usage-history-panel th,
         .usage-history-panel td {
             padding: 6px 8px;
             line-height: 1.15;
+            white-space: nowrap;
         }
 
         .usage-history-panel th:nth-child(1),
@@ -340,6 +346,73 @@
             padding-left: 4px;
             white-space: nowrap;
             width: 1%;
+        }
+
+        .insights-kpis {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .insight-kpi {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.55);
+            padding: 10px 12px;
+        }
+
+        .insight-kpi .label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.74rem;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+        }
+
+        .insight-kpi .value {
+            display: block;
+            margin-top: 6px;
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+
+        .panel h3 {
+            margin: 10px 0 10px;
+            font-size: 0.98rem;
+            color: var(--muted);
+        }
+
+        .insights-tables {
+            grid-template-columns: repeat(auto-fit, minmax(340px, 520px));
+            justify-content: start;
+            gap: 14px;
+        }
+
+        .insights-tables article {
+            width: 100%;
+            max-width: 520px;
+        }
+
+        table.insights-table {
+            width: auto;
+            min-width: 0;
+            table-layout: fixed;
+        }
+
+        table.insights-table th:first-child,
+        table.insights-table td:first-child {
+            width: 170px;
+            max-width: 170px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        table.insights-table th.num,
+        table.insights-table td.num {
+            width: 90px;
+            white-space: nowrap;
         }
 
         @media (max-width: 900px) {

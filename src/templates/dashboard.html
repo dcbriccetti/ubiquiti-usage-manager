@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+<!--suppress JSUnresolvedVariable, JSCheckFunctionSignatures -->
 
 {% block title %}Dashboard | UniFi Usage{% endblock %}
 {% block page_class %} wide-page{% endblock %}
@@ -152,8 +153,297 @@
             </div>
         </article>
 
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Global Insights ({{ current_month_label }})</h2>
+                <section class="insights-kpis">
+                    <div class="insight-kpi">
+                        <span class="label">Daily Active Users Min</span>
+                        <span class="value">{{ "{:,.0f}".format(active_users_daily_min) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">Daily Active Users Mean</span>
+                        <span class="value">{{ "{:,.1f}".format(active_users_daily_mean) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">Daily Active Users Max</span>
+                        <span class="value">{{ "{:,.0f}".format(active_users_daily_max) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">Active Users Today</span>
+                        <span class="value">{{ "{:,.0f}".format(active_users_today) }}</span>
+                    </div>
+                </section>
+                <p class="muted">Based on {{ active_users_days_in_period }} day{% if active_users_days_in_period != 1 %}s{% endif %} in the current month.</p>
+
+                <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+                <h3>Daily Active Clients</h3>
+                <div class="month-chart-wrap">
+                    <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients in current month"></canvas>
+                </div>
+                <h3>Daily MB (Stacked Basic/Plus)</h3>
+                <div class="month-chart-wrap">
+                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily MB stacked by Basic and Plus"></canvas>
+                </div>
+                <h3>Daily Active Minutes (Stacked Basic/Plus)</h3>
+                <div class="month-chart-wrap">
+                    <canvas id="global-daily-minutes-chart" class="month-chart-canvas" role="img" aria-label="Daily active minutes stacked by Basic and Plus"></canvas>
+                </div>
+
+                <section class="grid columns insights-tables">
+                    <article>
+                        <h3>Top Users by {{ current_month_label }} MB</h3>
+                        <table class="insights-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th class="num">MB</th>
+                                    <th class="num">Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in top_users_this_month %}
+                                    <tr>
+                                        <td class="nowrap-col">
+                                            {% if user.user_id %}
+                                                {{ user.user_id }}
+                                            {% else %}
+                                                {{ user.name }}
+                                            {% endif %}
+                                        </td>
+                                        <td class="num">{{ "{:,.0f}".format(user.total_mb) }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(user.active_minutes) }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="3" class="muted">No usage data this month yet.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </article>
+                    <article>
+                        <h3>AP Hotspots by Active Minutes</h3>
+                        <table class="insights-table">
+                            <thead>
+                                <tr>
+                                    <th>Access Point</th>
+                                    <th class="num">Minutes</th>
+                                    <th class="num">MB</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ap in top_access_points_this_month %}
+                                    <tr>
+                                        <td class="nowrap-col">{{ ap.ap_name }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(ap.total_mb) }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="3" class="muted">No access-point usage data this month yet.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </article>
+                </section>
+            </div>
+        </article>
+
     </section>
     <script>
+        // @ts-nocheck
+        /* global Chart */
+        (function () {
+            if (typeof Chart === "undefined") {
+                return;
+            }
+
+            const xLabels = {{ daily_network_x_labels|tojson }};
+            const fullLabels = {{ daily_network_full_labels|tojson }};
+            const basicMb = {{ daily_network_basic_mb|tojson }};
+            const plusMb = {{ daily_network_plus_mb|tojson }};
+            const basicMinutes = {{ daily_network_basic_minutes|tojson }};
+            const plusMinutes = {{ daily_network_plus_minutes|tojson }};
+            const activeUsersXLabels = {{ active_users_chart_x_labels|tojson }};
+            const activeUsersFullLabels = {{ active_users_chart_full_labels|tojson }};
+            const activeUsersCounts = {{ active_users_chart_counts|tojson }};
+
+            const sharedStackedOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: "index",
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        position: "top",
+                        align: "start"
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: (tooltipItems) => {
+                                const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                return fullLabels[idx] || "";
+                            },
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true,
+                        title: {
+                            display: true,
+                            text: "Day of month"
+                        },
+                        grid: { display: false },
+                        ticks: {
+                            maxRotation: 0,
+                            autoSkip: true,
+                            maxTicksLimit: 12
+                        }
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        grid: {
+                            color: "rgba(31, 41, 51, 0.20)"
+                        }
+                    }
+                }
+            };
+
+            const mbCanvas = document.getElementById("global-daily-mb-chart");
+            if (mbCanvas) {
+                new Chart(mbCanvas, {
+                    type: "bar",
+                    data: {
+                        labels: xLabels,
+                        datasets: [
+                            {
+                                label: "Basic",
+                                data: basicMb,
+                                backgroundColor: "rgba(15, 118, 110, 0.72)"
+                            },
+                            {
+                                label: "Plus",
+                                data: plusMb,
+                                backgroundColor: "rgba(194, 65, 12, 0.82)"
+                            }
+                        ]
+                    },
+                    options: {
+                        ...sharedStackedOptions,
+                        scales: {
+                            ...sharedStackedOptions.scales,
+                            y: {
+                                ...sharedStackedOptions.scales.y,
+                                title: {
+                                    display: true,
+                                    text: "MB/day"
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            const activeClientsCanvas = document.getElementById("global-daily-active-clients-chart");
+            if (activeClientsCanvas) {
+                new Chart(activeClientsCanvas, {
+                    type: "bar",
+                    data: {
+                        labels: activeUsersXLabels,
+                        datasets: [
+                            {
+                                label: "Active Clients",
+                                data: activeUsersCounts,
+                                backgroundColor: "rgba(59, 130, 246, 0.78)"
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    title: (tooltipItems) => {
+                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                        return activeUsersFullLabels[idx] || "";
+                                    },
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: "Day of month"
+                                },
+                                grid: { display: false },
+                                ticks: {
+                                    maxRotation: 0,
+                                    autoSkip: true,
+                                    maxTicksLimit: 12
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: "Active clients/day"
+                                },
+                                grid: {
+                                    color: "rgba(31, 41, 51, 0.20)"
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            const minutesCanvas = document.getElementById("global-daily-minutes-chart");
+            if (minutesCanvas) {
+                new Chart(minutesCanvas, {
+                    type: "bar",
+                    data: {
+                        labels: xLabels,
+                        datasets: [
+                            {
+                                label: "Basic",
+                                data: basicMinutes,
+                                backgroundColor: "rgba(15, 118, 110, 0.72)"
+                            },
+                            {
+                                label: "Plus",
+                                data: plusMinutes,
+                                backgroundColor: "rgba(194, 65, 12, 0.82)"
+                            }
+                        ]
+                    },
+                    options: {
+                        ...sharedStackedOptions,
+                        scales: {
+                            ...sharedStackedOptions.scales,
+                            y: {
+                                ...sharedStackedOptions.scales.y,
+                                title: {
+                                    display: true,
+                                    text: "Active minutes/day"
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        })();
+
         (function () {
             const clientsTable = document.getElementById("clients-table");
             const preUsageGroupHeader = document.getElementById("pre-usage-group-header");

@@ -70,6 +70,49 @@ class UsageWindowSummary:
     calendar_month_total_mb: float
     last_seen: datetime
 
+
+@dataclass(frozen=True, kw_only=True)
+class GlobalTopUser:
+    'Global monthly leaderboard row for one user/client.'
+    mac: str
+    name: str
+    user_id: str
+    total_mb: float
+    active_minutes: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class GlobalTopAccessPoint:
+    'Global monthly hotspot row for one access point.'
+    ap_name: str
+    total_mb: float
+    active_minutes: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class GlobalInsights:
+    'Global month-to-date dashboard analytics.'
+    active_users_min: int
+    active_users_mean: float
+    active_users_max: int
+    active_users_today: int
+    days_in_period: int
+    active_users_daily_x_labels: list[int]
+    active_users_daily_full_labels: list[str]
+    active_users_daily_counts: list[int]
+    top_users: list[GlobalTopUser]
+    top_access_points: list[GlobalTopAccessPoint]
+
+
+@dataclass(frozen=True, kw_only=True)
+class GlobalDailyNetworkUsage:
+    'Daily month-to-date totals split by Basic/Plus networks.'
+    usage_day: date
+    basic_mb: float
+    plus_mb: float
+    basic_minutes: int
+    plus_minutes: int
+
 # --- MODELS ---
 class UsageRecord(Base):
     'Ledger row storing one non-zero usage interval.'
@@ -482,6 +525,180 @@ def get_calendar_month_daily_profile_minutes(mac: str) -> list[tuple[date, dict[
     series: list[tuple[date, dict[str, int]]] = []
     while day <= today:
         series.append((day, day_profile_counts.get(day, {})))
+        day += timedelta(days=1)
+
+    return series
+
+
+def get_global_month_insights(top_limit: int = 5) -> GlobalInsights:
+    'Return month-to-date global analytics for dashboard insights panels.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(
+            UsageRecord.timestamp,
+            UsageRecord.mac,
+            UsageRecord.name,
+            UsageRecord.user_id,
+            UsageRecord.mb_used,
+            UsageRecord.ap_name,
+        )
+        .where(
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    daily_active_users: dict[date, set[str]] = {}
+    user_totals: dict[str, tuple[float, int]] = {}
+    user_latest_identity: dict[str, tuple[datetime, str, str]] = {}
+    ap_totals: dict[str, tuple[float, int]] = {}
+
+    for row_timestamp, row_mac, row_name, row_user_id, row_mb_used, row_ap_name in rows:
+        if not isinstance(row_timestamp, datetime) or not isinstance(row_mac, str):
+            continue
+
+        usage_day = row_timestamp.date()
+        daily_active_users.setdefault(usage_day, set()).add(row_mac)
+
+        total_mb, active_minutes = user_totals.get(row_mac, (0.0, 0))
+        user_totals[row_mac] = (total_mb + float(row_mb_used or 0.0), active_minutes + 1)
+
+        resolved_name = (row_name.strip() if isinstance(row_name, str) and row_name.strip() else row_mac)
+        resolved_user_id = (row_user_id.strip() if isinstance(row_user_id, str) and row_user_id.strip() else '')
+        previous_identity = user_latest_identity.get(row_mac)
+        if previous_identity is None or row_timestamp >= previous_identity[0]:
+            user_latest_identity[row_mac] = (row_timestamp, resolved_name, resolved_user_id)
+
+        ap_key = row_ap_name.strip() if isinstance(row_ap_name, str) and row_ap_name.strip() else 'Unknown'
+        ap_total_mb, ap_active_minutes = ap_totals.get(ap_key, (0.0, 0))
+        ap_totals[ap_key] = (ap_total_mb + float(row_mb_used or 0.0), ap_active_minutes + 1)
+
+    day = month_start
+    daily_counts: list[int] = []
+    while day <= today:
+        daily_counts.append(len(daily_active_users.get(day, set())))
+        day += timedelta(days=1)
+
+    if daily_counts:
+        active_users_min = min(daily_counts)
+        active_users_max = max(daily_counts)
+        active_users_mean = sum(daily_counts) / len(daily_counts)
+        active_users_today = daily_counts[-1]
+    else:
+        active_users_min = 0
+        active_users_max = 0
+        active_users_mean = 0.0
+        active_users_today = 0
+
+    top_users = sorted(
+        (
+            GlobalTopUser(
+                mac=mac,
+                name=user_latest_identity.get(mac, (datetime.min, mac, ''))[1],
+                user_id=user_latest_identity.get(mac, (datetime.min, '', ''))[2],
+                total_mb=totals[0],
+                active_minutes=totals[1],
+            )
+            for mac, totals in user_totals.items()
+        ),
+        key=lambda row: (row.total_mb, row.active_minutes),
+        reverse=True,
+    )[:max(1, top_limit)]
+
+    top_access_points = sorted(
+        (
+            GlobalTopAccessPoint(
+                ap_name=ap_name.removesuffix(' AP'),
+                total_mb=totals[0],
+                active_minutes=totals[1],
+            )
+            for ap_name, totals in ap_totals.items()
+        ),
+        key=lambda row: (row.active_minutes, row.total_mb),
+        reverse=True,
+    )[:max(1, top_limit)]
+
+    return GlobalInsights(
+        active_users_min=active_users_min,
+        active_users_mean=active_users_mean,
+        active_users_max=active_users_max,
+        active_users_today=active_users_today,
+        days_in_period=len(daily_counts),
+        active_users_daily_x_labels=[day_number for day_number in range(1, len(daily_counts) + 1)],
+        active_users_daily_full_labels=[f'{month_start.strftime("%b")} {day_number}' for day_number in range(1, len(daily_counts) + 1)],
+        active_users_daily_counts=daily_counts,
+        top_users=top_users,
+        top_access_points=top_access_points,
+    )
+
+
+def get_global_daily_network_usage_current_month() -> list[GlobalDailyNetworkUsage]:
+    'Return daily Basic/Plus usage totals (MB + active minutes) for current month.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.vlan, UsageRecord.mb_used)
+        .where(
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    totals_by_day: dict[date, dict[str, float | int]] = {}
+    for row_timestamp, row_vlan, row_mb_used in rows:
+        if not isinstance(row_timestamp, datetime):
+            continue
+
+        usage_day = row_timestamp.date()
+        bucket = totals_by_day.setdefault(
+            usage_day,
+            {
+                'basic_mb': 0.0,
+                'plus_mb': 0.0,
+                'basic_minutes': 0,
+                'plus_minutes': 0,
+            },
+        )
+
+        vlan_label = row_vlan.strip().lower() if isinstance(row_vlan, str) and row_vlan.strip() else ''
+        mb_used = float(row_mb_used or 0.0)
+        if vlan_label == 'plus':
+            bucket['plus_mb'] = float(bucket['plus_mb']) + mb_used
+            bucket['plus_minutes'] = int(bucket['plus_minutes']) + 1
+        else:
+            bucket['basic_mb'] = float(bucket['basic_mb']) + mb_used
+            bucket['basic_minutes'] = int(bucket['basic_minutes']) + 1
+
+    day = month_start
+    series: list[GlobalDailyNetworkUsage] = []
+    while day <= today:
+        bucket = totals_by_day.get(day, {})
+        series.append(
+            GlobalDailyNetworkUsage(
+                usage_day=day,
+                basic_mb=float(bucket.get('basic_mb', 0.0)),
+                plus_mb=float(bucket.get('plus_mb', 0.0)),
+                basic_minutes=int(bucket.get('basic_minutes', 0)),
+                plus_minutes=int(bucket.get('plus_minutes', 0)),
+            )
+        )
         day += timedelta(days=1)
 
     return series
