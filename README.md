@@ -16,12 +16,14 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
   - organization-paid client list,
   - inclusion criteria display based on configured VLAN/MAC/User ID rules.
 - Global month analytics:
-  - daily active clients,
-  - daily MB and minutes split by Basic/Plus,
-  - peak simultaneous users by day,
-  - weekday/hour concurrent-user heatmap.
-    - Heatmap cells use observed minutes only, include sample/coverage in tooltip, and low-sample cells are dimmed.
-    - Low-sample cells display `n=<sampled minutes>` to avoid ambiguous blanks.
+  - Dashboard (`/`) keeps operational summaries (daily active clients, payer split, top users, AP hotspots).
+  - Insights (`/insights`) contains deeper month analytics:
+    - daily MB and minutes split by Basic/Plus,
+    - peak simultaneous users by day,
+    - weekday/hour concurrent-user heatmap.
+      - Heatmap cells use observed minutes only, include sample/coverage in tooltip, and low-sample cells are dimmed.
+      - Low-sample cells display `n=<sampled minutes>` to avoid ambiguous blanks.
+    - throttling coverage metrics and profile-minutes chart.
 - Throttling coverage panel:
   - minutes throttled,
   - total active minutes,

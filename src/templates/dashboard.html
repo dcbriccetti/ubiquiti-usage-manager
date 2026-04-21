@@ -11,6 +11,7 @@
             <p>
                 Live usage and management dashboard for UniFi clients, with switchable views
                 for active now, online now, today, 7 days, and this month.
+                <a href="{{ url_for('insights') }}">Open deeper insights</a>.
             </p>
         </div>
     </section>
@@ -183,44 +184,6 @@
                 <div class="month-chart-wrap">
                     <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients in current month"></canvas>
                 </div>
-                <h3>Daily MB (Stacked Basic/Plus)</h3>
-                <div class="month-chart-wrap">
-                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily MB stacked by Basic and Plus"></canvas>
-                </div>
-                <h3>Daily Active Minutes (Stacked Basic/Plus)</h3>
-                <div class="month-chart-wrap">
-                    <canvas id="global-daily-minutes-chart" class="month-chart-canvas" role="img" aria-label="Daily active minutes stacked by Basic and Plus"></canvas>
-                </div>
-                <h3>Peak Simultaneous Users by Day</h3>
-                <div class="month-chart-wrap">
-                    <canvas id="global-peak-concurrency-chart" class="month-chart-canvas" role="img" aria-label="Daily peak simultaneous users"></canvas>
-                </div>
-                <h3>Time-of-Day Concurrent Users Heatmap</h3>
-                <div class="concurrency-heatmap-wrap">
-                    <div id="global-concurrency-heatmap" class="concurrency-heatmap-grid" aria-label="Heatmap of average concurrent users by weekday and hour"></div>
-                </div>
-                <p class="muted">
-                    Cells show month-to-date average concurrent users for observed minutes only.
-                    Low-sample cells are dimmed.
-                </p>
-                <h3>Throttling Coverage & Impact</h3>
-                <section class="insights-kpis">
-                    <div class="insight-kpi">
-                        <span class="label">Minutes Throttled</span>
-                        <span class="value">{{ "{:,.0f}".format(throttling_minutes) }}</span>
-                    </div>
-                    <div class="insight-kpi">
-                        <span class="label">Total Active Minutes</span>
-                        <span class="value">{{ "{:,.0f}".format(throttling_total_active_minutes) }}</span>
-                    </div>
-                    <div class="insight-kpi">
-                        <span class="label">% Time Throttled</span>
-                        <span class="value">{{ "{:.1f}%".format(throttling_pct) }}</span>
-                    </div>
-                </section>
-                <div class="month-chart-wrap">
-                    <canvas id="global-throttling-profile-minutes-chart" class="month-chart-canvas" role="img" aria-label="Minutes spent at each throttling profile"></canvas>
-                </div>
 
                 <section class="grid columns insights-tables">
                     <article class="insights-summary">
@@ -258,47 +221,7 @@
                                 </tr>
                             </tbody>
                         </table>
-                        <h3>Organization-paid Clients</h3>
-                        <p class="muted">
-                            Included when a client matches any configured rule:
-                            VLAN ({{ organization_paid_vlan_criteria|join(", ") if organization_paid_vlan_criteria else "none" }}),
-                            MAC ({{ organization_paid_mac_criteria|join(", ") if organization_paid_mac_criteria else "none" }}),
-                            User ID ({{ organization_paid_user_id_criteria|join(", ") if organization_paid_user_id_criteria else "none" }}).
-                        </p>
-                        <table class="organization-clients-table">
-                            <thead>
-                                <tr>
-                                    <th class="user-id-col">User ID</th>
-                                    <th>Name</th>
-                                    <th class="mac-col">MAC</th>
-                                    <th class="network-col">VLAN</th>
-                                    <th class="num">MB</th>
-                                    <th class="num">Minutes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for organization_client in organization_paid_clients %}
-                                    <tr>
-                                        <td class="nowrap-col user-id-col">{{ organization_client.user_id or "" }}</td>
-                                        <td class="nowrap-col">
-                                            <a class="mac-link" href="{{ url_for('client_detail', mac=organization_client.mac) }}" title="Usage details">
-                                                {{ organization_client.name }}
-                                            </a>
-                                        </td>
-                                        <td class="nowrap-col mono mac-col">
-                                            {{ organization_client.mac[-5:] }}
-                                        </td>
-                                        <td class="nowrap-col network-col">{{ organization_client.vlan_name or "" }}</td>
-                                        <td class="num">{{ "{:,.0f}".format(organization_client.total_mb) }}</td>
-                                        <td class="num">{{ "{:,.0f}".format(organization_client.active_minutes) }}</td>
-                                    </tr>
-                                {% else %}
-                                    <tr>
-                                        <td colspan="6" class="muted">No organization-paid client activity this month yet.</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
+                        <p class="muted">Detailed organization-paid client breakdown is on the <a href="{{ url_for('insights') }}">Insights</a> page.</p>
                     </article>
                     <article class="insights-top-users">
                         <h3>Top Users by {{ current_month_label }} MB</h3>
@@ -369,105 +292,9 @@
                 return;
             }
 
-            const xLabels = {{ daily_network_x_labels|tojson }};
-            const fullLabels = {{ daily_network_full_labels|tojson }};
-            const basicMb = {{ daily_network_basic_mb|tojson }};
-            const plusMb = {{ daily_network_plus_mb|tojson }};
-            const basicMinutes = {{ daily_network_basic_minutes|tojson }};
-            const plusMinutes = {{ daily_network_plus_minutes|tojson }};
             const activeUsersXLabels = {{ active_users_chart_x_labels|tojson }};
             const activeUsersFullLabels = {{ active_users_chart_full_labels|tojson }};
             const activeUsersCounts = {{ active_users_chart_counts|tojson }};
-            const peakConcurrencyXLabels = {{ peak_concurrency_x_labels|tojson }};
-            const peakConcurrencyFullLabels = {{ peak_concurrency_full_labels|tojson }};
-            const peakConcurrencyCounts = {{ peak_concurrency_counts|tojson }};
-            const peakConcurrencyTimeLabels = {{ peak_concurrency_time_labels|tojson }};
-            const heatmapDayLabels = {{ concurrency_heatmap_day_labels|tojson }};
-            const heatmapHourLabels = {{ concurrency_heatmap_hour_labels|tojson }};
-            const heatmapValues = {{ concurrency_heatmap_values|tojson }};
-            const heatmapSampleCounts = {{ concurrency_heatmap_sample_counts|tojson }};
-            const throttlingProfileLabels = {{ throttling_profile_labels|tojson }};
-            const throttlingProfileMinutes = {{ throttling_profile_minutes|tojson }};
-
-            const sharedStackedOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: "index",
-                    intersect: false
-                },
-                plugins: {
-                    legend: {
-                        position: "top",
-                        align: "start"
-                    },
-                    tooltip: {
-                        callbacks: {
-                            title: (tooltipItems) => {
-                                const idx = tooltipItems[0]?.dataIndex ?? 0;
-                                return fullLabels[idx] || "";
-                            },
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        stacked: true,
-                        title: {
-                            display: true,
-                            text: "Day of month"
-                        },
-                        grid: { display: false },
-                        ticks: {
-                            maxRotation: 0,
-                            autoSkip: true,
-                            maxTicksLimit: 12
-                        }
-                    },
-                    y: {
-                        stacked: true,
-                        beginAtZero: true,
-                        grid: {
-                            color: "rgba(31, 41, 51, 0.20)"
-                        }
-                    }
-                }
-            };
-
-            const mbCanvas = document.getElementById("global-daily-mb-chart");
-            if (mbCanvas) {
-                new Chart(mbCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: xLabels,
-                        datasets: [
-                            {
-                                label: "Basic",
-                                data: basicMb,
-                                backgroundColor: "rgba(15, 118, 110, 0.72)"
-                            },
-                            {
-                                label: "Plus",
-                                data: plusMb,
-                                backgroundColor: "rgba(194, 65, 12, 0.82)"
-                            }
-                        ]
-                    },
-                    options: {
-                        ...sharedStackedOptions,
-                        scales: {
-                            ...sharedStackedOptions.scales,
-                            y: {
-                                ...sharedStackedOptions.scales.y,
-                                title: {
-                                    display: true,
-                                    text: "MB/day"
-                                }
-                            }
-                        }
-                    }
-                });
-            }
 
             const activeClientsCanvas = document.getElementById("global-daily-active-clients-chart");
             if (activeClientsCanvas) {
@@ -525,165 +352,6 @@
                         }
                     }
                 });
-            }
-
-            const minutesCanvas = document.getElementById("global-daily-minutes-chart");
-            if (minutesCanvas) {
-                new Chart(minutesCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: xLabels,
-                        datasets: [
-                            {
-                                label: "Basic",
-                                data: basicMinutes,
-                                backgroundColor: "rgba(15, 118, 110, 0.72)"
-                            },
-                            {
-                                label: "Plus",
-                                data: plusMinutes,
-                                backgroundColor: "rgba(194, 65, 12, 0.82)"
-                            }
-                        ]
-                    },
-                    options: {
-                        ...sharedStackedOptions,
-                        scales: {
-                            ...sharedStackedOptions.scales,
-                            y: {
-                                ...sharedStackedOptions.scales.y,
-                                title: {
-                                    display: true,
-                                    text: "Active minutes/day"
-                                }
-                            }
-                        }
-                    }
-                });
-            }
-
-            const peakConcurrencyCanvas = document.getElementById("global-peak-concurrency-chart");
-            if (peakConcurrencyCanvas) {
-                new Chart(peakConcurrencyCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: peakConcurrencyXLabels,
-                        datasets: [
-                            {
-                                label: "Peak simultaneous users",
-                                data: peakConcurrencyCounts,
-                                backgroundColor: "rgba(2, 132, 199, 0.76)"
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    title: (tooltipItems) => {
-                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
-                                        return peakConcurrencyFullLabels[idx] || "";
-                                    },
-                                    afterBody: (tooltipItems) => {
-                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
-                                        const peakTime = peakConcurrencyTimeLabels[idx] || "n/a";
-                                        return `Peak time: ${peakTime}`;
-                                    },
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                title: { display: true, text: "Day of month" },
-                                grid: { display: false },
-                                ticks: {
-                                    maxRotation: 0,
-                                    autoSkip: true,
-                                    maxTicksLimit: 12
-                                }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: "Peak concurrent users" },
-                                grid: { color: "rgba(31, 41, 51, 0.20)" }
-                            }
-                        }
-                    }
-                });
-            }
-
-            const profileMinutesCanvas = document.getElementById("global-throttling-profile-minutes-chart");
-            if (profileMinutesCanvas && throttlingProfileLabels.length) {
-                new Chart(profileMinutesCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: throttlingProfileLabels,
-                        datasets: [
-                            {
-                                label: "Minutes",
-                                data: throttlingProfileMinutes,
-                                backgroundColor: "rgba(194, 65, 12, 0.72)"
-                            }
-                        ]
-                    },
-                    options: {
-                        indexAxis: "y",
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false }
-                        },
-                        scales: {
-                            x: {
-                                beginAtZero: true,
-                                title: { display: true, text: "Active minutes this month" },
-                                grid: { color: "rgba(31, 41, 51, 0.20)" }
-                            },
-                            y: {
-                                grid: { display: false }
-                            }
-                        }
-                    }
-                });
-            }
-
-            const heatmapContainer = document.getElementById("global-concurrency-heatmap");
-            if (heatmapContainer) {
-                const flatValues = heatmapValues.flat();
-                const maxValue = Math.max(...flatValues, 0);
-                const minValue = Math.min(...flatValues, 0);
-                const lowSampleThreshold = 20;
-                const colorForValue = (value) => {
-                    if (maxValue <= minValue) return "rgba(148, 163, 184, 0.24)";
-                    const ratio = (value - minValue) / (maxValue - minValue);
-                    const alpha = 0.12 + (ratio * 0.78);
-                    return `rgba(14, 116, 144, ${alpha.toFixed(3)})`;
-                };
-                let html = '<div class="cell header"></div>';
-                for (const hourLabel of heatmapHourLabels) {
-                    html += `<div class="cell header hour">${hourLabel.slice(0, 2)}</div>`;
-                }
-                for (let dayIndex = 0; dayIndex < heatmapDayLabels.length; dayIndex += 1) {
-                    html += `<div class="cell header day">${heatmapDayLabels[dayIndex]}</div>`;
-                    const row = heatmapValues[dayIndex] || [];
-                    const sampleRow = heatmapSampleCounts[dayIndex] || [];
-                    for (let hourIndex = 0; hourIndex < heatmapHourLabels.length; hourIndex += 1) {
-                        const value = Number(row[hourIndex] || 0);
-                        const sampleCount = Number(sampleRow[hourIndex] || 0);
-                        const coveragePct = Math.min(100, (sampleCount / 60) * 100);
-                        const isLowSample = sampleCount > 0 && sampleCount < lowSampleThreshold;
-                        const klass = isLowSample ? "cell value low-sample" : "cell value";
-                        const title = `${heatmapDayLabels[dayIndex]} ${heatmapHourLabels[hourIndex]} | avg concurrent users: ${value.toFixed(2)} | sampled minutes: ${sampleCount} | hour coverage: ${coveragePct.toFixed(1)}%`;
-                        const cellText = sampleCount >= lowSampleThreshold
-                            ? (value >= 0.5 ? value.toFixed(1) : "")
-                            : (sampleCount > 0 ? `n=${sampleCount}` : "");
-                        html += `<div class="${klass}" style="background:${colorForValue(value)}" title="${title}">${cellText}</div>`;
-                    }
-                }
-                heatmapContainer.innerHTML = html;
             }
         })();
 

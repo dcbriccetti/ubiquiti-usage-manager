@@ -282,6 +282,21 @@ def create_app() -> Flask:
             **build_dashboard_data(window_name, activity_span, live_update_seconds),
         )
 
+    @flask_app.route("/insights")
+    def insights():
+        'Render deeper month-to-date analytics panels.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        return render_template(
+            "insights.html",
+            **build_dashboard_data(
+                normalize_window("this_month"),
+                normalize_activity_span("12m"),
+                live_update_seconds,
+            ),
+        )
+
     @flask_app.route("/api/dashboard-snapshot")
     def dashboard_snapshot():
         'Return dashboard snapshot data for incremental in-page refresh.'
