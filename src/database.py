@@ -134,6 +134,7 @@ class GlobalConcurrencyInsights:
     heatmap_day_labels: list[str]
     heatmap_hour_labels: list[str]
     heatmap_values: list[list[float]]
+    heatmap_sample_counts: list[list[int]]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1018,14 +1019,18 @@ def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights
     heatmap_day_labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     heatmap_hour_labels = [f'{hour:02d}:00' for hour in range(24)]
     heatmap_values: list[list[float]] = []
+    heatmap_sample_counts: list[list[int]] = []
     for day_of_week in range(7):
         row: list[float] = []
+        count_row: list[int] = []
         for hour in range(24):
             cell_key = (day_of_week, hour)
             total = float(heatmap_totals.get(cell_key, 0.0))
             count = int(heatmap_counts.get(cell_key, 0))
             row.append((total / count) if count > 0 else 0.0)
+            count_row.append(count)
         heatmap_values.append(row)
+        heatmap_sample_counts.append(count_row)
 
     return GlobalConcurrencyInsights(
         daily_x_labels=daily_x_labels,
@@ -1035,6 +1040,7 @@ def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights
         heatmap_day_labels=heatmap_day_labels,
         heatmap_hour_labels=heatmap_hour_labels,
         heatmap_values=heatmap_values,
+        heatmap_sample_counts=heatmap_sample_counts,
     )
 
 

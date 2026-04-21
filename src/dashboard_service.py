@@ -109,6 +109,7 @@ class DashboardData(TypedDict):
     concurrency_heatmap_day_labels: list[str]
     concurrency_heatmap_hour_labels: list[str]
     concurrency_heatmap_values: list[list[float]]
+    concurrency_heatmap_sample_counts: list[list[int]]
     throttling_profile_labels: list[str]
     throttling_profile_minutes: list[int]
     throttling_total_active_minutes: int
@@ -512,6 +513,7 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         'concurrency_heatmap_day_labels': concurrency_insights.heatmap_day_labels,
         'concurrency_heatmap_hour_labels': concurrency_insights.heatmap_hour_labels,
         'concurrency_heatmap_values': concurrency_insights.heatmap_values,
+        'concurrency_heatmap_sample_counts': concurrency_insights.heatmap_sample_counts,
         'throttling_profile_labels': [
             profile_display_label(profile_key, speed_limits_by_name)
             for profile_key, _ in throttling_profile_totals
