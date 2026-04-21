@@ -191,7 +191,7 @@
                 </div>
 
                 <section class="grid columns insights-tables">
-                    <article>
+                    <article class="insights-summary">
                         <h3>Payer Split ({{ current_month_label }})</h3>
                         {% set total_split_mb = organization_paid_total_mb + user_paid_total_mb %}
                         <table class="insights-table">
@@ -268,7 +268,7 @@
                             </tbody>
                         </table>
                     </article>
-                    <article>
+                    <article class="insights-top-users">
                         <h3>Top Users by {{ current_month_label }} MB</h3>
                         <table class="insights-table">
                             <thead>
@@ -299,7 +299,7 @@
                             </tbody>
                         </table>
                     </article>
-                    <article>
+                    <article class="insights-ap-hotspots">
                         <h3>AP Hotspots by Active Minutes</h3>
                         <table class="insights-table">
                             <thead>

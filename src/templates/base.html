@@ -384,14 +384,57 @@
         }
 
         .insights-tables {
-            grid-template-columns: repeat(auto-fit, minmax(340px, 520px));
-            justify-content: start;
+            grid-template-columns: minmax(520px, 1.65fr) minmax(320px, 1fr) minmax(320px, 1fr);
+            justify-content: stretch;
+            align-items: start;
             gap: 14px;
         }
 
         .insights-tables article {
             width: 100%;
-            max-width: 520px;
+            max-width: none;
+        }
+
+        .insights-summary {
+            grid-column: 1;
+        }
+
+        .insights-top-users {
+            grid-column: 2;
+        }
+
+        .insights-ap-hotspots {
+            grid-column: 3;
+        }
+
+        @media (max-width: 1500px) {
+            .insights-tables {
+                grid-template-columns: minmax(520px, 1.5fr) minmax(320px, 1fr);
+            }
+
+            .insights-summary {
+                grid-column: 1;
+            }
+
+            .insights-top-users {
+                grid-column: 2;
+            }
+
+            .insights-ap-hotspots {
+                grid-column: 2;
+            }
+        }
+
+        @media (max-width: 1180px) {
+            .insights-tables {
+                grid-template-columns: 1fr;
+            }
+
+            .insights-summary,
+            .insights-top-users,
+            .insights-ap-hotspots {
+                grid-column: 1;
+            }
         }
 
         table.insights-table {
