@@ -34,6 +34,9 @@ Review `src/config.py` for your environment:
 - `MONTHLY_USAGE_ADJUSTMENTS`
 - `COST_IN_CENTS_PER_GB`
 - `PLUS_ADMINS`
+- `ORGANIZATION_PAID_DEVICE_MACS`
+- `ORGANIZATION_PAID_USER_IDS`
+- `ORGANIZATION_PAID_VLAN_NAMES`
 
 ## 3) Start The Monitor (required for live data)
 

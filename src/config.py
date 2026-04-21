@@ -31,3 +31,9 @@ MONTHLY_USAGE_ADJUSTMENTS = [  # Ascending order
 COST_IN_CENTS_PER_GB = 50
 PLUS_ADMINS = {'plus_admin_1', 'plus_admin_2', 'plus_admin_3'}
 SELF_SERVICE_SPEED_LIMIT_ENABLED = False
+
+# Devices/users whose usage is paid by the organization (for global analytics split).
+# Use VLAN names only (not SSID names).
+ORGANIZATION_PAID_DEVICE_MACS: set[str] = set()
+ORGANIZATION_PAID_USER_IDS: set[str] = set('it marketing president'.split())
+ORGANIZATION_PAID_VLAN_NAMES: set[str] = {'TV'}

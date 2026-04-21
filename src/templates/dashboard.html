@@ -192,6 +192,83 @@
 
                 <section class="grid columns insights-tables">
                     <article>
+                        <h3>Payer Split ({{ current_month_label }})</h3>
+                        {% set total_split_mb = organization_paid_total_mb + user_paid_total_mb %}
+                        <table class="insights-table">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th class="num">MB</th>
+                                    <th class="num">Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="nowrap-col">Organization-paid</td>
+                                    <td class="num">{{ "{:,.0f}".format(organization_paid_total_mb) }}</td>
+                                    <td class="num">{{ "{:,.0f}".format(organization_paid_minutes) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="nowrap-col">User-paid</td>
+                                    <td class="num">{{ "{:,.0f}".format(user_paid_total_mb) }}</td>
+                                    <td class="num">{{ "{:,.0f}".format(user_paid_minutes) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="nowrap-col"><strong>Organization share</strong></td>
+                                    <td class="num">
+                                        {% if total_split_mb > 0 %}
+                                            {{ "{:.1f}%".format((organization_paid_total_mb * 100.0) / total_split_mb) }}
+                                        {% else %}
+                                            0.0%
+                                        {% endif %}
+                                    </td>
+                                    <td class="num"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <h3>Organization-paid Clients</h3>
+                        <p class="muted">
+                            Included when a client matches any configured rule:
+                            VLAN ({{ organization_paid_vlan_criteria|join(", ") if organization_paid_vlan_criteria else "none" }}),
+                            MAC ({{ organization_paid_mac_criteria|join(", ") if organization_paid_mac_criteria else "none" }}),
+                            User ID ({{ organization_paid_user_id_criteria|join(", ") if organization_paid_user_id_criteria else "none" }}).
+                        </p>
+                        <table class="organization-clients-table">
+                            <thead>
+                                <tr>
+                                    <th class="user-id-col">User ID</th>
+                                    <th>Name</th>
+                                    <th class="mac-col">MAC</th>
+                                    <th class="network-col">VLAN</th>
+                                    <th class="num">MB</th>
+                                    <th class="num">Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for organization_client in organization_paid_clients %}
+                                    <tr>
+                                        <td class="nowrap-col user-id-col">{{ organization_client.user_id or "" }}</td>
+                                        <td class="nowrap-col">
+                                            <a class="mac-link" href="{{ url_for('client_detail', mac=organization_client.mac) }}" title="Usage details">
+                                                {{ organization_client.name }}
+                                            </a>
+                                        </td>
+                                        <td class="nowrap-col mono mac-col">
+                                            {{ organization_client.mac[-5:] }}
+                                        </td>
+                                        <td class="nowrap-col network-col">{{ organization_client.vlan_name or "" }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(organization_client.total_mb) }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(organization_client.active_minutes) }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="6" class="muted">No organization-paid client activity this month yet.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </article>
+                    <article>
                         <h3>Top Users by {{ current_month_label }} MB</h3>
                         <table class="insights-table">
                             <thead>

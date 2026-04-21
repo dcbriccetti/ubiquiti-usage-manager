@@ -25,6 +25,11 @@
                 "rgba(22, 163, 74, 0.78)",
                 "rgba(107, 114, 128, 0.78)"
             ];
+            const alignedBarStyle = {
+                barPercentage: 0.72,
+                categoryPercentage: 0.72,
+                maxBarThickness: 20
+            };
 
             const datasets = rawDatasets.map((series, idx) => ({
                 label: series.label,
@@ -33,8 +38,7 @@
                     ? "rgba(107, 114, 128, 0.38)"
                     : colors[idx % colors.length],
                 borderRadius: 2,
-                barPercentage: 0.9,
-                categoryPercentage: 0.82,
+                ...alignedBarStyle,
                 stack: "throttle"
             }));
 
@@ -44,6 +48,11 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: {
+                            right: 58
+                        }
+                    },
                     interaction: {
                         mode: "index",
                         intersect: false
@@ -76,6 +85,7 @@
                     scales: {
                         x: {
                             stacked: true,
+                            offset: false,
                             title: {
                                 display: true,
                                 text: "Day of month"

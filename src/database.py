@@ -77,6 +77,7 @@ class GlobalTopUser:
     mac: str
     name: str
     user_id: str
+    vlan_name: str = ''
     total_mb: float
     active_minutes: int
 
@@ -112,6 +113,15 @@ class GlobalDailyNetworkUsage:
     plus_mb: float
     basic_minutes: int
     plus_minutes: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class GlobalPayerSplit:
+    'Month-to-date totals split by payer classification.'
+    organization_paid_total_mb: float
+    organization_paid_minutes: int
+    user_paid_total_mb: float
+    user_paid_minutes: int
 
 # --- MODELS ---
 class UsageRecord(Base):
@@ -702,3 +712,210 @@ def get_global_daily_network_usage_current_month() -> list[GlobalDailyNetworkUsa
         day += timedelta(days=1)
 
     return series
+
+
+def get_global_payer_split_current_month(
+    organization_paid_macs: set[str] | None = None,
+    organization_paid_user_ids: set[str] | None = None,
+    organization_paid_vlan_names: set[str] | None = None,
+) -> GlobalPayerSplit:
+    'Return month-to-date totals split into organization-paid vs user-paid activity.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    mac_allowlist = {mac.strip().lower() for mac in (organization_paid_macs or set()) if mac.strip()}
+    user_allowlist = {user_id.strip().lower() for user_id in (organization_paid_user_ids or set()) if user_id.strip()}
+    vlan_allowlist = {vlan.strip().lower() for vlan in (organization_paid_vlan_names or set()) if vlan.strip()}
+
+    stmt = (
+        select(UsageRecord.mac, UsageRecord.user_id, UsageRecord.vlan, UsageRecord.mb_used)
+        .where(
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    organization_paid_total_mb = 0.0
+    organization_paid_minutes = 0
+    user_paid_total_mb = 0.0
+    user_paid_minutes = 0
+
+    for row_mac, row_user_id, row_vlan, row_mb_used in rows:
+        mac_value = row_mac.strip().lower() if isinstance(row_mac, str) and row_mac.strip() else ''
+        user_value = row_user_id.strip().lower() if isinstance(row_user_id, str) and row_user_id.strip() else ''
+        vlan_value = row_vlan.strip().lower() if isinstance(row_vlan, str) and row_vlan.strip() else ''
+        mb_used = float(row_mb_used or 0.0)
+
+        is_organization_paid = (
+            vlan_value in vlan_allowlist
+            or mac_value in mac_allowlist
+            or user_value in user_allowlist
+        )
+        if is_organization_paid:
+            organization_paid_total_mb += mb_used
+            organization_paid_minutes += 1
+        else:
+            user_paid_total_mb += mb_used
+            user_paid_minutes += 1
+
+    return GlobalPayerSplit(
+        organization_paid_total_mb=organization_paid_total_mb,
+        organization_paid_minutes=organization_paid_minutes,
+        user_paid_total_mb=user_paid_total_mb,
+        user_paid_minutes=user_paid_minutes,
+    )
+
+
+def get_global_top_users_current_month(
+    limit: int = 6,
+    exclude_organization_paid_macs: set[str] | None = None,
+    exclude_organization_paid_user_ids: set[str] | None = None,
+    exclude_organization_paid_vlan_names: set[str] | None = None,
+) -> list[GlobalTopUser]:
+    'Return top month-to-date users by MB, with optional organization-paid exclusion.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    mac_exclude = {mac.strip().lower() for mac in (exclude_organization_paid_macs or set()) if mac.strip()}
+    user_exclude = {user_id.strip().lower() for user_id in (exclude_organization_paid_user_ids or set()) if user_id.strip()}
+    vlan_exclude = {vlan.strip().lower() for vlan in (exclude_organization_paid_vlan_names or set()) if vlan.strip()}
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.mac, UsageRecord.user_id, UsageRecord.name, UsageRecord.vlan, UsageRecord.mb_used)
+        .where(
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    user_totals: dict[str, tuple[float, int]] = {}
+    user_latest_identity: dict[str, tuple[datetime, str, str]] = {}
+
+    for row_timestamp, row_mac, row_user_id, row_name, row_vlan, row_mb_used in rows:
+        if not isinstance(row_timestamp, datetime) or not isinstance(row_mac, str):
+            continue
+
+        mac_value = row_mac.strip().lower() if row_mac.strip() else ''
+        user_value = row_user_id.strip().lower() if isinstance(row_user_id, str) and row_user_id.strip() else ''
+        vlan_value = row_vlan.strip().lower() if isinstance(row_vlan, str) and row_vlan.strip() else ''
+        is_excluded = (
+            vlan_value in vlan_exclude
+            or mac_value in mac_exclude
+            or user_value in user_exclude
+        )
+        if is_excluded:
+            continue
+
+        total_mb, active_minutes = user_totals.get(row_mac, (0.0, 0))
+        user_totals[row_mac] = (total_mb + float(row_mb_used or 0.0), active_minutes + 1)
+
+        resolved_name = row_name.strip() if isinstance(row_name, str) and row_name.strip() else row_mac
+        resolved_user_id = row_user_id.strip() if isinstance(row_user_id, str) and row_user_id.strip() else ''
+        previous_identity = user_latest_identity.get(row_mac)
+        if previous_identity is None or row_timestamp >= previous_identity[0]:
+            user_latest_identity[row_mac] = (row_timestamp, resolved_name, resolved_user_id)
+
+    results = sorted(
+        (
+            GlobalTopUser(
+                mac=mac,
+                name=user_latest_identity.get(mac, (datetime.min, mac, ''))[1],
+                user_id=user_latest_identity.get(mac, (datetime.min, '', ''))[2],
+                vlan_name='',
+                total_mb=totals[0],
+                active_minutes=totals[1],
+            )
+            for mac, totals in user_totals.items()
+        ),
+        key=lambda row: (row.total_mb, row.active_minutes),
+        reverse=True,
+    )
+    return results[:max(1, limit)]
+
+
+def get_global_organization_paid_clients_current_month(
+    organization_paid_macs: set[str] | None = None,
+    organization_paid_user_ids: set[str] | None = None,
+    organization_paid_vlan_names: set[str] | None = None,
+    limit: int = 12,
+) -> list[GlobalTopUser]:
+    'Return month-to-date organization-paid usage totals grouped by client.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    mac_allowlist = {mac.strip().lower() for mac in (organization_paid_macs or set()) if mac.strip()}
+    user_allowlist = {user_id.strip().lower() for user_id in (organization_paid_user_ids or set()) if user_id.strip()}
+    vlan_allowlist = {vlan.strip().lower() for vlan in (organization_paid_vlan_names or set()) if vlan.strip()}
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.mac, UsageRecord.user_id, UsageRecord.name, UsageRecord.vlan, UsageRecord.mb_used)
+        .where(
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    client_totals: dict[str, tuple[float, int]] = {}
+    client_latest_identity: dict[str, tuple[datetime, str, str]] = {}
+    client_latest_vlan: dict[str, str] = {}
+
+    for row_timestamp, row_mac, row_user_id, row_name, row_vlan, row_mb_used in rows:
+        if not isinstance(row_timestamp, datetime) or not isinstance(row_mac, str):
+            continue
+
+        mac_value = row_mac.strip().lower() if row_mac.strip() else ''
+        user_value = row_user_id.strip().lower() if isinstance(row_user_id, str) and row_user_id.strip() else ''
+        vlan_value = row_vlan.strip().lower() if isinstance(row_vlan, str) and row_vlan.strip() else ''
+        is_organization_paid = (
+            vlan_value in vlan_allowlist
+            or mac_value in mac_allowlist
+            or user_value in user_allowlist
+        )
+        if not is_organization_paid:
+            continue
+
+        total_mb, active_minutes = client_totals.get(row_mac, (0.0, 0))
+        client_totals[row_mac] = (total_mb + float(row_mb_used or 0.0), active_minutes + 1)
+
+        resolved_name = row_name.strip() if isinstance(row_name, str) and row_name.strip() else row_mac
+        resolved_user_id = row_user_id.strip() if isinstance(row_user_id, str) and row_user_id.strip() else ''
+        previous_identity = client_latest_identity.get(row_mac)
+        if previous_identity is None or row_timestamp >= previous_identity[0]:
+            client_latest_identity[row_mac] = (row_timestamp, resolved_name, resolved_user_id)
+            client_latest_vlan[row_mac] = row_vlan.strip() if isinstance(row_vlan, str) and row_vlan.strip() else ''
+
+    results = sorted(
+        (
+            GlobalTopUser(
+                mac=mac,
+                name=client_latest_identity.get(mac, (datetime.min, mac, ''))[1],
+                user_id=client_latest_identity.get(mac, (datetime.min, '', ''))[2],
+                vlan_name=client_latest_vlan.get(mac, ''),
+                total_mb=totals[0],
+                active_minutes=totals[1],
+            )
+            for mac, totals in client_totals.items()
+        ),
+        key=lambda row: (row.total_mb, row.active_minutes),
+        reverse=True,
+    )
+
+    return results[:max(1, limit)]

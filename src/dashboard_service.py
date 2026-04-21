@@ -94,6 +94,14 @@ class DashboardData(TypedDict):
     daily_network_plus_mb: list[float]
     daily_network_basic_minutes: list[int]
     daily_network_plus_minutes: list[int]
+    organization_paid_total_mb: float
+    organization_paid_minutes: int
+    user_paid_total_mb: float
+    user_paid_minutes: int
+    organization_paid_clients: list[dict[str, object]]
+    organization_paid_vlan_criteria: list[str]
+    organization_paid_mac_criteria: list[str]
+    organization_paid_user_id_criteria: list[str]
     live_update_seconds: int
 
 
@@ -338,8 +346,63 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
 
 def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, live_update_seconds: int) -> DashboardData:
     'Assemble all dashboard fields needed by HTML render, API snapshot, and SSE stream.'
+    organization_paid_vlan_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_VLAN_NAMES if name.strip())
+    organization_paid_mac_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_DEVICE_MACS if name.strip())
+    organization_paid_user_id_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_USER_IDS if name.strip())
+
+    def is_organization_paid_identity(mac: str, user_id: str | None, vlan_name: str | None) -> bool:
+        mac_key = mac.strip().lower()
+        user_key = user_id.strip().lower() if user_id else ''
+        vlan_key = vlan_name.strip().lower() if vlan_name else ''
+        return (
+            vlan_key in {name.lower() for name in organization_paid_vlan_criteria}
+            or mac_key in {name.lower() for name in organization_paid_mac_criteria}
+            or user_key in {name.lower() for name in organization_paid_user_id_criteria}
+        )
+
     insights = db.get_global_month_insights(top_limit=6)
+    top_users_this_month = db.get_global_top_users_current_month(
+        limit=6,
+        exclude_organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
+        exclude_organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+        exclude_organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+    )
     daily_network_usage = db.get_global_daily_network_usage_current_month()
+    payer_split = db.get_global_payer_split_current_month(
+        organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
+        organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+        organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+    )
+    organization_paid_clients = db.get_global_organization_paid_clients_current_month(
+        organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
+        organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+        organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+        limit=12,
+    )
+    organization_paid_clients_by_mac = {entry.mac.lower(): entry for entry in organization_paid_clients}
+    for snapshot in get_connected_clients():
+        client = snapshot.client
+        if not is_organization_paid_identity(client.mac, client.user_id, client.vlan_name):
+            continue
+        mac_key = client.mac.lower()
+        if mac_key in organization_paid_clients_by_mac:
+            continue
+        organization_paid_clients.append(
+            db.GlobalTopUser(
+                mac=client.mac,
+                name=client.name or client.mac,
+                user_id=client.user_id or '',
+                vlan_name=client.vlan_name or '',
+                total_mb=0.0,
+                active_minutes=0,
+            )
+        )
+
+    organization_paid_clients = sorted(
+        organization_paid_clients,
+        key=lambda entry: (entry.total_mb, entry.active_minutes, entry.name.lower()),
+        reverse=True,
+    )[:12]
     speed_limits_by_name = {
         limit.name: limit for limit in api.get_speed_limits()
     }
@@ -369,13 +432,13 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         'active_users_chart_counts': insights.active_users_daily_counts,
         'top_users_this_month': [
             {
-                'mac': insight_row.mac,
-                'name': insight_row.name,
-                'user_id': insight_row.user_id,
-                'total_mb': insight_row.total_mb,
-                'active_minutes': insight_row.active_minutes,
+                'mac': top_row.mac,
+                'name': top_row.name,
+                'user_id': top_row.user_id,
+                'total_mb': top_row.total_mb,
+                'active_minutes': top_row.active_minutes,
             }
-            for insight_row in insights.top_users
+            for top_row in top_users_this_month
         ],
         'top_access_points_this_month': [
             {
@@ -391,6 +454,24 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         'daily_network_plus_mb': [network_row.plus_mb for network_row in daily_network_usage],
         'daily_network_basic_minutes': [network_row.basic_minutes for network_row in daily_network_usage],
         'daily_network_plus_minutes': [network_row.plus_minutes for network_row in daily_network_usage],
+        'organization_paid_total_mb': payer_split.organization_paid_total_mb,
+        'organization_paid_minutes': payer_split.organization_paid_minutes,
+        'user_paid_total_mb': payer_split.user_paid_total_mb,
+        'user_paid_minutes': payer_split.user_paid_minutes,
+        'organization_paid_clients': [
+            {
+                'mac': organization_row.mac,
+                'name': organization_row.name,
+                'user_id': organization_row.user_id,
+                'vlan_name': organization_row.vlan_name,
+                'total_mb': organization_row.total_mb,
+                'active_minutes': organization_row.active_minutes,
+            }
+            for organization_row in organization_paid_clients
+        ],
+        'organization_paid_vlan_criteria': organization_paid_vlan_criteria,
+        'organization_paid_mac_criteria': organization_paid_mac_criteria,
+        'organization_paid_user_id_criteria': organization_paid_user_id_criteria,
         'live_update_seconds': live_update_seconds,
     }
 

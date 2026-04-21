@@ -23,14 +23,6 @@
     <div class="panel-body">
         <h2>{{ current_month_label }} Usage</h2>
         {% include "_month_usage_chart.html" %}
-        <p class="muted">Daily totals for this month. Use browser print to save as PDF.</p>
-    </div>
-</article>
-
-<article class="panel">
-    <div class="panel-body">
-        <h2>{{ current_month_label }} Throttling Levels</h2>
-        {% include "_month_throttling_chart.html" %}
-        <p class="muted">Stacked active minutes by speed-limit profile for each day this month.</p>
+        <p class="muted">Top chart: MB/day. Bottom chart: active minutes/day stacked by speed-limit profile. Use browser print to save as PDF.</p>
     </div>
 </article>

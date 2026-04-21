@@ -1,29 +1,64 @@
 {% set month_points = month_daily_usage or [] %}
 {% if month_points %}
-    {% set chart_id = "month-usage-chart-" ~ (mac or "client")|replace(":", "") %}
+    {% set chart_id_prefix = "month-usage-chart-" ~ (mac or "client")|replace(":", "") %}
+    {% set mb_chart_id = chart_id_prefix ~ "-mb" %}
+    {% set minutes_chart_id = chart_id_prefix ~ "-minutes" %}
     {% set labels = month_points | map(attribute='day_of_month') | list %}
     {% set mb_series = month_points | map(attribute='total_mb') | list %}
-    {% set minutes_series = month_points | map(attribute='active_minutes') | list %}
     {% set full_labels = month_points | map(attribute='day_label') | list %}
 
-    <div class="month-chart-wrap">
-        <canvas id="{{ chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily usage measurements for the month"></canvas>
+    <div class="month-chart-wrap" style="height: 220px;">
+        <canvas id="{{ mb_chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily MB usage measurements for the month"></canvas>
+    </div>
+    <div class="month-chart-wrap" style="height: 220px;">
+        <canvas id="{{ minutes_chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily active minutes measurements for the month"></canvas>
     </div>
     <script>
         // @ts-nocheck
         /* global Chart */
         (() => {
-            const canvas = document.getElementById({{ chart_id|tojson }});
-            if (!canvas || typeof Chart === "undefined") {
+            const mbCanvas = document.getElementById({{ mb_chart_id|tojson }});
+            const minutesCanvas = document.getElementById({{ minutes_chart_id|tojson }});
+            if (!mbCanvas || !minutesCanvas || typeof Chart === "undefined") {
                 return;
             }
 
             const labels = {{ labels|tojson }};
             const mbSeries = {{ mb_series|tojson }};
-            const minutesSeries = {{ minutes_series|tojson }};
             const fullLabels = {{ full_labels|tojson }};
+            const throttleLabels = {{ month_throttle_x_labels|tojson }};
+            const throttleRawDatasets = {{ month_throttle_datasets|tojson }};
 
-            new Chart(canvas, {
+            const commonBarStyle = {
+                barPercentage: 0.72,
+                categoryPercentage: 0.72,
+                maxBarThickness: 20
+            };
+            const commonXAxis = {
+                offset: false,
+                title: {
+                    display: true,
+                    text: "Day of month"
+                },
+                grid: {
+                    display: false
+                },
+                ticks: {
+                    maxRotation: 0,
+                    autoSkip: true,
+                    maxTicksLimit: 12
+                }
+            };
+            const commonTooltip = {
+                callbacks: {
+                    title: (tooltipItems) => {
+                        const idx = tooltipItems[0]?.dataIndex ?? 0;
+                        return fullLabels[idx] || "";
+                    },
+                }
+            };
+
+            new Chart(mbCanvas, {
                 type: "bar",
                 data: {
                     labels,
@@ -31,22 +66,80 @@
                         {
                             label: "Usage MB/day",
                             data: mbSeries,
-                            yAxisID: "yMb",
-                            backgroundColor: "rgba(15, 118, 110, 0.72)",
+                            backgroundColor: "rgba(15, 118, 110, 0.62)",
                             borderRadius: 3,
-                            barPercentage: 0.9,
-                            categoryPercentage: 0.82
-                        },
-                        {
-                            label: "Active minutes/day",
-                            data: minutesSeries,
-                            yAxisID: "yMin",
-                            backgroundColor: "rgba(194, 65, 12, 0.82)",
-                            borderRadius: 3,
-                            barPercentage: 0.9,
-                            categoryPercentage: 0.82
+                            ...commonBarStyle
                         }
                     ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                        ,
+                        tooltip: commonTooltip
+                    },
+                    scales: {
+                        x: {
+                            ...commonXAxis
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: "MB/day"
+                            },
+                            grid: {
+                                color: "rgba(31, 41, 51, 0.20)"
+                            }
+                        }
+                    }
+                }
+            });
+
+            const throttleColors = [
+                "rgba(194, 65, 12, 0.82)",
+                "rgba(15, 118, 110, 0.72)",
+                "rgba(59, 130, 246, 0.76)",
+                "rgba(161, 98, 7, 0.78)",
+                "rgba(2, 132, 199, 0.78)",
+                "rgba(190, 24, 93, 0.78)",
+                "rgba(22, 163, 74, 0.78)",
+                "rgba(107, 114, 128, 0.78)"
+            ];
+            const throttleLabelToIndex = new Map(
+                throttleLabels.map((dayLabel, idx) => [Number(dayLabel), idx])
+            );
+            const throttleDatasets = throttleRawDatasets.map((series, idx) => ({
+                label: series.label,
+                data: labels.map((dayLabel) => {
+                    const mappedIndex = throttleLabelToIndex.get(Number(dayLabel));
+                    if (mappedIndex === undefined) {
+                        return 0;
+                    }
+                    const seriesData = Array.isArray(series.data) ? series.data : [];
+                    return Number(seriesData[mappedIndex] || 0);
+                }),
+                backgroundColor: series.label === "Default"
+                    ? "rgba(107, 114, 128, 0.38)"
+                    : throttleColors[idx % throttleColors.length],
+                borderRadius: 2,
+                stack: "throttle",
+                ...commonBarStyle
+            }));
+
+            new Chart(minutesCanvas, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: throttleDatasets
                 },
                 options: {
                     responsive: true,
@@ -67,51 +160,33 @@
                             }
                         },
                         tooltip: {
+                            filter: (tooltipItem) => (tooltipItem.parsed?.y || 0) > 0,
                             callbacks: {
                                 title: (tooltipItems) => {
                                     const idx = tooltipItems[0]?.dataIndex ?? 0;
                                     return fullLabels[idx] || "";
+                                },
+                                afterBody: (tooltipItems) => {
+                                    const total = tooltipItems.reduce((sum, item) => sum + (item.parsed?.y || 0), 0);
+                                    return `Total active minutes: ${total}`;
                                 },
                             }
                         }
                     },
                     scales: {
                         x: {
-                            title: {
-                                display: true,
-                                text: "Day of month"
-                            },
-                            grid: {
-                                display: false
-                            },
-                            ticks: {
-                                maxRotation: 0,
-                                autoSkip: true,
-                                maxTicksLimit: 12
-                            }
+                            stacked: true,
+                            ...commonXAxis
                         },
-                        yMb: {
-                            type: "linear",
-                            position: "left",
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: "MB/day"
-                            },
-                            grid: {
-                                color: "rgba(31, 41, 51, 0.20)"
-                            }
-                        },
-                        yMin: {
-                            type: "linear",
-                            position: "right",
+                        y: {
+                            stacked: true,
                             beginAtZero: true,
                             title: {
                                 display: true,
                                 text: "minutes/day"
                             },
                             grid: {
-                                drawOnChartArea: false
+                                color: "rgba(31, 41, 51, 0.20)"
                             }
                         }
                     }

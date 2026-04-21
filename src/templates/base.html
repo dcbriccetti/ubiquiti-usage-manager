@@ -415,6 +415,41 @@
             white-space: nowrap;
         }
 
+        table.organization-clients-table {
+            width: max-content;
+            min-width: 0;
+            table-layout: auto;
+        }
+
+        table.organization-clients-table th:first-child,
+        table.organization-clients-table td:first-child {
+            width: 1%;
+            max-width: none;
+            white-space: nowrap;
+            overflow: visible;
+            text-overflow: clip;
+        }
+
+        table.organization-clients-table th.user-id-col,
+        table.organization-clients-table td.user-id-col,
+        table.organization-clients-table th.mac-col,
+        table.organization-clients-table td.mac-col,
+        table.organization-clients-table th.network-col,
+        table.organization-clients-table td.network-col {
+            width: 1%;
+            max-width: none;
+            white-space: nowrap;
+            overflow: visible;
+            text-overflow: clip;
+        }
+
+        table.organization-clients-table th.network-col,
+        table.organization-clients-table td.network-col {
+            width: 5ch;
+            padding-left: 8px;
+            padding-right: 8px;
+        }
+
         @media (max-width: 900px) {
             .columns {
                 grid-template-columns: 1fr;
