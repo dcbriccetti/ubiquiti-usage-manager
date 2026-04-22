@@ -1,0 +1,89 @@
+{% set month_points = month_daily_usage or [] %}
+{% if month_points %}
+    {% set chart_id_prefix = "month-usage-mb-chart-" ~ (chart_key or "usage")|replace(":", "")|replace(" ", "-")|replace("/", "-") %}
+    {% set chart_id = chart_id_prefix ~ "-mb" %}
+    {% set labels = month_points | map(attribute='day_of_month') | list %}
+    {% set mb_series = month_points | map(attribute='total_mb') | list %}
+    {% set full_labels = month_points | map(attribute='day_label') | list %}
+
+    <div class="month-chart-wrap" style="height: 260px;">
+        <canvas id="{{ chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily MB usage measurements for the month"></canvas>
+    </div>
+    <script>
+        // @ts-nocheck
+        /* global Chart */
+        (() => {
+            const canvas = document.getElementById({{ chart_id|tojson }});
+            if (!canvas || typeof Chart === "undefined") {
+                return;
+            }
+
+            const labels = {{ labels|tojson }};
+            const mbSeries = {{ mb_series|tojson }};
+            const fullLabels = {{ full_labels|tojson }};
+
+            new Chart(canvas, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: "Usage MB/day",
+                            data: mbSeries,
+                            backgroundColor: "rgba(15, 118, 110, 0.62)",
+                            borderRadius: 3,
+                            barPercentage: 0.72,
+                            categoryPercentage: 0.72,
+                            maxBarThickness: 20
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: (tooltipItems) => {
+                                    const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                    return fullLabels[idx] || "";
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: "Day of month"
+                            },
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 12
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: "MB/day"
+                            },
+                            grid: {
+                                color: "rgba(31, 41, 51, 0.20)"
+                            }
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
+{% else %}
+    <p class="muted">No daily usage measurements for this month yet.</p>
+{% endif %}

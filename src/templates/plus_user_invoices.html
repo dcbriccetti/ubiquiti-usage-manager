@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Plus User Invoices | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero detail-hero">
+        <div>
+            <h1>Plus User Invoices</h1>
+            <p class="muted">Period: {{ report_period_label }}{% if generated_at %} · Generated {{ generated_at.strftime("%Y-%m-%d %H:%M:%S") }}{% endif %}</p>
+            <p><a href="{{ url_for('plus_user_invoice_export_zip') }}">Export all summaries (ZIP + PDFs)</a></p>
+            {% if excluded_user_ids %}
+                <p class="muted">Excluded User IDs: {{ excluded_user_ids|join(", ") }}</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <article class="panel">
+        <div class="panel-body">
+            <h2>Billable Plus Users ({{ summaries|length }})</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th class="num">MB</th>
+                        <th class="num">Cost</th>
+                        <th class="num">Minutes</th>
+                        <th class="num">Devices</th>
+                        <th>First Seen</th>
+                        <th>Last Seen</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in invoice_rows %}
+                        {% set summary = row.summary %}
+                        <tr>
+                            <td><a class="mac-link" href="{{ url_for('plus_user_invoice_summary', user_id=summary.user_id) }}" title="Usage details">{{ summary.user_id }}</a></td>
+                            <td class="num">{{ "{:,.0f}".format(summary.total_mb) }}</td>
+                            <td class="num">${{ "{:,.2f}".format(row.cost_usd) }}</td>
+                            <td class="num">{{ "{:,.0f}".format(summary.active_minutes) }}</td>
+                            <td class="num">{{ "{:,.0f}".format(summary.device_count) }}</td>
+                            <td>{{ summary.first_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                            <td>{{ summary.last_seen.strftime("%Y-%m-%d %H:%M") }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="muted">No billable Plus-user data available for this month.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+{% endblock %}

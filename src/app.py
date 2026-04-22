@@ -10,10 +10,14 @@ Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
 from datetime import datetime
+import csv
+import io
 import os
+import re
+import zipfile
 from typing import Any, TypedDict
 
-from flask import Flask, Response, abort, jsonify, redirect, render_template, request, stream_with_context, url_for
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, stream_with_context, url_for
 
 import config as cfg
 import database as db
@@ -82,6 +86,125 @@ def create_app() -> Flask:
     def calculate_month_cost_cents(calendar_month_total_mb: float) -> float:
         'Return estimated month cost in cents using configured rate.'
         return (calendar_month_total_mb / 1000.0) * float(cfg.COST_IN_CENTS_PER_GB)
+
+    def render_report_period_label(now: datetime) -> str:
+        'Return report period label with month and year.'
+        return now.strftime('%B %Y')
+
+    def safe_file_stem(raw_value: str) -> str:
+        'Return a filesystem-safe lowercase stem suitable for export filenames.'
+        normalized = re.sub(r'[^a-zA-Z0-9._-]+', '-', raw_value.strip()).strip('-').lower()
+        return normalized or 'unknown-user'
+
+    def build_plus_user_chart_context(summary: db.PlusUserInvoiceSummary) -> dict[str, object]:
+        'Build daily-usage chart dataset for Plus-user invoice summary pages/exports.'
+        month_daily_usage: list[DailyUsagePoint] = [
+            {
+                'day_label': f'{usage_day.strftime("%b")} {usage_day.day}',
+                'day_of_month': usage_day.day,
+                'total_mb': total_mb,
+                'active_minutes': active_minutes,
+            }
+            for usage_day, total_mb, active_minutes in summary.daily_usage
+        ]
+        return {
+            'month_daily_usage': month_daily_usage,
+        }
+
+    def build_plus_user_invoice_pdf(
+        summary: db.PlusUserInvoiceSummary,
+        report_period_label: str,
+        generated_at: datetime,
+    ) -> bytes:
+        'Render one invoice-ready PDF summary for a Plus user.'
+        from reportlab.graphics import renderPDF
+        from reportlab.graphics.charts.barcharts import VerticalBarChart
+        from reportlab.graphics.shapes import Drawing, Rect, String
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+
+        chart_context = build_plus_user_chart_context(summary)
+        month_daily_usage = chart_context['month_daily_usage']
+        day_labels = [str(point['day_of_month']) for point in month_daily_usage]
+        usage_mb_series = [float(point['total_mb']) for point in month_daily_usage]
+        stacked_day_labels, stacked_device_series = db.get_plus_user_daily_device_usage_current_month(summary.user_id)
+
+        pdf_buffer = io.BytesIO()
+        pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
+        page_width, page_height = letter
+
+        pdf.setFont("Helvetica-Bold", 16)
+        pdf.drawString(42, page_height - 46, f"Plus User Invoice Summary: {summary.user_id}")
+        pdf.setFont("Helvetica", 10)
+        pdf.drawString(42, page_height - 64, f"Period: {report_period_label}")
+        pdf.drawString(180, page_height - 64, f"Generated: {generated_at.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        y = page_height - 92
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(42, y, "Summary")
+        y -= 16
+        pdf.setFont("Helvetica", 10)
+        summary_lines = [
+            f"Usage (MB): {summary.total_mb:,.0f}",
+            f"Cost: ${(calculate_month_cost_cents(summary.total_mb) / 100.0):,.2f}",
+            f"Active Minutes: {summary.active_minutes:,}",
+            f"Devices: {summary.device_count:,}",
+            f"First Seen: {summary.first_seen.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"Last Seen: {summary.last_seen.strftime('%Y-%m-%d %H:%M:%S')}",
+        ]
+        for line in summary_lines:
+            pdf.drawString(42, y, line)
+            y -= 13
+
+        chart_top = y - 8
+        usage_chart = Drawing(530, 190)
+        usage_chart.add(String(8, 154, f"{report_period_label} Usage MB/day", fontName="Helvetica-Bold", fontSize=10))
+        usage_bar = VerticalBarChart()
+        usage_bar.x = 36
+        usage_bar.y = 24
+        usage_bar.width = 400
+        usage_bar.height = 118
+        if stacked_day_labels and stacked_device_series:
+            usage_bar.data = [series for _, series in stacked_device_series]
+            usage_bar.categoryAxis.style = "stacked"
+            usage_bar.categoryAxis.categoryNames = [str(usage_day.day) for usage_day in stacked_day_labels]
+        else:
+            usage_bar.data = [usage_mb_series or [0.0]]
+            usage_bar.categoryAxis.categoryNames = day_labels or [""]
+        usage_bar.valueAxis.valueMin = 0
+        usage_bar.categoryAxis.labels.fontSize = 6
+        usage_bar.barWidth = max(2, min(14, int(360 / max(1, len(day_labels)))))
+        usage_bar.groupSpacing = 2
+        palette = [
+            colors.Color(0.06, 0.46, 0.43, alpha=0.74),
+            colors.Color(0.23, 0.51, 0.96, alpha=0.76),
+            colors.Color(0.76, 0.25, 0.05, alpha=0.74),
+            colors.Color(0.49, 0.23, 0.93, alpha=0.74),
+            colors.Color(0.01, 0.52, 0.78, alpha=0.74),
+            colors.Color(0.09, 0.64, 0.29, alpha=0.74),
+            colors.Color(0.35, 0.38, 0.45, alpha=0.70),
+        ]
+        for idx in range(len(usage_bar.data)):
+            usage_bar.bars[idx].fillColor = palette[idx % len(palette)]
+
+        usage_chart.add(usage_bar)
+        if stacked_device_series:
+            for idx, (device_label, _) in enumerate(stacked_device_series):
+                legend_y = 148 - (idx * 14)
+                if legend_y < 10:
+                    break
+                label_text = device_label
+                if len(label_text) > 20:
+                    label_text = f"{label_text[:17]}..."
+                usage_chart.add(Rect(444, legend_y - 6, 8, 8, fillColor=palette[idx % len(palette)], strokeColor=None))
+                usage_chart.add(String(456, legend_y, label_text, fontName="Helvetica", fontSize=7))
+        renderPDF.draw(usage_chart, pdf, 36, chart_top - 170)
+
+        pdf.showPage()
+        pdf.save()
+        pdf_buffer.seek(0)
+        return pdf_buffer.getvalue()
 
     def get_speed_limits_by_name() -> SpeedLimitsByName:
         'Return mapping of speed-limit profile name to SpeedLimit object.'
@@ -458,6 +581,138 @@ def create_app() -> Flask:
             detected_mac=detected_mac,
             generated_at=datetime.now(),
             **context,
+        )
+
+    @flask_app.route("/invoices/plus-users")
+    def plus_user_invoices():
+        'Render month-to-date Plus-user invoice summaries for admins.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        generated_at = datetime.now()
+        summaries = db.get_plus_user_invoice_summaries_current_month(
+            excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+        )
+        invoice_rows = [
+            {
+                'summary': summary,
+                'cost_usd': calculate_month_cost_cents(summary.total_mb) / 100.0,
+            }
+            for summary in summaries
+        ]
+        return render_template(
+            "plus_user_invoices.html",
+            generated_at=generated_at,
+            report_period_label=render_report_period_label(generated_at),
+            summaries=summaries,
+            invoice_rows=invoice_rows,
+            excluded_user_ids=sorted(
+                user_id.strip()
+                for user_id in cfg.ORGANIZATION_PAID_USER_IDS
+                if user_id.strip()
+            ),
+        )
+
+    @flask_app.route("/invoices/plus-users/<user_id>")
+    def plus_user_invoice_summary(user_id: str):
+        'Render month-to-date invoice detail for one Plus user.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        summary = db.get_plus_user_invoice_summary_current_month(
+            user_id,
+            excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+        )
+        if summary is None:
+            abort(404)
+
+        generated_at = datetime.now()
+        return render_template(
+            "plus_user_invoice_summary.html",
+            generated_at=generated_at,
+            report_period_label=render_report_period_label(generated_at),
+            month_cost_cents=calculate_month_cost_cents(summary.total_mb),
+            summary=summary,
+            **build_plus_user_chart_context(summary),
+        )
+
+    @flask_app.route("/invoices/plus-users/<user_id>/summary.pdf")
+    def plus_user_invoice_pdf(user_id: str):
+        'Generate invoice-ready PDF for one Plus user.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        summary = db.get_plus_user_invoice_summary_current_month(
+            user_id,
+            excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+        )
+        if summary is None:
+            abort(404)
+
+        generated_at = datetime.now()
+        report_period_label = render_report_period_label(generated_at)
+        pdf_bytes = build_plus_user_invoice_pdf(summary, report_period_label, generated_at)
+        filename = f"plus-user-invoice-{safe_file_stem(summary.user_id)}-{generated_at:%Y-%m}.pdf"
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=filename,
+        )
+
+    @flask_app.route("/invoices/plus-users/export.zip")
+    def plus_user_invoice_export_zip():
+        'Generate one ZIP containing monthly PDF summary for each billable Plus user.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        generated_at = datetime.now()
+        report_period_label = render_report_period_label(generated_at)
+        summaries = db.get_plus_user_invoice_summaries_current_month(
+            excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+        )
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zip_file:
+            index_csv_buffer = io.StringIO()
+            csv_writer = csv.writer(index_csv_buffer)
+            csv_writer.writerow([
+                "user_id",
+                "usage_mb",
+                "cost_usd",
+                "active_minutes",
+                "device_count",
+                "first_seen",
+                "last_seen",
+                "pdf_filename",
+            ])
+
+            for summary in summaries:
+                pdf_filename = f"plus-user-invoice-{safe_file_stem(summary.user_id)}-{generated_at:%Y-%m}.pdf"
+                zip_file.writestr(
+                    pdf_filename,
+                    build_plus_user_invoice_pdf(summary, report_period_label, generated_at),
+                )
+                csv_writer.writerow([
+                    summary.user_id,
+                    f"{summary.total_mb:.3f}",
+                    f"{calculate_month_cost_cents(summary.total_mb) / 100.0:.2f}",
+                    summary.active_minutes,
+                    summary.device_count,
+                    summary.first_seen.strftime("%Y-%m-%d %H:%M:%S"),
+                    summary.last_seen.strftime("%Y-%m-%d %H:%M:%S"),
+                    pdf_filename,
+                ])
+
+            zip_file.writestr("plus-user-invoice-index.csv", index_csv_buffer.getvalue())
+
+        zip_buffer.seek(0)
+        zip_name = f"plus-user-invoices-{generated_at:%Y-%m}.zip"
+        return send_file(
+            zip_buffer,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=zip_name,
         )
 
     return flask_app

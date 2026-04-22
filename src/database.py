@@ -125,6 +125,39 @@ class GlobalPayerSplit:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PlusUserInvoiceDevice:
+    'Month-to-date usage rollup for one device under one Plus user.'
+    mac: str
+    name: str
+    total_mb: float
+    active_minutes: int
+    last_seen: datetime
+    top_access_point: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class PlusUserInvoiceAccessPoint:
+    'Month-to-date usage rollup for one access point under one Plus user.'
+    ap_name: str
+    total_mb: float
+    active_minutes: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class PlusUserInvoiceSummary:
+    'Month-to-date invoice-ready usage rollup for one Plus user.'
+    user_id: str
+    total_mb: float
+    active_minutes: int
+    device_count: int
+    first_seen: datetime
+    last_seen: datetime
+    devices: list[PlusUserInvoiceDevice]
+    access_points: list[PlusUserInvoiceAccessPoint]
+    daily_usage: list[tuple[date, float, int]]
+
+
+@dataclass(frozen=True, kw_only=True)
 class GlobalConcurrencyInsights:
     'Month-to-date concurrency analytics for peak and heatmap visuals.'
     daily_x_labels: list[int]
@@ -959,6 +992,273 @@ def get_global_organization_paid_clients_current_month(
     )
 
     return results[:max(1, limit)]
+
+
+def get_plus_user_invoice_summaries_current_month(
+    excluded_user_ids: set[str] | None = None,
+) -> list[PlusUserInvoiceSummary]:
+    'Return month-to-date invoice summaries for Plus users, one summary per user_id.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(
+            UsageRecord.timestamp,
+            UsageRecord.mac,
+            UsageRecord.user_id,
+            UsageRecord.name,
+            UsageRecord.vlan,
+            UsageRecord.ap_name,
+            UsageRecord.mb_used,
+        )
+        .where(
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+    )
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    excluded_ids = {user_id.strip().lower() for user_id in (excluded_user_ids or set()) if user_id.strip()}
+    users: dict[str, dict[str, object]] = {}
+    for row_timestamp, row_mac, row_user_id, row_name, row_vlan, row_ap_name, row_mb_used in rows:
+        if not isinstance(row_timestamp, datetime) or not isinstance(row_mac, str):
+            continue
+        if not (isinstance(row_vlan, str) and row_vlan.strip().lower() == 'plus'):
+            continue
+        if not (isinstance(row_user_id, str) and row_user_id.strip()):
+            continue
+
+        normalized_user_id = row_user_id.strip().lower()
+        display_user_id = row_user_id.strip()
+        if normalized_user_id in excluded_ids:
+            continue
+
+        mb_used = float(row_mb_used or 0.0)
+        device_name = row_name.strip() if isinstance(row_name, str) and row_name.strip() else row_mac
+        ap_name = row_ap_name.strip() if isinstance(row_ap_name, str) and row_ap_name.strip() else 'Unknown'
+        if ap_name.lower().endswith(' ap'):
+            ap_name = ap_name[:-3].rstrip() or 'Unknown'
+
+        user_bucket = users.get(normalized_user_id)
+        if user_bucket is None:
+            user_bucket = {
+                'user_id': display_user_id,
+                'total_mb': 0.0,
+                'active_minutes': 0,
+                'first_seen': row_timestamp,
+                'last_seen': row_timestamp,
+                'devices': {},
+                'access_points': {},
+                'daily_totals': {},
+            }
+            users[normalized_user_id] = user_bucket
+
+        user_bucket['total_mb'] = float(user_bucket['total_mb']) + mb_used
+        user_bucket['active_minutes'] = int(user_bucket['active_minutes']) + 1
+        user_bucket['first_seen'] = min(cast(datetime, user_bucket['first_seen']), row_timestamp)
+        user_bucket['last_seen'] = max(cast(datetime, user_bucket['last_seen']), row_timestamp)
+        user_bucket['user_id'] = display_user_id
+
+        devices = cast(dict[str, dict[str, object]], user_bucket['devices'])
+        device_bucket = devices.get(row_mac)
+        if device_bucket is None:
+            device_bucket = {
+                'mac': row_mac,
+                'name': device_name,
+                'total_mb': 0.0,
+                'active_minutes': 0,
+                'last_seen': row_timestamp,
+                'ap_minutes': {},
+            }
+            devices[row_mac] = device_bucket
+        device_bucket['total_mb'] = float(device_bucket['total_mb']) + mb_used
+        device_bucket['active_minutes'] = int(device_bucket['active_minutes']) + 1
+        device_bucket['last_seen'] = max(cast(datetime, device_bucket['last_seen']), row_timestamp)
+        device_bucket['name'] = device_name
+        ap_minutes = cast(dict[str, int], device_bucket['ap_minutes'])
+        ap_minutes[ap_name] = ap_minutes.get(ap_name, 0) + 1
+
+        access_points = cast(dict[str, dict[str, object]], user_bucket['access_points'])
+        ap_bucket = access_points.get(ap_name)
+        if ap_bucket is None:
+            ap_bucket = {'ap_name': ap_name, 'total_mb': 0.0, 'active_minutes': 0}
+            access_points[ap_name] = ap_bucket
+        ap_bucket['total_mb'] = float(ap_bucket['total_mb']) + mb_used
+        ap_bucket['active_minutes'] = int(ap_bucket['active_minutes']) + 1
+
+        usage_day = row_timestamp.date()
+        daily_totals = cast(dict[date, dict[str, object]], user_bucket['daily_totals'])
+        day_bucket = daily_totals.get(usage_day)
+        if day_bucket is None:
+            day_bucket = {'total_mb': 0.0, 'active_minutes': 0}
+            daily_totals[usage_day] = day_bucket
+        day_bucket['total_mb'] = float(day_bucket['total_mb']) + mb_used
+        day_bucket['active_minutes'] = int(day_bucket['active_minutes']) + 1
+
+    results: list[PlusUserInvoiceSummary] = []
+    for user_bucket in users.values():
+        device_rows: list[PlusUserInvoiceDevice] = []
+        for device_bucket in cast(dict[str, dict[str, object]], user_bucket['devices']).values():
+            ap_minutes = cast(dict[str, int], device_bucket['ap_minutes'])
+            top_ap = max(ap_minutes.items(), key=lambda pair: (pair[1], pair[0]))[0] if ap_minutes else ''
+            device_rows.append(
+                PlusUserInvoiceDevice(
+                    mac=cast(str, device_bucket['mac']),
+                    name=cast(str, device_bucket['name']),
+                    total_mb=float(device_bucket['total_mb']),
+                    active_minutes=int(device_bucket['active_minutes']),
+                    last_seen=cast(datetime, device_bucket['last_seen']),
+                    top_access_point=top_ap,
+                )
+            )
+
+        access_point_rows = [
+            PlusUserInvoiceAccessPoint(
+                ap_name=cast(str, ap_bucket['ap_name']),
+                total_mb=float(ap_bucket['total_mb']),
+                active_minutes=int(ap_bucket['active_minutes']),
+            )
+            for ap_bucket in cast(dict[str, dict[str, object]], user_bucket['access_points']).values()
+        ]
+
+        daily_totals = cast(dict[date, dict[str, object]], user_bucket['daily_totals'])
+        day_cursor = month_start
+        daily_usage: list[tuple[date, float, int]] = []
+        while day_cursor <= today:
+            bucket = daily_totals.get(day_cursor, {})
+            daily_usage.append(
+                (
+                    day_cursor,
+                    float(bucket.get('total_mb', 0.0)),
+                    int(bucket.get('active_minutes', 0)),
+                )
+            )
+            day_cursor += timedelta(days=1)
+
+        results.append(
+            PlusUserInvoiceSummary(
+                user_id=cast(str, user_bucket['user_id']),
+                total_mb=float(user_bucket['total_mb']),
+                active_minutes=int(user_bucket['active_minutes']),
+                device_count=len(device_rows),
+                first_seen=cast(datetime, user_bucket['first_seen']),
+                last_seen=cast(datetime, user_bucket['last_seen']),
+                devices=sorted(device_rows, key=lambda row: (row.total_mb, row.active_minutes, row.name.lower()), reverse=True),
+                access_points=sorted(access_point_rows, key=lambda row: (row.active_minutes, row.total_mb, row.ap_name.lower()), reverse=True),
+                daily_usage=daily_usage,
+            )
+        )
+
+    return sorted(results, key=lambda row: (row.total_mb, row.active_minutes, row.user_id.lower()), reverse=True)
+
+
+def get_plus_user_invoice_summary_current_month(
+    user_id: str,
+    excluded_user_ids: set[str] | None = None,
+) -> PlusUserInvoiceSummary | None:
+    'Return month-to-date invoice summary for one Plus user_id.'
+    normalized_user_id = user_id.strip().lower()
+    if not normalized_user_id:
+        return None
+    for summary in get_plus_user_invoice_summaries_current_month(excluded_user_ids=excluded_user_ids):
+        if summary.user_id.strip().lower() == normalized_user_id:
+            return summary
+    return None
+
+
+def get_plus_user_daily_device_usage_current_month(
+    user_id: str,
+    max_devices: int = 6,
+) -> tuple[list[date], list[tuple[str, list[float]]]]:
+    'Return per-day MB series by device for one Plus user in the current month.'
+    normalized_user_id = user_id.strip().lower()
+    if not normalized_user_id:
+        return [], []
+
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(
+            UsageRecord.timestamp,
+            UsageRecord.mac,
+            UsageRecord.name,
+            UsageRecord.user_id,
+            UsageRecord.vlan,
+            UsageRecord.mb_used,
+        )
+        .where(
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+    )
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    day_labels: list[date] = []
+    day_cursor = month_start
+    while day_cursor <= today:
+        day_labels.append(day_cursor)
+        day_cursor += timedelta(days=1)
+    day_to_index = {usage_day: idx for idx, usage_day in enumerate(day_labels)}
+
+    device_series: dict[str, list[float]] = {}
+    device_totals: dict[str, float] = {}
+    device_names: dict[str, str] = {}
+
+    for row_timestamp, row_mac, row_name, row_user_id, row_vlan, row_mb_used in rows:
+        if not isinstance(row_timestamp, datetime) or not isinstance(row_mac, str):
+            continue
+        if not (isinstance(row_user_id, str) and row_user_id.strip().lower() == normalized_user_id):
+            continue
+        if not (isinstance(row_vlan, str) and row_vlan.strip().lower() == 'plus'):
+            continue
+
+        usage_day = row_timestamp.date()
+        day_index = day_to_index.get(usage_day)
+        if day_index is None:
+            continue
+
+        mb_used = float(row_mb_used or 0.0)
+        if row_mac not in device_series:
+            device_series[row_mac] = [0.0 for _ in day_labels]
+            device_totals[row_mac] = 0.0
+        device_series[row_mac][day_index] += mb_used
+        device_totals[row_mac] = device_totals.get(row_mac, 0.0) + mb_used
+        resolved_name = row_name.strip() if isinstance(row_name, str) and row_name.strip() else row_mac
+        device_names[row_mac] = resolved_name
+
+    if not device_series:
+        return day_labels, []
+
+    ordered_macs = sorted(
+        device_series.keys(),
+        key=lambda mac: (device_totals.get(mac, 0.0), device_names.get(mac, '').lower(), mac),
+        reverse=True,
+    )
+    capped_macs = ordered_macs[:max(1, max_devices)]
+
+    series: list[tuple[str, list[float]]] = [
+        (device_names.get(mac, mac), device_series[mac][:])
+        for mac in capped_macs
+    ]
+
+    remaining_macs = ordered_macs[max(1, max_devices):]
+    if remaining_macs:
+        other_series = [0.0 for _ in day_labels]
+        for mac in remaining_macs:
+            for idx, value in enumerate(device_series[mac]):
+                other_series[idx] += value
+        series.append(('Other', other_series))
+
+    return day_labels, series
 
 
 def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights:

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Plus User Invoice Summary | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero detail-hero">
+        <div>
+            <p><a href="{{ url_for('plus_user_invoices') }}">Back to Plus invoices</a></p>
+            <h1>{{ summary.user_id }}</h1>
+            {% if generated_at %}
+                <p class="muted">Generated {{ generated_at.strftime("%Y-%m-%d %H:%M:%S") }}</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="grid stats">
+        <article class="panel stat">
+            <span class="label">Usage {{ report_period_label }}</span>
+            <span class="value">{{ "{:,.0f}".format(summary.total_mb) }} MB</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Cost</span>
+            <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Active Minutes</span>
+            <span class="value">{{ "{:,.0f}".format(summary.active_minutes) }}</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Devices</span>
+            <span class="value">{{ "{:,.0f}".format(summary.device_count) }}</span>
+        </article>
+    </section>
+
+    <article class="panel">
+        <div class="panel-body">
+            <h2>{{ report_period_label }} Usage</h2>
+            <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+            {% set chart_key = summary.user_id %}
+            {% include "_month_usage_mb_chart.html" %}
+            <p class="muted">Export as PDF: <a href="{{ url_for('plus_user_invoice_pdf', user_id=summary.user_id) }}">Download summary PDF</a></p>
+        </div>
+    </article>
+
+    <section class="grid columns">
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Devices</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>MAC</th>
+                            <th class="num">MB</th>
+                            <th class="num">Minutes</th>
+                            <th>Primary Access Point</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for device in summary.devices %}
+                            <tr>
+                                <td>{{ device.name }}</td>
+                                <td class="mono">{{ device.mac }}</td>
+                                <td class="num">{{ "{:,.0f}".format(device.total_mb) }}</td>
+                                <td class="num">{{ "{:,.0f}".format(device.active_minutes) }}</td>
+                                <td>{{ device.top_access_point }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="muted">No device activity found for this month.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Access Point Usage</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Access Point</th>
+                            <th class="num">MB</th>
+                            <th class="num">Minutes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ap in summary.access_points %}
+                            <tr>
+                                <td>{{ ap.ap_name }}</td>
+                                <td class="num">{{ "{:,.0f}".format(ap.total_mb) }}</td>
+                                <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="3" class="muted">No access-point activity found for this month.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </article>
+    </section>
+{% endblock %}

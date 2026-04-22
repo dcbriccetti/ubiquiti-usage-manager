@@ -11,6 +11,11 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
 
 - Client table with live/historical windows: Active Now, Online Now, Today, 7 Days, and current month.
 - Per-client usage details page for admins and self-service users with daily charts and usage history.
+- Plus-user invoice workflow (admin-only):
+  - `/invoices/plus-users` monthly invoice index for billable Plus users,
+  - `/invoices/plus-users/<user_id>` per-user summary page,
+  - `/invoices/plus-users/<user_id>/summary.pdf` per-user PDF export,
+  - `/invoices/plus-users/export.zip` bulk ZIP export (all PDFs + CSV index).
 - Organization-paid analytics split:
   - payer split (organization-paid vs user-paid),
   - organization-paid client list.
@@ -48,7 +53,11 @@ Edit `src/keys.py`:
 API_KEY = "your-unifi-api-key"
 ```
 
-Review `src/config.py` for your environment:
+Review `src/config.py` for defaults and committed example values.
+For private/local development settings, copy `src/config_local.py.example` to `src/config_local.py` and edit that file.
+`src/config_local.py` is gitignored and automatically overrides uppercase values from `src/config.py` at runtime.
+
+Config values:
 
 - `THROTTLEABLE_VLAN_NAMES`
 - `THROTTLING_LEVELS`
@@ -58,6 +67,11 @@ Review `src/config.py` for your environment:
 - `ORGANIZATION_PAID_DEVICE_MACS`
 - `ORGANIZATION_PAID_USER_IDS`
 - `ORGANIZATION_PAID_VLAN_NAMES`
+
+Billing export behavior:
+
+- Users in `ORGANIZATION_PAID_USER_IDS` are excluded from Plus-user billing exports.
+- Costs are calculated from `COST_IN_CENTS_PER_GB`.
 
 ## 3) Start The Monitor (required for live data)
 
@@ -104,6 +118,10 @@ LOG_LEVEL=DEBUG DEV_FORCE_PLUS_ADMIN=1 python3 src/app.py
 3. Confirm dashboard rows appear and minute usage updates.
 4. Open a client detail page from Name/MAC links.
 5. Verify month cost values match `COST_IN_CENTS_PER_GB`.
+6. Visit `/invoices/plus-users` and confirm:
+   - invoice table populates,
+   - per-user PDF downloads,
+   - ZIP export includes PDFs and `plus-user-invoice-index.csv`.
 
 ## Notes
 
