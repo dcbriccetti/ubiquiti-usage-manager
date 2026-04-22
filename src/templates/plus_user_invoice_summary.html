@@ -1,12 +1,15 @@
 {% extends "base.html" %}
 
-{% block title %}Plus User Invoice Summary | UniFi Usage{% endblock %}
+{% block title %}{{ plus_report_label }} | UniFi Usage{% endblock %}
 
 {% block content %}
     <section class="hero detail-hero">
         <div>
             <p><a href="{{ url_for('plus_user_invoices') }}">Back to Plus invoices</a></p>
-            <h1>{{ summary.user_id }}</h1>
+            <h1>{{ plus_report_label }}: {{ summary.user_id }}</h1>
+            {% if organization_title %}
+                <p class="muted">{{ organization_title }}</p>
+            {% endif %}
             {% if generated_at %}
                 <p class="muted">Generated {{ generated_at.strftime("%Y-%m-%d %H:%M:%S") }}</p>
             {% endif %}

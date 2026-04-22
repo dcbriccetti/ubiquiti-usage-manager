@@ -63,6 +63,8 @@ Config values:
 - `THROTTLING_LEVELS`
 - `MONTHLY_USAGE_ADJUSTMENTS`
 - `COST_IN_CENTS_PER_GB`
+- `PLUS_REPORT_TITLE` (prepended to "Network Usage Report" in Plus-user reports)
+- `ORGANIZATION_TITLE` (shown on report pages and PDF exports)
 - `PLUS_ADMINS`
 - `ORGANIZATION_PAID_DEVICE_MACS`
 - `ORGANIZATION_PAID_USER_IDS`

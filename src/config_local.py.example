@@ -1,0 +1,30 @@
+"""
+Local development overrides for src/config.py.
+
+Copy to src/config_local.py and edit with private values.
+"""
+
+from config import MonthlyUsageAdjustment, ThrottleLevel
+
+IGNORE_BELOW_KB = 10
+THROTTLEABLE_VLAN_NAMES = ['Basic']
+THROTTLING_LEVELS = [
+    ThrottleLevel(250, '1/2 speed'),
+    ThrottleLevel(500, '1/4 speed'),
+    ThrottleLevel(1_000, '1/8 speed'),
+    ThrottleLevel(1_500, '1/16 speed'),
+]
+MONTHLY_USAGE_ADJUSTMENTS = [
+    MonthlyUsageAdjustment(2_000, 0.75),
+    MonthlyUsageAdjustment(4_000, 0.50),
+    MonthlyUsageAdjustment(6_000, 0.35),
+]
+
+COST_IN_CENTS_PER_GB = 50
+PLUS_REPORT_TITLE = ''
+PLUS_ADMINS = {'replace_me_1', 'replace_me_2'}
+SELF_SERVICE_SPEED_LIMIT_ENABLED = False
+
+ORGANIZATION_PAID_DEVICE_MACS: set[str] = set()
+ORGANIZATION_PAID_USER_IDS: set[str] = set()
+ORGANIZATION_PAID_VLAN_NAMES: set[str] = set()

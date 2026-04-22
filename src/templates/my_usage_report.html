@@ -6,6 +6,9 @@
     <section class="hero detail-hero">
         <div>
             <h1>Billing Report</h1>
+            {% if organization_title %}
+                <p class="muted">{{ organization_title }}</p>
+            {% endif %}
             <p class="mono">IP: {{ request_ip or "Unknown" }}{% if detected_mac %} &nbsp;|&nbsp; MAC: {{ detected_mac }}{% endif %}</p>
             {% if generated_at %}
                 <p class="muted">Generated {{ generated_at.strftime("%Y-%m-%d %H:%M:%S") }}</p>

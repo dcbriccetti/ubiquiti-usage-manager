@@ -87,6 +87,22 @@ def create_app() -> Flask:
         'Return estimated month cost in cents using configured rate.'
         return (calendar_month_total_mb / 1000.0) * float(cfg.COST_IN_CENTS_PER_GB)
 
+    def get_organization_title() -> str:
+        'Return organization title for reports.'
+        raw_title = getattr(cfg, 'ORGANIZATION_TITLE', '')
+        return raw_title.strip() if isinstance(raw_title, str) else ''
+
+    def get_plus_report_title_prefix() -> str:
+        'Return optional prefix shown before "Network Usage Report".'
+        raw_title = getattr(cfg, 'PLUS_REPORT_TITLE', '')
+        return raw_title.strip() if isinstance(raw_title, str) else ''
+
+    def get_plus_network_report_title() -> str:
+        'Return full Plus report title label.'
+        if prefix := get_plus_report_title_prefix():
+            return f'{prefix} Network Usage Report'
+        return 'Network Usage Report'
+
     def render_report_period_label(now: datetime) -> str:
         'Return report period label with month and year.'
         return now.strftime('%B %Y')
@@ -135,10 +151,16 @@ def create_app() -> Flask:
         page_width, page_height = letter
 
         pdf.setFont("Helvetica-Bold", 16)
-        pdf.drawString(42, page_height - 46, f"Plus User Invoice Summary: {summary.user_id}")
+        pdf.drawString(42, page_height - 46, f"{get_plus_network_report_title()}: {summary.user_id}")
         pdf.setFont("Helvetica", 10)
-        pdf.drawString(42, page_height - 64, f"Period: {report_period_label}")
-        pdf.drawString(180, page_height - 64, f"Generated: {generated_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        organization_title = get_organization_title()
+        if organization_title:
+            pdf.drawString(42, page_height - 64, organization_title)
+            pdf.drawString(220, page_height - 64, f"Period: {report_period_label}")
+            pdf.drawString(360, page_height - 64, f"Generated: {generated_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        else:
+            pdf.drawString(42, page_height - 64, f"Period: {report_period_label}")
+            pdf.drawString(180, page_height - 64, f"Generated: {generated_at.strftime('%Y-%m-%d %H:%M:%S')}")
 
         y = page_height - 92
         pdf.setFont("Helvetica-Bold", 11)
@@ -580,6 +602,7 @@ def create_app() -> Flask:
             request_ip=request_ip,
             detected_mac=detected_mac,
             generated_at=datetime.now(),
+            organization_title=get_organization_title(),
             **context,
         )
 
@@ -606,6 +629,7 @@ def create_app() -> Flask:
             report_period_label=render_report_period_label(generated_at),
             summaries=summaries,
             invoice_rows=invoice_rows,
+            organization_title=get_organization_title(),
             excluded_user_ids=sorted(
                 user_id.strip()
                 for user_id in cfg.ORGANIZATION_PAID_USER_IDS
@@ -632,6 +656,8 @@ def create_app() -> Flask:
             generated_at=generated_at,
             report_period_label=render_report_period_label(generated_at),
             month_cost_cents=calculate_month_cost_cents(summary.total_mb),
+            organization_title=get_organization_title(),
+            plus_report_label=get_plus_network_report_title(),
             summary=summary,
             **build_plus_user_chart_context(summary),
         )
