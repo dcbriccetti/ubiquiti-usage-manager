@@ -13,21 +13,15 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
 - Per-client usage details page for admins and self-service users with daily charts and usage history.
 - Organization-paid analytics split:
   - payer split (organization-paid vs user-paid),
-  - organization-paid client list,
-  - inclusion criteria display based on configured VLAN/MAC/User ID rules.
+  - organization-paid client list.
 - Global month analytics:
   - Dashboard (`/`) keeps operational summaries (daily active clients, payer split, AP hotspots).
-    - Payer split shows MB, cost, share %, and minutes for Organization-paid and User-paid.
   - Insights (`/insights`) contains deeper month analytics:
     - daily MB and minutes split by Basic/Plus,
     - peak simultaneous users by day,
     - weekday/hour user-minutes heatmap.
-      - Heatmap cells show total user-minutes directly (sum of concurrent users each active minute), with sample/coverage details in tooltip.
     - throttling coverage metrics and profile-minutes chart.
-    - Organization-paid Clients and Top Users tables are shown side-by-side.
-      - Organization-paid Clients includes monthly cost per client row (derived from `COST_IN_CENTS_PER_GB`).
-      - Top users combines rows by `user_id` when present; devices without `user_id` remain separate (prevents merging generic names like `iPhone`).
-      - Top users table includes monthly estimated cost per row (derived from `COST_IN_CENTS_PER_GB`).
+    - top users and organization-paid client usage breakdown.
 - Throttling coverage panel:
   - minutes throttled,
   - total active minutes,
@@ -115,11 +109,6 @@ LOG_LEVEL=DEBUG DEV_FORCE_PLUS_ADMIN=1 python3 src/app.py
 
 - `meter.db` is created in the repo root on first run.
 - Throttling actions are live changes against UniFi groups, so test carefully.
-- Styling cohesion conventions:
-  - shared spacing/radius tokens are defined in `src/templates/base.html` (`--space-*`, `--radius-*`),
-  - prefer shared layout/component classes (for example `control-row`, `month-chart-wrap`, `insights-table`) over inline style tweaks.
-  - dashboard summary tables use consistent numeric column order: `MB`, then `Minutes` (even when sorted by minutes).
-  - on dashboard, summary tables are stacked in a single flow (payer split, then AP hotspots) to avoid arbitrary side-by-side placement.
 - Main files:
   - `src/app.py` web routes/UI
   - `src/monitor.py` polling + enforcement loop
