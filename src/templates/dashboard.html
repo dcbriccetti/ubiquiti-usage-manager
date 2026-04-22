@@ -183,15 +183,20 @@
                     <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients in current month"></canvas>
                 </div>
 
+                <h3>Billing and Infrastructure</h3>
                 <section class="grid columns insights-tables">
                     <article class="insights-summary">
                         <h3>Payer Split ({{ current_month_label }})</h3>
                         {% set total_split_mb = organization_paid_total_mb + user_paid_total_mb %}
+                        {% set organization_share_pct = ((organization_paid_total_mb * 100.0) / total_split_mb) if total_split_mb > 0 else 0.0 %}
+                        {% set user_share_pct = ((user_paid_total_mb * 100.0) / total_split_mb) if total_split_mb > 0 else 0.0 %}
                         <table class="insights-table">
                             <thead>
                                 <tr>
                                     <th>Category</th>
                                     <th class="num">MB</th>
+                                    <th class="num">Cost</th>
+                                    <th class="num">%</th>
                                     <th class="num">Minutes</th>
                                 </tr>
                             </thead>
@@ -199,75 +204,37 @@
                                 <tr>
                                     <td class="nowrap-col">Organization-paid</td>
                                     <td class="num">{{ "{:,.0f}".format(organization_paid_total_mb) }}</td>
+                                    <td class="num">${{ "{:,.2f}".format((organization_paid_cost_cents or 0) / 100.0) }}</td>
+                                    <td class="num">{{ "{:.1f}%".format(organization_share_pct) }}</td>
                                     <td class="num">{{ "{:,.0f}".format(organization_paid_minutes) }}</td>
                                 </tr>
                                 <tr>
                                     <td class="nowrap-col">User-paid</td>
                                     <td class="num">{{ "{:,.0f}".format(user_paid_total_mb) }}</td>
+                                    <td class="num">${{ "{:,.2f}".format((user_paid_cost_cents or 0) / 100.0) }}</td>
+                                    <td class="num">{{ "{:.1f}%".format(user_share_pct) }}</td>
                                     <td class="num">{{ "{:,.0f}".format(user_paid_minutes) }}</td>
-                                </tr>
-                                <tr>
-                                    <td class="nowrap-col"><strong>Organization share</strong></td>
-                                    <td class="num">
-                                        {% if total_split_mb > 0 %}
-                                            {{ "{:.1f}%".format((organization_paid_total_mb * 100.0) / total_split_mb) }}
-                                        {% else %}
-                                            0.0%
-                                        {% endif %}
-                                    </td>
-                                    <td class="num"></td>
                                 </tr>
                             </tbody>
                         </table>
                         <p class="muted">Detailed organization-paid client breakdown is on the <a href="{{ url_for('insights') }}">Insights</a> page.</p>
                     </article>
-                    <article class="insights-top-users">
-                        <h3>Top Users by {{ current_month_label }} MB</h3>
-                        <table class="insights-table">
-                            <thead>
-                                <tr>
-                                    <th>User</th>
-                                    <th class="num">MB</th>
-                                    <th class="num">Minutes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for user in top_users_this_month %}
-                                    <tr>
-                                        <td class="nowrap-col">
-                                            {% if user.user_id %}
-                                                {{ user.user_id }}
-                                            {% else %}
-                                                {{ user.name }}
-                                            {% endif %}
-                                        </td>
-                                        <td class="num">{{ "{:,.0f}".format(user.total_mb) }}</td>
-                                        <td class="num">{{ "{:,.0f}".format(user.active_minutes) }}</td>
-                                    </tr>
-                                {% else %}
-                                    <tr>
-                                        <td colspan="3" class="muted">No usage data this month yet.</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </article>
                     <article class="insights-ap-hotspots">
-                        <h3>AP Hotspots by Active Minutes</h3>
+                        <h3>AP Hotspots (Sorted by Active Minutes)</h3>
                         <table class="insights-table">
                             <thead>
                                 <tr>
                                     <th>Access Point</th>
-                                    <th class="num">Minutes</th>
                                     <th class="num">MB</th>
+                                    <th class="num">Minutes</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for ap in top_access_points_this_month %}
                                     <tr>
                                         <td class="nowrap-col">{{ ap.ap_name }}</td>
-                                        <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
                                         <td class="num">{{ "{:,.0f}".format(ap.total_mb) }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
                                     </tr>
                                 {% else %}
                                     <tr>

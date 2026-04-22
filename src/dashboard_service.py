@@ -95,8 +95,10 @@ class DashboardData(TypedDict):
     daily_network_basic_minutes: list[int]
     daily_network_plus_minutes: list[int]
     organization_paid_total_mb: float
+    organization_paid_cost_cents: float
     organization_paid_minutes: int
     user_paid_total_mb: float
+    user_paid_cost_cents: float
     user_paid_minutes: int
     organization_paid_clients: list[dict[str, object]]
     organization_paid_vlan_criteria: list[str]
@@ -156,6 +158,49 @@ def calculate_month_cost_cents(calendar_month_total_mb: float) -> float:
     'Return month cost in cents based on configured cents-per-GB rate.'
     month_total_gb = calendar_month_total_mb / 1000.0
     return month_total_gb * float(cfg.COST_IN_CENTS_PER_GB)
+
+
+def aggregate_top_users_by_identity(rows: list[db.GlobalTopUser], limit: int = 6) -> list[db.GlobalTopUser]:
+    'Merge per-MAC rows by user_id only; keep no-user_id rows per device to avoid name collisions.'
+    grouped: dict[str, db.GlobalTopUser] = {}
+    for row in rows:
+        normalized_user_id = row.user_id.strip()
+        normalized_name = row.name.strip() if row.name else row.mac
+        if normalized_user_id:
+            group_key = f'user:{normalized_user_id.lower()}'
+            display_user_id = normalized_user_id
+            display_name = normalized_user_id
+        else:
+            group_key = f'mac:{row.mac.lower()}'
+            display_user_id = ''
+            display_name = normalized_name
+
+        existing = grouped.get(group_key)
+        if existing is None:
+            grouped[group_key] = db.GlobalTopUser(
+                mac=row.mac,
+                name=display_name,
+                user_id=display_user_id,
+                vlan_name='',
+                total_mb=row.total_mb,
+                active_minutes=row.active_minutes,
+            )
+            continue
+
+        grouped[group_key] = db.GlobalTopUser(
+            mac=existing.mac,
+            name=existing.name,
+            user_id=existing.user_id,
+            vlan_name='',
+            total_mb=existing.total_mb + row.total_mb,
+            active_minutes=existing.active_minutes + row.active_minutes,
+        )
+
+    return sorted(
+        grouped.values(),
+        key=lambda item: (item.total_mb, item.active_minutes, item.name.lower()),
+        reverse=True,
+    )[:max(1, limit)]
 
 
 def profile_display_label(profile_key: str, speed_limits_by_name: dict[str, SpeedLimit]) -> str:
@@ -383,12 +428,13 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         )
 
     insights = db.get_global_month_insights(top_limit=6)
-    top_users_this_month = db.get_global_top_users_current_month(
-        limit=6,
+    top_users_by_mac_this_month = db.get_global_top_users_current_month(
+        limit=60,
         exclude_organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
         exclude_organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
         exclude_organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
     )
+    top_users_this_month = aggregate_top_users_by_identity(top_users_by_mac_this_month, limit=6)
     daily_network_usage = db.get_global_daily_network_usage_current_month()
     payer_split = db.get_global_payer_split_current_month(
         organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
@@ -470,6 +516,7 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
                 'name': top_row.name,
                 'user_id': top_row.user_id,
                 'total_mb': top_row.total_mb,
+                'month_cost_cents': calculate_month_cost_cents(top_row.total_mb),
                 'active_minutes': top_row.active_minutes,
             }
             for top_row in top_users_this_month
@@ -489,8 +536,10 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         'daily_network_basic_minutes': [network_row.basic_minutes for network_row in daily_network_usage],
         'daily_network_plus_minutes': [network_row.plus_minutes for network_row in daily_network_usage],
         'organization_paid_total_mb': payer_split.organization_paid_total_mb,
+        'organization_paid_cost_cents': calculate_month_cost_cents(payer_split.organization_paid_total_mb),
         'organization_paid_minutes': payer_split.organization_paid_minutes,
         'user_paid_total_mb': payer_split.user_paid_total_mb,
+        'user_paid_cost_cents': calculate_month_cost_cents(payer_split.user_paid_total_mb),
         'user_paid_minutes': payer_split.user_paid_minutes,
         'organization_paid_clients': [
             {
@@ -499,6 +548,7 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
                 'user_id': organization_row.user_id,
                 'vlan_name': organization_row.vlan_name,
                 'total_mb': organization_row.total_mb,
+                'month_cost_cents': calculate_month_cost_cents(organization_row.total_mb),
                 'active_minutes': organization_row.active_minutes,
             }
             for organization_row in organization_paid_clients

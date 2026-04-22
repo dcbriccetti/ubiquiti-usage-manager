@@ -57,45 +57,84 @@
                     <canvas id="global-throttling-profile-minutes-chart" class="month-chart-canvas" role="img" aria-label="Minutes spent at each throttling profile"></canvas>
                 </div>
 
-                <h3>Organization-paid Clients</h3>
-                <p class="muted">
-                    Included when a client matches any configured rule:
-                    VLAN ({{ organization_paid_vlan_criteria|join(", ") if organization_paid_vlan_criteria else "none" }}),
-                    MAC ({{ organization_paid_mac_criteria|join(", ") if organization_paid_mac_criteria else "none" }}),
-                    User ID ({{ organization_paid_user_id_criteria|join(", ") if organization_paid_user_id_criteria else "none" }}).
-                </p>
-                <table class="organization-clients-table">
-                    <thead>
-                        <tr>
-                            <th class="user-id-col">User ID</th>
-                            <th>Name</th>
-                            <th class="mac-col">MAC</th>
-                            <th class="network-col">VLAN</th>
-                            <th class="num">MB</th>
-                            <th class="num">Minutes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for organization_client in organization_paid_clients %}
-                            <tr>
-                                <td class="nowrap-col user-id-col">{{ organization_client.user_id or "" }}</td>
-                                <td class="nowrap-col">
-                                    <a class="mac-link" href="{{ url_for('client_detail', mac=organization_client.mac) }}" title="Usage details">
-                                        {{ organization_client.name }}
-                                    </a>
-                                </td>
-                                <td class="nowrap-col mono mac-col">{{ organization_client.mac[-5:] }}</td>
-                                <td class="nowrap-col network-col">{{ organization_client.vlan_name or "" }}</td>
-                                <td class="num">{{ "{:,.0f}".format(organization_client.total_mb) }}</td>
-                                <td class="num">{{ "{:,.0f}".format(organization_client.active_minutes) }}</td>
-                            </tr>
-                        {% else %}
-                            <tr>
-                                <td colspan="6" class="muted">No organization-paid client activity this month yet.</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <section class="grid columns insights-org-top-users">
+                    <article>
+                        <h3>Organization-paid Clients</h3>
+                        <p class="muted">
+                            Included when a client matches any configured rule:
+                            VLAN ({{ organization_paid_vlan_criteria|join(", ") if organization_paid_vlan_criteria else "none" }}),
+                            MAC ({{ organization_paid_mac_criteria|join(", ") if organization_paid_mac_criteria else "none" }}),
+                            User ID ({{ organization_paid_user_id_criteria|join(", ") if organization_paid_user_id_criteria else "none" }}).
+                        </p>
+                        <table class="organization-clients-table">
+                            <thead>
+                                <tr>
+                                    <th class="user-id-col">User ID</th>
+                                    <th>Name</th>
+                                    <th class="mac-col">MAC</th>
+                                    <th class="network-col">VLAN</th>
+                                    <th class="num">MB</th>
+                                    <th class="num">Cost</th>
+                                    <th class="num">Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for organization_client in organization_paid_clients %}
+                                    <tr>
+                                        <td class="nowrap-col user-id-col">{{ organization_client.user_id or "" }}</td>
+                                        <td class="nowrap-col">
+                                            <a class="mac-link" href="{{ url_for('client_detail', mac=organization_client.mac) }}" title="Usage details">
+                                                {{ organization_client.name }}
+                                            </a>
+                                        </td>
+                                        <td class="nowrap-col mono mac-col">{{ organization_client.mac[-5:] }}</td>
+                                        <td class="nowrap-col network-col">{{ organization_client.vlan_name or "" }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(organization_client.total_mb) }}</td>
+                                        <td class="num">${{ "{:,.2f}".format((organization_client.month_cost_cents or 0) / 100.0) }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(organization_client.active_minutes) }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="muted">No organization-paid client activity this month yet.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </article>
+                    <article>
+                        <h3>Top Users by {{ current_month_label }} MB</h3>
+                        <table class="insights-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th class="num">MB</th>
+                                    <th class="num">Cost</th>
+                                    <th class="num">Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in top_users_this_month %}
+                                    <tr>
+                                        <td class="nowrap-col">
+                                            {% if user.user_id %}
+                                                {{ user.user_id }}
+                                            {% else %}
+                                                {{ user.name }}
+                                            {% endif %}
+                                        </td>
+                                        <td class="num">{{ "{:,.0f}".format(user.total_mb) }}</td>
+                                        <td class="num">${{ "{:,.2f}".format((user.month_cost_cents or 0) / 100.0) }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(user.active_minutes) }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="4" class="muted">No usage data this month yet.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </article>
+                </section>
             </div>
         </article>
     </section>

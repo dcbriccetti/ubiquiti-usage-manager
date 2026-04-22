@@ -16,7 +16,8 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
   - organization-paid client list,
   - inclusion criteria display based on configured VLAN/MAC/User ID rules.
 - Global month analytics:
-  - Dashboard (`/`) keeps operational summaries (daily active clients, payer split, top users, AP hotspots).
+  - Dashboard (`/`) keeps operational summaries (daily active clients, payer split, AP hotspots).
+    - Payer split shows MB, cost, share %, and minutes for Organization-paid and User-paid.
   - Insights (`/insights`) contains deeper month analytics:
     - daily MB and minutes split by Basic/Plus,
     - peak simultaneous users by day,
@@ -24,6 +25,10 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
       - Heatmap cells use observed minutes only, include sample/coverage in tooltip, and low-sample cells are dimmed.
       - Low-sample cells display `n=<sampled minutes>` to avoid ambiguous blanks.
     - throttling coverage metrics and profile-minutes chart.
+    - Organization-paid Clients and Top Users tables are shown side-by-side.
+      - Organization-paid Clients includes monthly cost per client row (derived from `COST_IN_CENTS_PER_GB`).
+      - Top users combines rows by `user_id` when present; devices without `user_id` remain separate (prevents merging generic names like `iPhone`).
+      - Top users table includes monthly estimated cost per row (derived from `COST_IN_CENTS_PER_GB`).
 - Throttling coverage panel:
   - minutes throttled,
   - total active minutes,
@@ -114,6 +119,8 @@ LOG_LEVEL=DEBUG DEV_FORCE_PLUS_ADMIN=1 python3 src/app.py
 - Styling cohesion conventions:
   - shared spacing/radius tokens are defined in `src/templates/base.html` (`--space-*`, `--radius-*`),
   - prefer shared layout/component classes (for example `control-row`, `month-chart-wrap`, `insights-table`) over inline style tweaks.
+  - dashboard summary tables use consistent numeric column order: `MB`, then `Minutes` (even when sorted by minutes).
+  - on dashboard, summary tables are stacked in a single flow (payer split, then AP hotspots) to avoid arbitrary side-by-side placement.
 - Main files:
   - `src/app.py` web routes/UI
   - `src/monitor.py` polling + enforcement loop
