@@ -21,9 +21,8 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
   - Insights (`/insights`) contains deeper month analytics:
     - daily MB and minutes split by Basic/Plus,
     - peak simultaneous users by day,
-    - weekday/hour concurrent-user heatmap.
-      - Heatmap cells use observed minutes only, include sample/coverage in tooltip, and low-sample cells are dimmed.
-      - Low-sample cells display `n=<sampled minutes>` to avoid ambiguous blanks.
+    - weekday/hour user-minutes heatmap.
+      - Heatmap cells show total user-minutes directly (sum of concurrent users each active minute), with sample/coverage details in tooltip.
     - throttling coverage metrics and profile-minutes chart.
     - Organization-paid Clients and Top Users tables are shown side-by-side.
       - Organization-paid Clients includes monthly cost per client row (derived from `COST_IN_CENTS_PER_GB`).

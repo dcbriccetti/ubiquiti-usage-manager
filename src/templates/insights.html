@@ -30,13 +30,13 @@
                 <div class="month-chart-wrap">
                     <canvas id="global-peak-concurrency-chart" class="month-chart-canvas" role="img" aria-label="Daily peak simultaneous users"></canvas>
                 </div>
-                <h3>Time-of-Day Concurrent Users Heatmap</h3>
+                <h3>Time-of-Day User-Minutes Heatmap</h3>
                 <div class="concurrency-heatmap-wrap">
-                    <div id="global-concurrency-heatmap" class="concurrency-heatmap-grid" aria-label="Heatmap of average concurrent users by weekday and hour"></div>
+                    <div id="global-concurrency-heatmap" class="concurrency-heatmap-grid" aria-label="Heatmap of total user-minutes by weekday and hour"></div>
                 </div>
                 <p class="muted">
-                    Cells show month-to-date average concurrent users for observed minutes only.
-                    Low-sample cells are dimmed.
+                    Cells show month-to-date total user-minutes by weekday/hour (sum of concurrent users each active minute).
+                    Each cell shows its total directly; hover for sampled minutes and coverage.
                 </p>
                 <h3>Throttling Coverage & Impact</h3>
                 <section class="insights-kpis">
@@ -328,7 +328,6 @@
                 const flatValues = heatmapValues.flat();
                 const maxValue = Math.max(...flatValues, 0);
                 const minValue = Math.min(...flatValues, 0);
-                const lowSampleThreshold = 20;
                 const colorForValue = (value) => {
                     if (maxValue <= minValue) return "rgba(148, 163, 184, 0.24)";
                     const ratio = (value - minValue) / (maxValue - minValue);
@@ -347,12 +346,9 @@
                         const value = Number(row[hourIndex] || 0);
                         const sampleCount = Number(sampleRow[hourIndex] || 0);
                         const coveragePct = Math.min(100, (sampleCount / 60) * 100);
-                        const isLowSample = sampleCount > 0 && sampleCount < lowSampleThreshold;
-                        const klass = isLowSample ? "cell value low-sample" : "cell value";
-                        const title = `${heatmapDayLabels[dayIndex]} ${heatmapHourLabels[hourIndex]} | avg concurrent users: ${value.toFixed(2)} | sampled minutes: ${sampleCount} | hour coverage: ${coveragePct.toFixed(1)}%`;
-                        const cellText = sampleCount >= lowSampleThreshold
-                            ? (value >= 0.5 ? value.toFixed(1) : "")
-                            : (sampleCount > 0 ? `n=${sampleCount}` : "");
+                        const klass = "cell value";
+                        const title = `${heatmapDayLabels[dayIndex]} ${heatmapHourLabels[hourIndex]} | total user-minutes: ${Math.round(value)} | active minutes observed: ${sampleCount} | hour coverage: ${coveragePct.toFixed(1)}%`;
+                        const cellText = Math.round(value).toLocaleString();
                         html += `<div class="${klass}" style="background:${colorForValue(value)}" title="${title}">${cellText}</div>`;
                     }
                 }

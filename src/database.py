@@ -962,7 +962,7 @@ def get_global_organization_paid_clients_current_month(
 
 
 def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights:
-    'Return daily peak concurrency and day/hour heatmap averages for current month.'
+    'Return daily peak concurrency and day/hour heatmap totals for current month.'
     now = datetime.now()
     month_start = date(now.year, now.month, 1)
     today = now.date()
@@ -1027,7 +1027,7 @@ def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights
             cell_key = (day_of_week, hour)
             total = float(heatmap_totals.get(cell_key, 0.0))
             count = int(heatmap_counts.get(cell_key, 0))
-            row.append((total / count) if count > 0 else 0.0)
+            row.append(total)
             count_row.append(count)
         heatmap_values.append(row)
         heatmap_sample_counts.append(count_row)
