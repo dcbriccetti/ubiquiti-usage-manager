@@ -107,9 +107,7 @@
                                     </a>
                                 </td>
                                 <td class="mono mac-cell">
-                                    <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}" title="Usage details">
-                                        {{ client.mac[-5:] }}
-                                    </a>
+                                    {{ client.mac[-5:] }}
                                 </td>
                                 <td class="nowrap-col">{{ client.ip_half }}</td>
                                 <td>{{ client.vlan_name or "Unknown" }}</td>
@@ -481,7 +479,7 @@
                         <tr>
                             <td class="nowrap-col">${escapeHtml(client.user_id)}</td>
                             <td><a class="mac-link" href="${detailHref}" title="Usage details">${escapeHtml(client.name)}</a></td>
-                            <td class="mono mac-cell"><a class="mac-link" href="${detailHref}" title="Usage details">${escapeHtml(formatMacShort(client.mac))}</a></td>
+                            <td class="mono mac-cell">${escapeHtml(formatMacShort(client.mac))}</td>
                             <td class="nowrap-col">${escapeHtml(client.ip_half || "")}</td>
                             <td>${escapeHtml(client.vlan_name)}</td>
                             <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
