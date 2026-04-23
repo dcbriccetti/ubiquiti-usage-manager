@@ -39,33 +39,33 @@
                 <div class="control-row">
                     <label for="window-select" class="muted">Show:</label>
                     <select id="window-select">
-                        <option value="active_now" {% if selected_window == "active_now" %}selected{% endif %}>Active Now</option>
-                        <option value="online_now" {% if selected_window == "online_now" %}selected{% endif %}>Online Now</option>
-                        <option value="today" {% if selected_window == "today" %}selected{% endif %}>Today</option>
-                        <option value="last_7_days" {% if selected_window == "last_7_days" %}selected{% endif %}>7 Days</option>
-                        <option value="this_month" {% if selected_window == "this_month" %}selected{% endif %}>{{ current_month_label }}</option>
+                        <option value="active_now">Active Now</option>
+                        <option value="online_now">Online Now</option>
+                        <option value="today">Today</option>
+                        <option value="last_7_days">7 Days</option>
+                        <option value="this_month">{{ current_month_label }}</option>
                     </select>
                     <label for="activity-span-select" class="muted">Activity:</label>
                     <select id="activity-span-select">
-                        <option value="12m" {% if selected_activity_span == "12m" %}selected{% endif %}>12 mins</option>
-                        <option value="12h" {% if selected_activity_span == "12h" %}selected{% endif %}>12 hours</option>
-                        <option value="12d" {% if selected_activity_span == "12d" %}selected{% endif %}>12 days</option>
+                        <option value="12m">12 mins</option>
+                        <option value="12h">12 hours</option>
+                        <option value="12d">12 days</option>
                     </select>
                 </div>
                 <div class="table-wrap">
                     <table
                         id="clients-table"
-                        class="compact-table{% if selected_window in ('active_now', 'online_now') %} realtime-window{% else %} non-realtime-window{% endif %}"
+                        class="compact-table"
                     >
                         <thead>
                         <tr>
                             <th
                                 id="pre-usage-group-header"
-                                colspan="{% if selected_window in ('active_now', 'online_now') %}10{% else %}9{% endif %}"
+                                colspan="9"
                             ></th>
                             <th
                                 id="usage-group-header"
-                                colspan="{% if selected_window in ('active_now', 'online_now') %}7{% else %}4{% endif %}"
+                                colspan="4"
                                 class="usage-group"
                             >
                                 Usage (MB)
@@ -98,58 +98,7 @@
                             <th class="num usage-col minute-col minute-total-col">Total</th>
                         </tr>
                         </thead>
-                        <tbody id="connected-clients-body">
-                        {% for client in clients %}
-                            <tr>
-                                <td class="nowrap-col">{{ client.user_id or "" }}</td>
-                                <td>
-                                    <a class="mac-link" href="{{ url_for('client_detail', mac=client.mac) }}" title="Usage details">
-                                        {{ client.name }}
-                                    </a>
-                                </td>
-                                <td class="mono mac-cell">
-                                    {{ client.mac[-5:] }}
-                                </td>
-                                <td class="nowrap-col">{{ client.ip_half }}</td>
-                                <td>{{ client.vlan_name or "Unknown" }}</td>
-                                <td class="ap-col">{{ (client.ap_name or "").removesuffix(" AP") }}</td>
-                                <td>{% if client.signal %}{{ client.signal }}{% endif %}</td>
-                                <td class="activity-col">
-                                    {% set series = client.recent_activity %}
-                                    {% set peak = (series|max) if series else 0 %}
-                                    {% set bucket_label = "MB/day" if selected_activity_span == "12d" else ("MB/hour" if selected_activity_span == "12h" else "MB/min") %}
-                                    <div class="sparkline" title="Recent activity ({{ bucket_label }})">
-                                        {% for value in series %}
-                                            {% set height = ((value / peak) * 100) if peak > 0 else 14 %}
-                                            <span class="bar{% if value <= 0 %} zero{% endif %}" style="height: {{ '%.1f'|format(height) }}%" title="{{ '{:,.3f}'.format(value) }} {{ bucket_label }}"></span>
-                                        {% endfor %}
-                                    </div>
-                                </td>
-                                <td class="nowrap-col">{{ client.connection_duration }}</td>
-                                <td class="num nowrap-col mbps-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format((client.interval_mb * 8.0) / 60.0) }}{% endif %}</td>
-                                <td class="num usage-col usage-first minute-col">{% if client.minute_tx_mb is not none %}{{ "{:,.3f}".format(client.minute_tx_mb) }}{% endif %}</td>
-                                <td class="num usage-col minute-col">{% if client.minute_rx_mb is not none %}{{ "{:,.3f}".format(client.minute_rx_mb) }}{% endif %}</td>
-                                <td class="num usage-col minute-col minute-total-col">{% if client.interval_mb > 0 %}{{ "{:,.3f}".format(client.interval_mb) }}{% endif %}</td>
-                                <td class="num usage-col today-col">{% if client.day_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.day_total_mb) }}{% endif %}</td>
-                                <td class="num usage-col seven-days-col">{% if client.last_7_days_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.last_7_days_total_mb) }}{% endif %}</td>
-                                <td class="num usage-col month-col">{% if client.calendar_month_total_mb >= 0.5 %}{{ "{:,.0f}".format(client.calendar_month_total_mb) }}{% endif %}</td>
-                                <td class="num usage-col usage-last">{% if client.month_cost_cents >= 0.5 %}${{ "{:,.2f}".format(client.month_cost_cents / 100.0) }}{% endif %}</td>
-                                <td class="nowrap-col speed-col">{{ client.speed_limit_name or "" }}</td>
-                                <td class="num nowrap-col speed-col">{% if client.speed_limit_up_kbps is not none %}{{ "{:,.0f}".format(client.speed_limit_up_kbps) }}{% endif %}</td>
-                                <td class="num nowrap-col speed-col">{% if client.speed_limit_down_kbps is not none %}{{ "{:,.0f}".format(client.speed_limit_down_kbps) }}{% endif %}</td>
-                            </tr>
-                        {% else %}
-                            <tr>
-                                <td colspan="20" class="muted">
-                                    {% if selected_window == "active_now" %}
-                                        No clients are actively using data right now.
-                                    {% else %}
-                                        No clients found for this view yet.
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        {% endfor %}
-                        </tbody>
+                        <tbody id="connected-clients-body"></tbody>
                     </table>
                 </div>
             </div>
@@ -172,6 +121,16 @@
             const detailPattern = {{ url_for('client_detail', mac='__MAC__')|tojson }};
             const streamBaseUrl = {{ url_for('dashboard_stream')|tojson }};
             const snapshotBaseUrl = {{ url_for('dashboard_snapshot')|tojson }};
+            const initialPayload = {
+                selected_window: {{ selected_window|tojson }},
+                selected_activity_span: {{ selected_activity_span|tojson }},
+                current_month_label: {{ current_month_label|tojson }},
+                total_today_mb: {{ total_today_mb|tojson }},
+                total_last_7_days_mb: {{ total_last_7_days_mb|tojson }},
+                total_calendar_month_mb: {{ total_calendar_month_mb|tojson }},
+                clients: {{ clients|tojson }},
+                live_update_seconds: {{ live_update_seconds|tojson }}
+            };
             let fallbackTimer = null;
             let stream = null;
             let selectedWindow = windowSelect.value;
@@ -394,7 +353,7 @@
             windowSelect.addEventListener("change", reconnectForNewSelection);
             activitySpanSelect.addEventListener("change", reconnectForNewSelection);
 
-            applyWindowColumnVisibility();
+            applyPayload(initialPayload);
             connectStream();
         })();
     </script>
