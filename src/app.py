@@ -62,6 +62,7 @@ class ClientUsageContext(TypedDict):
     calendar_month_total_mb: float
     month_cost_cents: float
     month_daily_usage: list[DailyUsagePoint]
+    month_usage_device_series: list[dict[str, object]]
     month_throttle_day_labels: list[str]
     month_throttle_x_labels: list[int]
     month_throttle_datasets: list[ThrottleChartDataset]
@@ -123,8 +124,19 @@ def create_app() -> Flask:
             }
             for usage_day, total_mb, active_minutes in summary.daily_usage
         ]
+        stacked_day_labels, stacked_device_series = db.get_plus_user_daily_device_usage_current_month(summary.user_id)
+        month_usage_device_series = [
+            {
+                'label': device_label,
+                'data': series,
+            }
+            for device_label, series in stacked_device_series
+        ]
         return {
             'month_daily_usage': month_daily_usage,
+            'month_usage_device_series': month_usage_device_series,
+            'month_usage_day_labels': [usage_day.day for usage_day in stacked_day_labels],
+            'month_usage_full_labels': [f'{usage_day.strftime("%b")} {usage_day.day}' for usage_day in stacked_day_labels],
         }
 
     def build_plus_user_invoice_pdf(
@@ -511,6 +523,12 @@ def create_app() -> Flask:
             'calendar_month_total_mb': calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
             'month_daily_usage': month_daily_usage,
+            'month_usage_device_series': [
+                {
+                    'label': '',
+                    'data': [point['total_mb'] for point in month_daily_usage],
+                }
+            ],
             'month_throttle_day_labels': month_throttle_day_labels,
             'month_throttle_x_labels': month_throttle_x_labels,
             'month_throttle_datasets': month_throttle_datasets,

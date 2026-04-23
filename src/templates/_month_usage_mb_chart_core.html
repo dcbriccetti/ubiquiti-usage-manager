@@ -1,0 +1,142 @@
+{% set month_points = month_daily_usage or [] %}
+{% if month_points %}
+    {% set labels = month_points | map(attribute='day_of_month') | list %}
+    {% set mb_series = month_points | map(attribute='total_mb') | list %}
+    {% set full_labels = month_points | map(attribute='day_label') | list %}
+    {% set chart_height = mb_chart_height or "260px" %}
+    {% set aria_label = mb_chart_aria_label or "Daily MB usage measurements for the month" %}
+
+    <div class="month-chart-wrap" style="height: {{ chart_height }};">
+        <canvas id="{{ mb_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ aria_label }}"></canvas>
+    </div>
+    <script>
+        // @ts-nocheck
+        /* global Chart */
+        (() => {
+            const canvas = document.getElementById({{ mb_chart_id|tojson }});
+            if (!canvas || typeof Chart === "undefined") {
+                return;
+            }
+
+            const labels = {{ labels|tojson }};
+            const mbSeries = {{ mb_series|tojson }};
+            const fullLabels = {{ full_labels|tojson }};
+            const deviceSeriesRaw = {{ month_usage_device_series|default([], true)|tojson }};
+            const stackedDevicePalette = [
+                "rgba(15, 118, 110, 0.82)",
+                "rgba(37, 99, 235, 0.82)",
+                "rgba(194, 65, 12, 0.82)",
+                "rgba(79, 70, 229, 0.82)",
+                "rgba(8, 145, 178, 0.82)",
+                "rgba(21, 128, 61, 0.82)",
+                "rgba(100, 116, 139, 0.82)"
+            ];
+
+            const stackedMode = Array.isArray(deviceSeriesRaw) && deviceSeriesRaw.length > 0;
+            const hasNamedSeries = stackedMode && deviceSeriesRaw.some((series) => {
+                const label = (series && typeof series.label === "string") ? series.label.trim() : "";
+                return label.length > 0;
+            });
+            const mbDatasets = stackedMode
+                ? deviceSeriesRaw.map((series, idx) => {
+                    const label = (series && typeof series.label === "string") ? series.label : "";
+                    return {
+                        label,
+                        data: labels.map((_, dayIdx) => {
+                            const points = Array.isArray(series?.data) ? series.data : [];
+                            return Number(points[dayIdx] || 0);
+                        }),
+                        backgroundColor: stackedDevicePalette[idx % stackedDevicePalette.length],
+                        borderRadius: 2,
+                        stack: "devices",
+                        barPercentage: 0.72,
+                        categoryPercentage: 0.72,
+                        maxBarThickness: 20
+                    };
+                })
+                : [
+                    {
+                        label: "Usage MB/day",
+                        data: mbSeries,
+                        backgroundColor: "rgba(15, 118, 110, 0.62)",
+                        borderRadius: 3,
+                        barPercentage: 0.72,
+                        categoryPercentage: 0.72,
+                        maxBarThickness: 20
+                    }
+                ];
+
+            new Chart(canvas, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: mbDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: hasNamedSeries,
+                            position: "top",
+                            align: "start",
+                            labels: {
+                                boxWidth: 20,
+                                boxHeight: 10,
+                                useBorderRadius: true,
+                                borderRadius: 3
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: (tooltipItems) => {
+                                    const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                    return fullLabels[idx] || "";
+                                },
+                                afterBody: (tooltipItems) => {
+                                    if (!stackedMode) return "";
+                                    const total = tooltipItems.reduce((sum, item) => sum + (item.parsed?.y || 0), 0);
+                                    return `Total MB/day: ${total.toFixed(3)}`;
+                                },
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: stackedMode,
+                            title: {
+                                display: true,
+                                text: "Day of month"
+                            },
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                maxRotation: 0,
+                                autoSkip: true,
+                                maxTicksLimit: 12
+                            }
+                        },
+                        y: {
+                            stacked: stackedMode,
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: "MB/day"
+                            },
+                            grid: {
+                                color: "rgba(31, 41, 51, 0.20)"
+                            }
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
+{% else %}
+    <p class="muted">No daily usage measurements for this month yet.</p>
+{% endif %}

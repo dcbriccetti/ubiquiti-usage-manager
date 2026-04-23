@@ -4,12 +4,10 @@
     {% set mb_chart_id = chart_id_prefix ~ "-mb" %}
     {% set minutes_chart_id = chart_id_prefix ~ "-minutes" %}
     {% set labels = month_points | map(attribute='day_of_month') | list %}
-    {% set mb_series = month_points | map(attribute='total_mb') | list %}
     {% set full_labels = month_points | map(attribute='day_label') | list %}
 
-    <div class="month-chart-wrap" style="height: 220px;">
-        <canvas id="{{ mb_chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily MB usage measurements for the month"></canvas>
-    </div>
+    {% set mb_chart_height = "220px" %}
+    {% include "_month_usage_mb_chart_core.html" %}
     <div class="month-chart-wrap" style="height: 220px;">
         <canvas id="{{ minutes_chart_id }}" class="month-chart-canvas" role="img" aria-label="Daily active minutes measurements for the month"></canvas>
     </div>
@@ -17,18 +15,15 @@
         // @ts-nocheck
         /* global Chart */
         (() => {
-            const mbCanvas = document.getElementById({{ mb_chart_id|tojson }});
             const minutesCanvas = document.getElementById({{ minutes_chart_id|tojson }});
-            if (!mbCanvas || !minutesCanvas || typeof Chart === "undefined") {
+            if (!minutesCanvas || typeof Chart === "undefined") {
                 return;
             }
 
             const labels = {{ labels|tojson }};
-            const mbSeries = {{ mb_series|tojson }};
             const fullLabels = {{ full_labels|tojson }};
             const throttleLabels = {{ month_throttle_x_labels|tojson }};
             const throttleRawDatasets = {{ month_throttle_datasets|tojson }};
-
             const commonBarStyle = {
                 barPercentage: 0.72,
                 categoryPercentage: 0.72,
@@ -57,52 +52,6 @@
                     },
                 }
             };
-
-            new Chart(mbCanvas, {
-                type: "bar",
-                data: {
-                    labels,
-                    datasets: [
-                        {
-                            label: "Usage MB/day",
-                            data: mbSeries,
-                            backgroundColor: "rgba(15, 118, 110, 0.62)",
-                            borderRadius: 3,
-                            ...commonBarStyle
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: "index",
-                        intersect: false
-                    },
-                    plugins: {
-                        legend: {
-                            display: false
-                        }
-                        ,
-                        tooltip: commonTooltip
-                    },
-                    scales: {
-                        x: {
-                            ...commonXAxis
-                        },
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: "MB/day"
-                            },
-                            grid: {
-                                color: "rgba(31, 41, 51, 0.20)"
-                            }
-                        }
-                    }
-                }
-            });
 
             const throttleColors = [
                 "rgba(194, 65, 12, 0.82)",
