@@ -84,7 +84,7 @@ def create_app() -> Flask:
         return full_label
 
     def calculate_month_cost_cents(calendar_month_total_mb: float) -> float:
-        'Return estimated month cost in cents using configured rate.'
+        'Return month cost in cents using configured rate.'
         return (calendar_month_total_mb / 1000.0) * float(cfg.COST_IN_CENTS_PER_GB)
 
     def get_organization_title() -> str:
@@ -150,9 +150,17 @@ def create_app() -> Flask:
         pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
         page_width, page_height = letter
 
-        pdf.setFont("Helvetica-Bold", 16)
+        text_primary = colors.HexColor('#0f172a')
+        text_muted = colors.HexColor('#475569')
+        border_soft = colors.HexColor('#d9dee7')
+        panel_fill = colors.HexColor('#f8fafc')
+
+        pdf.setTitle(f"{get_plus_network_report_title()} - {summary.user_id}")
+        pdf.setFillColor(text_primary)
+        pdf.setFont("Helvetica-Bold", 17)
         pdf.drawString(42, page_height - 46, f"{get_plus_network_report_title()}: {summary.user_id}")
-        pdf.setFont("Helvetica", 10)
+        pdf.setFillColor(text_muted)
+        pdf.setFont("Helvetica", 9.5)
         organization_title = get_organization_title()
         if organization_title:
             pdf.drawString(42, page_height - 64, organization_title)
@@ -161,67 +169,148 @@ def create_app() -> Flask:
         else:
             pdf.drawString(42, page_height - 64, f"Period: {report_period_label}")
             pdf.drawString(180, page_height - 64, f"Generated: {generated_at.strftime('%Y-%m-%d %H:%M:%S')}")
+        pdf.setStrokeColor(border_soft)
+        pdf.setLineWidth(0.8)
+        pdf.line(42, page_height - 72, page_width - 42, page_height - 72)
 
-        y = page_height - 92
-        pdf.setFont("Helvetica-Bold", 11)
-        pdf.drawString(42, y, "Summary")
-        y -= 16
-        pdf.setFont("Helvetica", 10)
-        summary_lines = [
-            f"Usage (MB): {summary.total_mb:,.0f}",
-            f"Cost: ${(calculate_month_cost_cents(summary.total_mb) / 100.0):,.2f}",
-            f"Active Minutes: {summary.active_minutes:,}",
-            f"Devices: {summary.device_count:,}",
-            f"First Seen: {summary.first_seen.strftime('%Y-%m-%d %H:%M:%S')}",
-            f"Last Seen: {summary.last_seen.strftime('%Y-%m-%d %H:%M:%S')}",
+        summary_top = page_height - 90
+        summary_height = 92
+        summary_left = 42
+        summary_width = page_width - 84
+        pdf.setFillColor(panel_fill)
+        pdf.setStrokeColor(border_soft)
+        pdf.roundRect(summary_left, summary_top - summary_height, summary_width, summary_height, 6, stroke=1, fill=1)
+        pdf.setFillColor(text_primary)
+        pdf.setFont("Helvetica-Bold", 11.5)
+        pdf.drawString(summary_left + 10, summary_top - 16, "Summary")
+
+        key_value_pairs = [
+            ("Usage (MB)", f"{summary.total_mb:,.0f}"),
+            ("Cost", f"${(calculate_month_cost_cents(summary.total_mb) / 100.0):,.2f}"),
+            ("Active Minutes", f"{summary.active_minutes:,}"),
+            ("Devices", f"{summary.device_count:,}"),
+            ("First Seen", summary.first_seen.strftime('%Y-%m-%d %H:%M:%S')),
+            ("Last Seen", summary.last_seen.strftime('%Y-%m-%d %H:%M:%S')),
         ]
-        for line in summary_lines:
-            pdf.drawString(42, y, line)
-            y -= 13
+        pdf.setFont("Helvetica", 9.2)
+        left_col_x = summary_left + 10
+        right_col_x = summary_left + (summary_width / 2) + 8
+        row_start_y = summary_top - 32
+        row_spacing = 18
+        for idx, (label, value) in enumerate(key_value_pairs):
+            col_x = left_col_x if idx % 2 == 0 else right_col_x
+            row_y = row_start_y - (idx // 2) * row_spacing
+            pdf.setFillColor(text_muted)
+            pdf.drawString(col_x, row_y, f"{label}:")
+            pdf.setFillColor(text_primary)
+            pdf.drawString(col_x + 72, row_y, value)
 
-        chart_top = y - 8
-        usage_chart = Drawing(530, 190)
-        usage_chart.add(String(8, 154, f"{report_period_label} Usage MB/day", fontName="Helvetica-Bold", fontSize=10))
+        chart_top = summary_top - summary_height - 14
+        usage_chart = Drawing(530, 210)
+        usage_chart.add(Rect(0, 0, 530, 206, fillColor=colors.HexColor('#fbfdff'), strokeColor=border_soft, strokeWidth=0.7))
+        usage_chart.add(String(12, 186, f"{report_period_label} Usage (MB per day)", fontName="Helvetica-Bold", fontSize=10, fillColor=text_primary))
         usage_bar = VerticalBarChart()
-        usage_bar.x = 36
-        usage_bar.y = 24
-        usage_bar.width = 400
-        usage_bar.height = 118
+        usage_bar.x = 42
+        usage_bar.y = 32
+        usage_bar.width = 350
+        usage_bar.height = 138
         if stacked_day_labels and stacked_device_series:
             usage_bar.data = [series for _, series in stacked_device_series]
             usage_bar.categoryAxis.style = "stacked"
             usage_bar.categoryAxis.categoryNames = [str(usage_day.day) for usage_day in stacked_day_labels]
+            category_count = len(stacked_day_labels)
         else:
             usage_bar.data = [usage_mb_series or [0.0]]
             usage_bar.categoryAxis.categoryNames = day_labels or [""]
+            category_count = len(day_labels)
         usage_bar.valueAxis.valueMin = 0
-        usage_bar.categoryAxis.labels.fontSize = 6
-        usage_bar.barWidth = max(2, min(14, int(360 / max(1, len(day_labels)))))
+        usage_bar.valueAxis.visibleGrid = 1
+        usage_bar.valueAxis.gridStrokeColor = colors.HexColor('#e2e8f0')
+        usage_bar.valueAxis.gridStrokeWidth = 0.6
+        usage_bar.valueAxis.strokeColor = colors.HexColor('#94a3b8')
+        usage_bar.valueAxis.labels.fontSize = 6.5
+        usage_bar.valueAxis.labels.fillColor = text_muted
+        usage_bar.valueAxis.labelTextFormat = '%0.0f'
+        usage_bar.categoryAxis.strokeColor = colors.HexColor('#94a3b8')
+        usage_bar.categoryAxis.labels.fontSize = 6.5
+        usage_bar.categoryAxis.labels.fillColor = text_muted
+        usage_bar.barWidth = max(2, min(11, int(320 / max(1, category_count))))
         usage_bar.groupSpacing = 2
+        usage_bar.barSpacing = 1
         palette = [
-            colors.Color(0.06, 0.46, 0.43, alpha=0.74),
-            colors.Color(0.23, 0.51, 0.96, alpha=0.76),
-            colors.Color(0.76, 0.25, 0.05, alpha=0.74),
-            colors.Color(0.49, 0.23, 0.93, alpha=0.74),
-            colors.Color(0.01, 0.52, 0.78, alpha=0.74),
-            colors.Color(0.09, 0.64, 0.29, alpha=0.74),
-            colors.Color(0.35, 0.38, 0.45, alpha=0.70),
+            colors.HexColor('#0f766e'),
+            colors.HexColor('#2563eb'),
+            colors.HexColor('#c2410c'),
+            colors.HexColor('#4f46e5'),
+            colors.HexColor('#0891b2'),
+            colors.HexColor('#15803d'),
+            colors.HexColor('#64748b'),
         ]
         for idx in range(len(usage_bar.data)):
             usage_bar.bars[idx].fillColor = palette[idx % len(palette)]
+            usage_bar.bars[idx].strokeColor = colors.HexColor('#f8fafc')
+            usage_bar.bars[idx].strokeWidth = 0.2
 
         usage_chart.add(usage_bar)
+        legend_swatch_x = 404
+        legend_label_x = 416
+        legend_swatch_size = 7
+        legend_title_y = 172
+        legend_first_row_center_y = 156
+        legend_row_spacing = 13
         if stacked_device_series:
+            usage_chart.add(String(legend_swatch_x, legend_title_y, "Devices", fontName="Helvetica-Bold", fontSize=7.4, fillColor=text_primary))
             for idx, (device_label, _) in enumerate(stacked_device_series):
-                legend_y = 148 - (idx * 14)
-                if legend_y < 10:
+                row_center_y = legend_first_row_center_y - (idx * legend_row_spacing)
+                if row_center_y < 18:
                     break
                 label_text = device_label
-                if len(label_text) > 20:
-                    label_text = f"{label_text[:17]}..."
-                usage_chart.add(Rect(444, legend_y - 6, 8, 8, fillColor=palette[idx % len(palette)], strokeColor=None))
-                usage_chart.add(String(456, legend_y, label_text, fontName="Helvetica", fontSize=7))
-        renderPDF.draw(usage_chart, pdf, 36, chart_top - 170)
+                if len(label_text) > 18:
+                    label_text = f"{label_text[:15]}..."
+                usage_chart.add(
+                    Rect(
+                        legend_swatch_x,
+                        row_center_y - (legend_swatch_size / 2),
+                        legend_swatch_size,
+                        legend_swatch_size,
+                        fillColor=palette[idx % len(palette)],
+                        strokeColor=colors.white,
+                        strokeWidth=0.3,
+                    )
+                )
+                usage_chart.add(
+                    String(
+                        legend_label_x,
+                        row_center_y - 2.2,
+                        label_text,
+                        fontName="Helvetica",
+                        fontSize=6.8,
+                        fillColor=text_muted,
+                    )
+                )
+        else:
+            usage_chart.add(
+                Rect(
+                    legend_swatch_x,
+                    legend_first_row_center_y - (legend_swatch_size / 2),
+                    legend_swatch_size,
+                    legend_swatch_size,
+                    fillColor=palette[0],
+                    strokeColor=colors.white,
+                    strokeWidth=0.3,
+                )
+            )
+            usage_chart.add(
+                String(
+                    legend_label_x,
+                    legend_first_row_center_y - 2.2,
+                    "Total",
+                    fontName="Helvetica",
+                    fontSize=6.8,
+                    fillColor=text_muted,
+                )
+            )
+        renderPDF.draw(usage_chart, pdf, 36, chart_top - 208)
 
         pdf.showPage()
         pdf.save()

@@ -127,6 +127,10 @@
             let stream = null;
             let selectedWindow = windowSelect.value;
             let selectedActivitySpan = activitySpanSelect.value;
+            const activityScaleQuantile = 0.95;
+            const activityScaleFloorMb = 0.05;
+            const activityScaleShrinkFactor = 0.90;
+            const activityScaleByView = new Map();
             const realtimeWindows = new Set(["active_now", "online_now"]);
             const windowFocusClassByWindow = {
                 active_now: "focus-minute-total",
@@ -193,18 +197,67 @@
                 if (!text) return "";
                 return text.slice(-5);
             };
+
+            const activityScaleViewKey = () => `${selectedWindow}:${selectedActivitySpan}`;
+
+            const quantile = (sortedValues, q) => {
+                if (!sortedValues.length) return 0;
+                const clampedQ = Math.max(0, Math.min(1, Number(q) || 0));
+                const pos = (sortedValues.length - 1) * clampedQ;
+                const base = Math.floor(pos);
+                const rest = pos - base;
+                if (base + 1 >= sortedValues.length) {
+                    return sortedValues[base];
+                }
+                return sortedValues[base] + (rest * (sortedValues[base + 1] - sortedValues[base]));
+            };
+
+            const computeActivityScaleTarget = (clients) => {
+                const values = [];
+                for (const client of (Array.isArray(clients) ? clients : [])) {
+                    const series = (client && Array.isArray(client.recent_activity)) ? client.recent_activity : [];
+                    for (const value of series) {
+                        const numeric = Number(value) || 0;
+                        if (numeric > 0) {
+                            values.push(numeric);
+                        }
+                    }
+                }
+                if (!values.length) {
+                    return activityScaleFloorMb;
+                }
+                values.sort((left, right) => left - right);
+                return Math.max(activityScaleFloorMb, quantile(values, activityScaleQuantile));
+            };
+
+            const getCurrentActivityScale = () => {
+                return activityScaleByView.get(activityScaleViewKey()) || activityScaleFloorMb;
+            };
+
+            const updateActivityScale = (clients) => {
+                const viewKey = activityScaleViewKey();
+                const previousScale = activityScaleByView.get(viewKey) || activityScaleFloorMb;
+                const targetScale = computeActivityScaleTarget(clients);
+                const nextScale = targetScale > previousScale
+                    ? targetScale
+                    : Math.max(targetScale, previousScale * activityScaleShrinkFactor);
+                activityScaleByView.set(viewKey, nextScale);
+            };
+
             const renderRecentActivity = (series) => {
                 const values = Array.isArray(series) ? series : [];
                 if (!values.length) return "";
-                const peak = Math.max(...values, 0);
+                const sharedScale = getCurrentActivityScale();
                 const bucketLabel = selectedActivitySpan === "12d" ? "MB/day" : (selectedActivitySpan === "12h" ? "MB/hour" : "MB/min");
                 const bars = values.map((value) => {
                     const numeric = Number(value) || 0;
-                    const height = peak > 0 ? (numeric / peak) * 100 : 14;
-                    const klass = numeric > 0 ? "bar" : "bar zero";
-                    return `<span class="${klass}" style="height:${height.toFixed(1)}%" title="${numeric.toFixed(3)} ${bucketLabel}"></span>`;
+                    const isCapped = numeric > sharedScale;
+                    const height = numeric > 0 ? Math.min(100, (numeric / sharedScale) * 100) : 14;
+                    const klass = numeric > 0 ? `bar${isCapped ? " capped" : ""}` : "bar zero";
+                    const tip = `${numeric.toFixed(3)} ${bucketLabel}${isCapped ? ` (capped at ${sharedScale.toFixed(3)})` : ""}`;
+                    return `<span class="${klass}" style="height:${height.toFixed(1)}%" title="${tip}"></span>`;
                 }).join("");
-                return `<div class="sparkline" title="Recent activity (${bucketLabel})">${bars}</div>`;
+                return `<div class="sparkline" title="Recent activity (${bucketLabel}, shared scale ${sharedScale.toFixed(3)})">${bars}</div>`;
             };
             const escapeHtml = (value) =>
                 String(value)
@@ -282,6 +335,7 @@
                     activitySpanSelect.value = selectedActivitySpan;
                 }
 
+                updateActivityScale(data.clients);
                 applyWindowColumnVisibility();
                 renderConnectedClients(data.clients);
             };

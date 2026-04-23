@@ -254,8 +254,18 @@
         .sparkline .bar {
             flex: 1 1 0;
             min-width: 4px;
+            position: relative;
             border-radius: 2px 2px 0 0;
             background: rgba(15, 118, 110, 0.75);
+        }
+
+        .sparkline .bar.capped::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            border-top: 1px solid rgba(31, 41, 51, 0.72);
         }
 
         .sparkline .bar.zero {

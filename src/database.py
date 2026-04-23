@@ -1175,6 +1175,12 @@ def get_plus_user_daily_device_usage_current_month(
     max_devices: int = 6,
 ) -> tuple[list[date], list[tuple[str, list[float]]]]:
     'Return per-day MB series by device for one Plus user in the current month.'
+    def mac_tail(mac: str) -> str:
+        parts = [part for part in mac.split(':') if part]
+        if len(parts) >= 2:
+            return f'{parts[-2]}:{parts[-1]}'
+        return mac[-5:] if len(mac) >= 5 else mac
+
     normalized_user_id = user_id.strip().lower()
     if not normalized_user_id:
         return [], []
@@ -1246,7 +1252,7 @@ def get_plus_user_daily_device_usage_current_month(
     capped_macs = ordered_macs[:max(1, max_devices)]
 
     series: list[tuple[str, list[float]]] = [
-        (device_names.get(mac, mac), device_series[mac][:])
+        (f'{device_names.get(mac, mac)} ({mac_tail(mac)})', device_series[mac][:])
         for mac in capped_macs
     ]
 
