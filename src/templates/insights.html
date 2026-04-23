@@ -16,7 +16,7 @@
     <section class="grid">
         <article class="panel">
             <div class="panel-body">
-                <h2>Month Snapshot ({{ current_month_label }})</h2>
+                <h2>Snapshot ({{ current_month_label }})</h2>
                 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
                 <section class="insights-kpis">
                     <div class="insight-kpi">
@@ -41,7 +41,64 @@
                 <div class="month-chart-wrap">
                     <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients in current month"></canvas>
                 </div>
-                <h3>Billing and Infrastructure</h3>
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Traffic & Concurrency</h2>
+                <h3>Daily MB (Stacked Basic/Plus)</h3>
+                <div class="month-chart-wrap">
+                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily MB stacked by Basic and Plus"></canvas>
+                </div>
+                <h3>Daily Active Minutes (Stacked Basic/Plus)</h3>
+                <div class="month-chart-wrap">
+                    <canvas id="global-daily-minutes-chart" class="month-chart-canvas" role="img" aria-label="Daily active minutes stacked by Basic and Plus"></canvas>
+                </div>
+
+                <h3>Concurrency</h3>
+                <h4>Peak Simultaneous Users by Day</h4>
+                <div class="month-chart-wrap">
+                    <canvas id="global-peak-concurrency-chart" class="month-chart-canvas" role="img" aria-label="Daily peak simultaneous users"></canvas>
+                </div>
+                <h4>Time-of-Day User-Minutes Heatmap</h4>
+                <div class="concurrency-heatmap-wrap">
+                    <div id="global-concurrency-heatmap" class="concurrency-heatmap-grid" aria-label="Heatmap of total user-minutes by weekday and hour"></div>
+                </div>
+                <p class="muted">
+                    Cells show month-to-date total user-minutes by weekday/hour (sum of concurrent users each active minute).
+                    Each cell shows its total directly; hover for sampled minutes and coverage.
+                </p>
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Throttling</h2>
+                <h3>Coverage & Impact</h3>
+                <section class="insights-kpis">
+                    <div class="insight-kpi">
+                        <span class="label">Minutes Throttled</span>
+                        <span class="value">{{ "{:,.0f}".format(throttling_minutes) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">Total Active Minutes</span>
+                        <span class="value">{{ "{:,.0f}".format(throttling_total_active_minutes) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">% Time Throttled</span>
+                        <span class="value">{{ "{:.1f}%".format(throttling_pct) }}</span>
+                    </div>
+                </section>
+                <div class="month-chart-wrap">
+                    <canvas id="global-throttling-profile-minutes-chart" class="month-chart-canvas" role="img" aria-label="Minutes spent at each throttling profile"></canvas>
+                </div>
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Payer & Infrastructure</h2>
                 <section class="grid columns insights-tables">
                     <article class="insights-summary">
                         <h3>Payer Split ({{ current_month_label }})</h3>
@@ -103,51 +160,7 @@
                     </article>
                 </section>
 
-                <h2>Usage Trends</h2>
-                <h3>Daily MB (Stacked Basic/Plus)</h3>
-                <div class="month-chart-wrap">
-                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily MB stacked by Basic and Plus"></canvas>
-                </div>
-                <h3>Daily Active Minutes (Stacked Basic/Plus)</h3>
-                <div class="month-chart-wrap">
-                    <canvas id="global-daily-minutes-chart" class="month-chart-canvas" role="img" aria-label="Daily active minutes stacked by Basic and Plus"></canvas>
-                </div>
-
-                <h2>Concurrency Patterns</h2>
-                <h3>Peak Simultaneous Users by Day</h3>
-                <div class="month-chart-wrap">
-                    <canvas id="global-peak-concurrency-chart" class="month-chart-canvas" role="img" aria-label="Daily peak simultaneous users"></canvas>
-                </div>
-                <h3>Time-of-Day User-Minutes Heatmap</h3>
-                <div class="concurrency-heatmap-wrap">
-                    <div id="global-concurrency-heatmap" class="concurrency-heatmap-grid" aria-label="Heatmap of total user-minutes by weekday and hour"></div>
-                </div>
-                <p class="muted">
-                    Cells show month-to-date total user-minutes by weekday/hour (sum of concurrent users each active minute).
-                    Each cell shows its total directly; hover for sampled minutes and coverage.
-                </p>
-
-                <h2>Throttling Coverage</h2>
-                <h3>Throttling Coverage & Impact</h3>
-                <section class="insights-kpis">
-                    <div class="insight-kpi">
-                        <span class="label">Minutes Throttled</span>
-                        <span class="value">{{ "{:,.0f}".format(throttling_minutes) }}</span>
-                    </div>
-                    <div class="insight-kpi">
-                        <span class="label">Total Active Minutes</span>
-                        <span class="value">{{ "{:,.0f}".format(throttling_total_active_minutes) }}</span>
-                    </div>
-                    <div class="insight-kpi">
-                        <span class="label">% Time Throttled</span>
-                        <span class="value">{{ "{:.1f}%".format(throttling_pct) }}</span>
-                    </div>
-                </section>
-                <div class="month-chart-wrap">
-                    <canvas id="global-throttling-profile-minutes-chart" class="month-chart-canvas" role="img" aria-label="Minutes spent at each throttling profile"></canvas>
-                </div>
-
-                <h2>Payer and User Detail</h2>
+                <h3>User Detail</h3>
                 <section class="grid columns insights-org-top-users">
                     <article>
                         <h3>Organization-paid Clients</h3>
