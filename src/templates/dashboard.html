@@ -5,6 +5,7 @@
 {% block page_class %} wide-page{% endblock %}
 
 {% block content %}
+    {% set payload = initial_dashboard_payload %}
     <section class="hero">
         <div>
             <h1>Network Usage Controller</h1>
@@ -20,15 +21,15 @@
     <section class="grid stats">
         <article class="panel stat">
             <span class="label">Usage Today</span>
-            <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(total_today_mb) }} MB</span>
+            <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(payload.total_today_mb) }} MB</span>
         </article>
         <article class="panel stat">
             <span class="label">Usage 7&nbsp;Days</span>
-            <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(total_last_7_days_mb) }} MB</span>
+            <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(payload.total_last_7_days_mb) }} MB</span>
         </article>
         <article class="panel stat">
-            <span class="label" id="stat-usage-month-label">Usage {{ current_month_label }}</span>
-            <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(total_calendar_month_mb) }} MB</span>
+            <span class="label" id="stat-usage-month-label">Usage {{ payload.current_month_label }}</span>
+            <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(payload.total_calendar_month_mb) }} MB</span>
         </article>
     </section>
 
@@ -43,7 +44,7 @@
                         <option value="online_now">Online Now</option>
                         <option value="today">Today</option>
                         <option value="last_7_days">7 Days</option>
-                        <option value="this_month">{{ current_month_label }}</option>
+                        <option value="this_month">{{ payload.current_month_label }}</option>
                     </select>
                     <label for="activity-span-select" class="muted">Activity:</label>
                     <select id="activity-span-select">
@@ -86,7 +87,7 @@
                             <th class="usage-group minute-group" colspan="3">Minute</th>
                             <th class="num usage-col today-col" rowspan="2">Today</th>
                             <th class="num usage-col seven-days-col" rowspan="2">7&nbsp;Days</th>
-                            <th class="num usage-col month-col" rowspan="2" id="usage-month-header">{{ current_month_label }}</th>
+                            <th class="num usage-col month-col" rowspan="2" id="usage-month-header">{{ payload.current_month_label }}</th>
                             <th class="num usage-col usage-last" rowspan="2">Cost</th>
                             <th class="nowrap-col speed-col" rowspan="2">Profile</th>
                             <th class="num nowrap-col speed-col" rowspan="2">Up</th>
@@ -121,16 +122,7 @@
             const detailPattern = {{ url_for('client_detail', mac='__MAC__')|tojson }};
             const streamBaseUrl = {{ url_for('dashboard_stream')|tojson }};
             const snapshotBaseUrl = {{ url_for('dashboard_snapshot')|tojson }};
-            const initialPayload = {
-                selected_window: {{ selected_window|tojson }},
-                selected_activity_span: {{ selected_activity_span|tojson }},
-                current_month_label: {{ current_month_label|tojson }},
-                total_today_mb: {{ total_today_mb|tojson }},
-                total_last_7_days_mb: {{ total_last_7_days_mb|tojson }},
-                total_calendar_month_mb: {{ total_calendar_month_mb|tojson }},
-                clients: {{ clients|tojson }},
-                live_update_seconds: {{ live_update_seconds|tojson }}
-            };
+            const initialPayload = {{ initial_dashboard_payload|tojson }};
             let fallbackTimer = null;
             let stream = null;
             let selectedWindow = windowSelect.value;
@@ -331,7 +323,7 @@
                 stream.onerror = () => {
                     if (!fallbackTimer) {
                         fetchSnapshot();
-                        fallbackTimer = window.setInterval(fetchSnapshot, {{ live_update_seconds }} * 1000);
+                        fallbackTimer = window.setInterval(fetchSnapshot, (initialPayload.live_update_seconds || 60) * 1000);
                     }
                 };
             };

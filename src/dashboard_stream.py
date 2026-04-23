@@ -9,7 +9,7 @@ import json
 import time
 from collections.abc import Iterator
 
-from dashboard_service import ActivitySpan, WindowName, build_dashboard_data, build_dashboard_payload
+from dashboard_service import ActivitySpan, WindowName, build_live_dashboard_payload
 
 
 def sleep_until_next_boundary(interval_seconds: int, offset_seconds: int = 0) -> None:
@@ -34,7 +34,6 @@ def event_stream(
     'Yield SSE frames at a fixed cadence using the selected dashboard window.'
     while True:
         # Rebuild on each tick so clients always receive a fresh snapshot from current state.
-        data = build_dashboard_data(window_name, activity_span, live_update_seconds, include_insights=False)
-        payload = build_dashboard_payload(data)
+        payload = build_live_dashboard_payload(window_name, activity_span, live_update_seconds)
         yield f'data: {json.dumps(payload)}\n\n'
         sleep_until_next_boundary(live_update_seconds, boundary_offset_seconds)

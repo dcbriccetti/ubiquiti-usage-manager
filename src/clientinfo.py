@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-from datetime import datetime
 from speedlimit import SpeedLimit
+from unifi_time import normalize_online_seconds
 
 @dataclass(frozen=True, kw_only=True)
 class ClientInfo:
@@ -40,39 +40,6 @@ class ClientInfo:
     @classmethod
     def create(cls, c: dict, speed_limits_by_id: dict[str, SpeedLimit], ap_names_by_mac: dict[str, str]):
         'Build a ClientInfo instance from raw UniFi client data.'
-        def parse_positive_int(value: object) -> int | None:
-            if isinstance(value, bool):
-                return None
-            if isinstance(value, int):
-                return value if value >= 0 else None
-            if isinstance(value, float):
-                if value < 0:
-                    return None
-                return int(value)
-            if isinstance(value, str):
-                text = value.strip()
-                if not text:
-                    return None
-                try:
-                    parsed = int(float(text))
-                except ValueError:
-                    return None
-                return parsed if parsed >= 0 else None
-            return None
-
-        def normalize_online_seconds(raw_value: object) -> int | None:
-            parsed = parse_positive_int(raw_value)
-            if parsed is None:
-                return None
-            # UniFi may report epoch timestamps in milliseconds.
-            if parsed > 10_000_000_000:
-                parsed = parsed // 1000
-            now_seconds = int(datetime.now().timestamp())
-            # Treat plausible epoch timestamps as "connected since".
-            if 946684800 <= parsed <= now_seconds + 86400:
-                return max(0, now_seconds - parsed)
-            return parsed
-
         speed_limit_id: str | None = c.get('usergroup_id')
         speed_limit = speed_limits_by_id.get(speed_limit_id) if speed_limit_id else None
         ap_name = cls._resolve_ap_name(c, ap_names_by_mac)

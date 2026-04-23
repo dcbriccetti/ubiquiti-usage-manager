@@ -24,8 +24,8 @@ import database as db
 import unifi_api as api
 from database import UsageRecord
 from dashboard_service import (
-    build_dashboard_data,
-    build_dashboard_payload,
+    build_insights_data,
+    build_live_dashboard_payload,
     normalize_activity_span,
     normalize_window,
 )
@@ -437,9 +437,10 @@ def create_app() -> Flask:
 
         window_name = normalize_window(request.args.get("window"))
         activity_span = normalize_activity_span(request.args.get("activity_span"))
+        dashboard_data = build_live_dashboard_payload(window_name, activity_span, live_update_seconds)
         return render_template(
             "dashboard.html",
-            **build_dashboard_data(window_name, activity_span, live_update_seconds, include_insights=False),
+            initial_dashboard_payload=dashboard_data,
         )
 
     @flask_app.route("/insights")
@@ -450,11 +451,7 @@ def create_app() -> Flask:
 
         return render_template(
             "insights.html",
-            **build_dashboard_data(
-                normalize_window("this_month"),
-                normalize_activity_span("12m"),
-                live_update_seconds,
-            ),
+            **build_insights_data(),
         )
 
     @flask_app.route("/api/dashboard-snapshot")
@@ -465,8 +462,7 @@ def create_app() -> Flask:
 
         window_name = normalize_window(request.args.get("window"))
         activity_span = normalize_activity_span(request.args.get("activity_span"))
-        data = build_dashboard_data(window_name, activity_span, live_update_seconds, include_insights=False)
-        return jsonify(build_dashboard_payload(data))
+        return jsonify(build_live_dashboard_payload(window_name, activity_span, live_update_seconds))
 
     @flask_app.route("/api/dashboard-stream")
     def dashboard_stream():
