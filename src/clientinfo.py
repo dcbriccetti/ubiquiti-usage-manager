@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from speedlimit import SpeedLimit
 
 @dataclass(frozen=True, kw_only=True)
@@ -59,6 +60,19 @@ class ClientInfo:
                 return parsed if parsed >= 0 else None
             return None
 
+        def normalize_online_seconds(raw_value: object) -> int | None:
+            parsed = parse_positive_int(raw_value)
+            if parsed is None:
+                return None
+            # UniFi may report epoch timestamps in milliseconds.
+            if parsed > 10_000_000_000:
+                parsed = parsed // 1000
+            now_seconds = int(datetime.now().timestamp())
+            # Treat plausible epoch timestamps as "connected since".
+            if 946684800 <= parsed <= now_seconds + 86400:
+                return max(0, now_seconds - parsed)
+            return parsed
+
         speed_limit_id: str | None = c.get('usergroup_id')
         speed_limit = speed_limits_by_id.get(speed_limit_id) if speed_limit_id else None
         ap_name = cls._resolve_ap_name(c, ap_names_by_mac)
@@ -68,9 +82,9 @@ class ClientInfo:
             if isinstance(last_identities, list) and last_identities:
                 first_identity = last_identities[0]
                 user_id = first_identity if isinstance(first_identity, str) else None
-        assoc_time_seconds = parse_positive_int(c.get('assoc_time'))
+        assoc_time_seconds = normalize_online_seconds(c.get('assoc_time'))
         if assoc_time_seconds is None:
-            assoc_time_seconds = parse_positive_int(c.get('uptime'))
+            assoc_time_seconds = normalize_online_seconds(c.get('latest_assoc_time'))
 
         raw_ip = c.get('ip') or c.get('last_ip') or ''
         ip_address = raw_ip if isinstance(raw_ip, str) else ''
