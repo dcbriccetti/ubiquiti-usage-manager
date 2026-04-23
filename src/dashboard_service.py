@@ -433,12 +433,9 @@ def build_dashboard_data(
     include_insights: bool = True,
 ) -> DashboardData:
     'Assemble dashboard fields for HTML render and lightweight API snapshot/SSE payloads.'
-    organization_paid_vlan_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_VLAN_NAMES if name.strip())
-    organization_paid_mac_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_DEVICE_MACS if name.strip())
-    organization_paid_user_id_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_USER_IDS if name.strip())
-    organization_paid_vlan_criteria_lower = {name.lower() for name in organization_paid_vlan_criteria}
-    organization_paid_mac_criteria_lower = {name.lower() for name in organization_paid_mac_criteria}
-    organization_paid_user_id_criteria_lower = {name.lower() for name in organization_paid_user_id_criteria}
+    organization_paid_vlan_criteria = sorted(cfg.ORGANIZATION_PAID_VLAN_NAMES)
+    organization_paid_mac_criteria = sorted(cfg.ORGANIZATION_PAID_DEVICE_MACS)
+    organization_paid_user_id_criteria = sorted(cfg.ORGANIZATION_PAID_USER_IDS)
     connected_snapshots: list[ClientSnapshot] = []
     needs_live_rows = window_name in {WINDOW_ONLINE_NOW, WINDOW_ACTIVE_NOW}
     needs_live_org_paid_enrichment = include_insights and bool(
@@ -450,13 +447,13 @@ def build_dashboard_data(
         connected_snapshots = get_connected_clients()
 
     def is_organization_paid_identity(mac: str, user_id: str | None, vlan_name: str | None) -> bool:
-        mac_key = mac.strip().lower()
-        user_key = user_id.strip().lower() if user_id else ''
-        vlan_key = vlan_name.strip().lower() if vlan_name else ''
+        mac_key = mac.strip()
+        user_key = user_id.strip() if user_id else ''
+        vlan_key = vlan_name.strip() if vlan_name else ''
         return (
-            vlan_key in organization_paid_vlan_criteria_lower
-            or mac_key in organization_paid_mac_criteria_lower
-            or user_key in organization_paid_user_id_criteria_lower
+            vlan_key in organization_paid_vlan_criteria
+            or mac_key in organization_paid_mac_criteria
+            or user_key in organization_paid_user_id_criteria
         )
 
     active_users_daily_min = 0
