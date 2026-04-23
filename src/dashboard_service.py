@@ -206,6 +206,30 @@ def profile_display_label(profile_key: str, speed_limits_by_name: dict[str, Spee
     return profile_key
 
 
+def _serialize_access_point_row(row: db.GlobalTopAccessPoint) -> dict[str, object]:
+    'Serialize one AP insight row for template consumption.'
+    return {
+        'ap_name': row.ap_name,
+        'total_mb': row.total_mb,
+        'active_minutes': row.active_minutes,
+    }
+
+
+def _serialize_usage_actor_row(row: db.GlobalTopUser, include_vlan_name: bool = False) -> dict[str, object]:
+    'Serialize a usage actor row for top-users and organization-paid tables.'
+    data: dict[str, object] = {
+        'mac': row.mac,
+        'name': row.name,
+        'user_id': row.user_id,
+        'total_mb': row.total_mb,
+        'month_cost_cents': calculate_month_cost_cents(row.total_mb),
+        'active_minutes': row.active_minutes,
+    }
+    if include_vlan_name:
+        data['vlan_name'] = row.vlan_name
+    return data
+
+
 def build_rows_for_online_clients(
     active_only: bool = False,
     snapshots: list[ClientSnapshot] | None = None,
@@ -431,42 +455,39 @@ def build_live_dashboard_payload(
 
 def build_insights_data() -> InsightsData:
     'Assemble data payload for the /insights page.'
-    organization_paid_vlan_criteria = sorted(cfg.ORGANIZATION_PAID_VLAN_NAMES)
-    organization_paid_mac_criteria = sorted(cfg.ORGANIZATION_PAID_DEVICE_MACS)
-    organization_paid_user_id_criteria = sorted(cfg.ORGANIZATION_PAID_USER_IDS)
+    organization_paid_vlan_criteria = list(cfg.ORGANIZATION_PAID_VLAN_NAMES)
+    organization_paid_mac_criteria = list(cfg.ORGANIZATION_PAID_DEVICE_MACS)
+    organization_paid_user_id_criteria = list(cfg.ORGANIZATION_PAID_USER_IDS)
 
     connected_snapshots: list[ClientSnapshot] = []
     if organization_paid_vlan_criteria or organization_paid_mac_criteria or organization_paid_user_id_criteria:
         connected_snapshots = get_connected_clients()
 
     def is_organization_paid_identity(mac: str, user_id: str | None, vlan_name: str | None) -> bool:
-        mac_key = mac.strip()
-        user_key = user_id.strip() if user_id else ''
-        vlan_key = vlan_name.strip() if vlan_name else ''
         return (
-            vlan_key in organization_paid_vlan_criteria
-            or mac_key in organization_paid_mac_criteria
-            or user_key in organization_paid_user_id_criteria
+            (vlan_name or '') in organization_paid_vlan_criteria
+            or mac in organization_paid_mac_criteria
+            or (user_id or '') in organization_paid_user_id_criteria
         )
 
     insights = db.get_global_month_insights(top_limit=6)
     top_users_by_mac_this_month = db.get_global_top_users_current_month(
         limit=60,
-        exclude_organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
-        exclude_organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-        exclude_organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+        exclude_organization_paid_macs=organization_paid_mac_criteria,
+        exclude_organization_paid_user_ids=organization_paid_user_id_criteria,
+        exclude_organization_paid_vlan_names=organization_paid_vlan_criteria,
     )
     top_users_this_month = aggregate_top_users_by_identity(top_users_by_mac_this_month, limit=6)
     daily_network_usage = db.get_global_daily_network_usage_current_month()
     payer_split = db.get_global_payer_split_current_month(
-        organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
-        organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-        organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+        organization_paid_macs=organization_paid_mac_criteria,
+        organization_paid_user_ids=organization_paid_user_id_criteria,
+        organization_paid_vlan_names=organization_paid_vlan_criteria,
     )
     organization_paid_clients = db.get_global_organization_paid_clients_current_month(
-        organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
-        organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-        organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+        organization_paid_macs=organization_paid_mac_criteria,
+        organization_paid_user_ids=organization_paid_user_id_criteria,
+        organization_paid_vlan_names=organization_paid_vlan_criteria,
         limit=12,
     )
     organization_paid_clients_by_mac = {entry.mac.lower(): entry for entry in organization_paid_clients}
@@ -517,25 +538,8 @@ def build_insights_data() -> InsightsData:
         'active_users_chart_x_labels': insights.active_users_daily_x_labels,
         'active_users_chart_full_labels': insights.active_users_daily_full_labels,
         'active_users_chart_counts': insights.active_users_daily_counts,
-        'top_users_this_month': [
-            {
-                'mac': top_row.mac,
-                'name': top_row.name,
-                'user_id': top_row.user_id,
-                'total_mb': top_row.total_mb,
-                'month_cost_cents': calculate_month_cost_cents(top_row.total_mb),
-                'active_minutes': top_row.active_minutes,
-            }
-            for top_row in top_users_this_month
-        ],
-        'top_access_points_this_month': [
-            {
-                'ap_name': ap_row.ap_name,
-                'total_mb': ap_row.total_mb,
-                'active_minutes': ap_row.active_minutes,
-            }
-            for ap_row in insights.top_access_points
-        ],
+        'top_users_this_month': [_serialize_usage_actor_row(top_row) for top_row in top_users_this_month],
+        'top_access_points_this_month': [_serialize_access_point_row(ap_row) for ap_row in insights.top_access_points],
         'daily_network_x_labels': [row.usage_day.day for row in daily_network_usage],
         'daily_network_full_labels': [f'{row.usage_day.strftime("%b")} {row.usage_day.day}' for row in daily_network_usage],
         'daily_network_basic_mb': [row.basic_mb for row in daily_network_usage],
@@ -549,15 +553,7 @@ def build_insights_data() -> InsightsData:
         'user_paid_cost_cents': calculate_month_cost_cents(payer_split.user_paid_total_mb),
         'user_paid_minutes': payer_split.user_paid_minutes,
         'organization_paid_clients': [
-            {
-                'mac': org_row.mac,
-                'name': org_row.name,
-                'user_id': org_row.user_id,
-                'vlan_name': org_row.vlan_name,
-                'total_mb': org_row.total_mb,
-                'month_cost_cents': calculate_month_cost_cents(org_row.total_mb),
-                'active_minutes': org_row.active_minutes,
-            }
+            _serialize_usage_actor_row(org_row, include_vlan_name=True)
             for org_row in organization_paid_clients
         ],
         'organization_paid_vlan_criteria': organization_paid_vlan_criteria,
