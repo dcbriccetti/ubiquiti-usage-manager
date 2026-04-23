@@ -323,14 +323,29 @@ def create_app() -> Flask:
         if not detected_mac:
             return False
 
-        try:
-            context = get_client_usage_context(detected_mac)
-        except LookupError:
-            return False
+        usage_history = db.get_usage_history(detected_mac, limit=1)
+        if usage_history:
+            latest_record = usage_history[0]
+            warn_missing_radius_identity(latest_record, request_ip, detected_mac)
+            return is_plus_admin_user(latest_record.user_id, latest_record.vlan)
 
-        latest_record = context['latest_record']
-        warn_missing_radius_identity(latest_record, request_ip, detected_mac)
-        return is_plus_admin_user(latest_record.user_id, latest_record.vlan)
+        if live_client := get_live_client_record_by_mac(detected_mac):
+            live_user_id = (
+                live_client.get('1x_identity')
+                or live_client.get('identity')
+                or live_client.get('last_1x_identity')
+            )
+            if not live_user_id:
+                last_identities = live_client.get('last_1x_identities')
+                if isinstance(last_identities, list) and last_identities:
+                    first_identity = last_identities[0]
+                    live_user_id = first_identity if isinstance(first_identity, str) else None
+            live_vlan_name = live_client.get('network')
+            if not isinstance(live_vlan_name, str):
+                live_vlan_name = None
+            return is_plus_admin_user(live_user_id, live_vlan_name)
+
+        return False
 
     def get_client_usage_context(mac: str) -> ClientUsageContext:
         'Build shared usage/detail context used by both admin and self-service pages.'
@@ -424,7 +439,7 @@ def create_app() -> Flask:
         activity_span = normalize_activity_span(request.args.get("activity_span"))
         return render_template(
             "dashboard.html",
-            **build_dashboard_data(window_name, activity_span, live_update_seconds),
+            **build_dashboard_data(window_name, activity_span, live_update_seconds, include_insights=False),
         )
 
     @flask_app.route("/insights")
@@ -450,7 +465,7 @@ def create_app() -> Flask:
 
         window_name = normalize_window(request.args.get("window"))
         activity_span = normalize_activity_span(request.args.get("activity_span"))
-        data = build_dashboard_data(window_name, activity_span, live_update_seconds)
+        data = build_dashboard_data(window_name, activity_span, live_update_seconds, include_insights=False)
         return jsonify(build_dashboard_payload(data))
 
     @flask_app.route("/api/dashboard-stream")

@@ -34,7 +34,7 @@ def event_stream(
     'Yield SSE frames at a fixed cadence using the selected dashboard window.'
     while True:
         # Rebuild on each tick so clients always receive a fresh snapshot from current state.
-        data = build_dashboard_data(window_name, activity_span, live_update_seconds)
+        data = build_dashboard_data(window_name, activity_span, live_update_seconds, include_insights=False)
         payload = build_dashboard_payload(data)
         yield f'data: {json.dumps(payload)}\n\n'
         sleep_until_next_boundary(live_update_seconds, boundary_offset_seconds)

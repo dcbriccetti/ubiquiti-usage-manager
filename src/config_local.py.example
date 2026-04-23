@@ -7,6 +7,7 @@ Copy to src/config_local.py and edit with private values.
 from config import MonthlyUsageAdjustment, ThrottleLevel
 
 IGNORE_BELOW_KB = 10
+THROTTLING_ENABLED = True
 THROTTLEABLE_VLAN_NAMES = ['Basic']
 THROTTLING_LEVELS = [
     ThrottleLevel(250, '1/2 speed'),

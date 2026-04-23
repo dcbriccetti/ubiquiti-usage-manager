@@ -62,6 +62,7 @@ Config values:
 - `THROTTLEABLE_VLAN_NAMES`
 - `THROTTLING_LEVELS`
 - `MONTHLY_USAGE_ADJUSTMENTS`
+- `THROTTLING_ENABLED` (set `False` to disable policy-based throttling changes)
 - `COST_IN_CENTS_PER_GB`
 - `PLUS_REPORT_TITLE` (prepended to "Network Usage Report" in Plus-user reports)
 - `ORGANIZATION_TITLE` (shown on report pages and PDF exports)

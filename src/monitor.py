@@ -39,8 +39,10 @@ def get_connected_clients() -> list[ClientSnapshot]:
     'Fetch connected clients and return lightweight usage snapshots for the UI.'
     speed_limits = api.get_speed_limits()
     speed_limits_by_id = {limit.id: limit for limit in speed_limits}
-    throttling_levels = build_throttling_levels(speed_limits)
-    throttling_limit_ids = get_throttling_limit_ids(throttling_levels)
+    throttling_limit_ids: set[str] = set()
+    if cfg.THROTTLING_ENABLED:
+        throttling_levels = build_throttling_levels(speed_limits)
+        throttling_limit_ids = get_throttling_limit_ids(throttling_levels)
     ap_names_by_mac = api.get_ap_names_by_mac()
     recent_interval_by_mac = db.get_recent_interval_totals()
 
@@ -77,17 +79,25 @@ class UsageMonitor:
         self.throttleable_vlan_ids: list[str] = []
         self.refresh_runtime_state()
 
-        release_configured_limits(self.throttling_limit_ids, "startup")
+        startup_release_limit_ids = self.throttling_limit_ids
+        if not cfg.THROTTLING_ENABLED:
+            startup_release_limit_ids = self._configured_throttling_limit_ids_for_release()
+            logger.info("Throttling disabled: releasing configured throttle limits at startup only")
+        release_configured_limits(startup_release_limit_ids, "startup")
 
     def refresh_runtime_state(self) -> None:
         'Reload speed-limit groups and throttleable VLAN IDs from the controller.'
         speed_limits = api.get_speed_limits()
         self.speed_limits_by_id = {limit.id: limit for limit in speed_limits}
         self.speed_limits_by_name = {limit.name: limit for limit in speed_limits}
-        self.throttling_levels = build_throttling_levels(speed_limits)
-        self.throttling_limit_ids = get_throttling_limit_ids(self.throttling_levels)
-
-        self.throttleable_vlan_ids = api.get_vlan_ids_for_names(cfg.THROTTLEABLE_VLAN_NAMES)
+        if cfg.THROTTLING_ENABLED:
+            self.throttling_levels = build_throttling_levels(speed_limits)
+            self.throttling_limit_ids = get_throttling_limit_ids(self.throttling_levels)
+            self.throttleable_vlan_ids = api.get_vlan_ids_for_names(cfg.THROTTLEABLE_VLAN_NAMES)
+        else:
+            self.throttling_levels = []
+            self.throttling_limit_ids = set()
+            self.throttleable_vlan_ids = []
 
     def process_connected_clients(self) -> list[ClientSnapshot]:
         'Process all connected clients for one cycle and return current snapshots.'
@@ -151,7 +161,8 @@ class UsageMonitor:
         now_date = datetime.now().date()
         if now_date > self.current_day:
             logger.info("Midnight reset date=%s", now_date)
-            release_configured_limits(self.throttling_limit_ids, "midnight")
+            if cfg.THROTTLING_ENABLED:
+                release_configured_limits(self.throttling_limit_ids, "midnight")
             self.current_day = now_date
 
     def _update_client_usage(self, client: ClientInfo) -> float:
@@ -165,9 +176,20 @@ class UsageMonitor:
         return interval_mb
 
     def _enforce_limit_if_needed(self, client: ClientInfo, day_total_mb: float, calendar_month_total_mb: float) -> tuple[bool, SpeedLimit | None]:
+        if not cfg.THROTTLING_ENABLED:
+            return False, client.speed_limit
         target_profile_name = target_profile_name_for_usage(client.vlan_id, day_total_mb, calendar_month_total_mb, self.throttleable_vlan_ids)
         target_limit = self.speed_limits_by_name.get(target_profile_name) if target_profile_name else None
         return enforce_target_limit(client.name, client.unifi_client_id, client.speed_limit, target_limit, self.throttling_limit_ids)
+
+    def _configured_throttling_limit_ids_for_release(self) -> set[str]:
+        'Resolve configured throttle profile IDs for one-time release paths.'
+        try:
+            configured_levels = build_throttling_levels(list(self.speed_limits_by_id.values()))
+        except ValueError as exc:
+            logger.warning("Skipping startup release for throttling profiles: %s", exc)
+            return set()
+        return get_throttling_limit_ids(configured_levels)
 
 if __name__ == "__main__":
     configure_logging()

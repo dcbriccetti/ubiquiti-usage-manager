@@ -16,6 +16,7 @@ class MonthlyUsageAdjustment:
 
 
 IGNORE_BELOW_KB = 10
+THROTTLING_ENABLED = True
 THROTTLEABLE_VLAN_NAMES = ['Basic']
 THROTTLING_LEVELS = [  # Ascending order
     ThrottleLevel(  250, '1/2 speed'),

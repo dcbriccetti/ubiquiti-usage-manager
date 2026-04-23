@@ -9,15 +9,101 @@
         <div>
             <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
             <h1>Insights</h1>
-            <p>Deeper month-to-date analytics for concurrency, usage trends, and throttling behavior.</p>
+            <p>Month-to-date analytics for concurrency, usage trends, and throttling behavior.</p>
         </div>
     </section>
 
     <section class="grid">
         <article class="panel">
             <div class="panel-body">
-                <h2>Global Insights ({{ current_month_label }})</h2>
+                <h2>Month Snapshot ({{ current_month_label }})</h2>
                 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+                <section class="insights-kpis">
+                    <div class="insight-kpi">
+                        <span class="label">Daily Active Users Min</span>
+                        <span class="value">{{ "{:,.0f}".format(active_users_daily_min) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">Daily Active Users Mean</span>
+                        <span class="value">{{ "{:,.1f}".format(active_users_daily_mean) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">Daily Active Users Max</span>
+                        <span class="value">{{ "{:,.0f}".format(active_users_daily_max) }}</span>
+                    </div>
+                    <div class="insight-kpi">
+                        <span class="label">Active Users Today</span>
+                        <span class="value">{{ "{:,.0f}".format(active_users_today) }}</span>
+                    </div>
+                </section>
+                <p class="muted">Based on {{ active_users_days_in_period }} day{% if active_users_days_in_period != 1 %}s{% endif %} in the current month.</p>
+                <h3>Daily Active Clients</h3>
+                <div class="month-chart-wrap">
+                    <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients in current month"></canvas>
+                </div>
+                <h3>Billing and Infrastructure</h3>
+                <section class="grid columns insights-tables">
+                    <article class="insights-summary">
+                        <h3>Payer Split ({{ current_month_label }})</h3>
+                        {% set total_split_mb = organization_paid_total_mb + user_paid_total_mb %}
+                        {% set organization_share_pct = ((organization_paid_total_mb * 100.0) / total_split_mb) if total_split_mb > 0 else 0.0 %}
+                        {% set user_share_pct = ((user_paid_total_mb * 100.0) / total_split_mb) if total_split_mb > 0 else 0.0 %}
+                        <table class="insights-table">
+                            <thead>
+                                <tr>
+                                    <th>Category</th>
+                                    <th class="num">MB</th>
+                                    <th class="num">Cost</th>
+                                    <th class="num">%</th>
+                                    <th class="num">Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="nowrap-col">Organization-paid</td>
+                                    <td class="num">{{ "{:,.0f}".format(organization_paid_total_mb) }}</td>
+                                    <td class="num">${{ "{:,.2f}".format((organization_paid_cost_cents or 0) / 100.0) }}</td>
+                                    <td class="num">{{ "{:.1f}%".format(organization_share_pct) }}</td>
+                                    <td class="num">{{ "{:,.0f}".format(organization_paid_minutes) }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="nowrap-col">User-paid</td>
+                                    <td class="num">{{ "{:,.0f}".format(user_paid_total_mb) }}</td>
+                                    <td class="num">${{ "{:,.2f}".format((user_paid_cost_cents or 0) / 100.0) }}</td>
+                                    <td class="num">{{ "{:.1f}%".format(user_share_pct) }}</td>
+                                    <td class="num">{{ "{:,.0f}".format(user_paid_minutes) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </article>
+                    <article class="insights-ap-hotspots">
+                        <h3>AP Hotspots (Sorted by Active Minutes)</h3>
+                        <table class="insights-table">
+                            <thead>
+                                <tr>
+                                    <th>Access Point</th>
+                                    <th class="num">MB</th>
+                                    <th class="num">Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ap in top_access_points_this_month %}
+                                    <tr>
+                                        <td class="nowrap-col">{{ ap.ap_name }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(ap.total_mb) }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="3" class="muted">No access-point usage data this month yet.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </article>
+                </section>
+
+                <h2>Usage Trends</h2>
                 <h3>Daily MB (Stacked Basic/Plus)</h3>
                 <div class="month-chart-wrap">
                     <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily MB stacked by Basic and Plus"></canvas>
@@ -26,6 +112,8 @@
                 <div class="month-chart-wrap">
                     <canvas id="global-daily-minutes-chart" class="month-chart-canvas" role="img" aria-label="Daily active minutes stacked by Basic and Plus"></canvas>
                 </div>
+
+                <h2>Concurrency Patterns</h2>
                 <h3>Peak Simultaneous Users by Day</h3>
                 <div class="month-chart-wrap">
                     <canvas id="global-peak-concurrency-chart" class="month-chart-canvas" role="img" aria-label="Daily peak simultaneous users"></canvas>
@@ -38,6 +126,8 @@
                     Cells show month-to-date total user-minutes by weekday/hour (sum of concurrent users each active minute).
                     Each cell shows its total directly; hover for sampled minutes and coverage.
                 </p>
+
+                <h2>Throttling Coverage</h2>
                 <h3>Throttling Coverage & Impact</h3>
                 <section class="insights-kpis">
                     <div class="insight-kpi">
@@ -57,6 +147,7 @@
                     <canvas id="global-throttling-profile-minutes-chart" class="month-chart-canvas" role="img" aria-label="Minutes spent at each throttling profile"></canvas>
                 </div>
 
+                <h2>Payer and User Detail</h2>
                 <section class="grid columns insights-org-top-users">
                     <article>
                         <h3>Organization-paid Clients</h3>
@@ -147,6 +238,9 @@
                 return;
             }
 
+            const activeUsersXLabels = {{ active_users_chart_x_labels|tojson }};
+            const activeUsersFullLabels = {{ active_users_chart_full_labels|tojson }};
+            const activeUsersCounts = {{ active_users_chart_counts|tojson }};
             const xLabels = {{ daily_network_x_labels|tojson }};
             const fullLabels = {{ daily_network_full_labels|tojson }};
             const basicMb = {{ daily_network_basic_mb|tojson }};
@@ -163,6 +257,54 @@
             const heatmapSampleCounts = {{ concurrency_heatmap_sample_counts|tojson }};
             const throttlingProfileLabels = {{ throttling_profile_labels|tojson }};
             const throttlingProfileMinutes = {{ throttling_profile_minutes|tojson }};
+
+            const activeClientsCanvas = document.getElementById("global-daily-active-clients-chart");
+            if (activeClientsCanvas) {
+                new Chart(activeClientsCanvas, {
+                    type: "bar",
+                    data: {
+                        labels: activeUsersXLabels,
+                        datasets: [
+                            {
+                                label: "Active Clients",
+                                data: activeUsersCounts,
+                                backgroundColor: "rgba(59, 130, 246, 0.78)"
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    title: (tooltipItems) => {
+                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                        return activeUsersFullLabels[idx] || "";
+                                    },
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: "Day of month" },
+                                grid: { display: false },
+                                ticks: {
+                                    maxRotation: 0,
+                                    autoSkip: true,
+                                    maxTicksLimit: 12
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: "Active clients/day" },
+                                grid: { color: "rgba(31, 41, 51, 0.20)" }
+                            }
+                        }
+                    }
+                });
+            }
 
             const sharedStackedOptions = {
                 responsive: true,

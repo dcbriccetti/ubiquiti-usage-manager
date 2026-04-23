@@ -22,7 +22,7 @@ from typing import Literal, TypedDict, cast
 import config as cfg
 import database as db
 import unifi_api as api
-from monitor import get_connected_clients
+from monitor import ClientSnapshot, get_connected_clients
 from speedlimit import SpeedLimit
 
 WindowName = Literal['active_now', 'online_now', 'today', 'last_7_days', 'this_month']
@@ -212,7 +212,10 @@ def profile_display_label(profile_key: str, speed_limits_by_name: dict[str, Spee
     return profile_key
 
 
-def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRow]:
+def build_rows_for_online_clients(
+    active_only: bool = False,
+    snapshots: list[ClientSnapshot] | None = None,
+) -> list[DashboardRow]:
     'Build dashboard rows from live controller client snapshots.'
     def right_half_ip(ip_address: str) -> str:
         parts = ip_address.split('.')
@@ -221,7 +224,8 @@ def build_rows_for_online_clients(active_only: bool = False) -> list[DashboardRo
         return ''
 
     rows: list[DashboardRow] = []
-    for snapshot in get_connected_clients():
+    source_snapshots = snapshots if snapshots is not None else get_connected_clients()
+    for snapshot in source_snapshots:
         speed_limit = snapshot.effective_speed_limit
         direction_total_mb = snapshot.client.tx_mb_since_connection + snapshot.client.rx_mb_since_connection
         minute_tx_mb: float | None = None
@@ -313,7 +317,10 @@ def build_rows_for_historical_window(
     return rows
 
 
-def add_current_connection_minutes(rows: list[DashboardRow]) -> None:
+def add_current_connection_minutes(
+    rows: list[DashboardRow],
+    online_assoc_minutes_by_mac: dict[str, int] | None = None,
+) -> None:
     'Attach current online/offline minutes from recent UniFi client queries.'
     if not rows:
         return
@@ -364,28 +371,36 @@ def add_current_connection_minutes(rows: list[DashboardRow]) -> None:
         return f'{sign}{hours:02d}:{minutes:02d}'
 
     now_seconds = int(datetime.now().timestamp())
-    online_assoc_minutes_by_mac: dict[str, int] = {}
-    for client in api.get_api_data('stat/sta'):
-        mac = client.get('mac')
-        if not isinstance(mac, str):
-            continue
-        assoc_seconds = normalize_online_seconds(client.get('assoc_time'), now_seconds)
-        if assoc_seconds is None:
-            assoc_seconds = normalize_online_seconds(client.get('latest_assoc_time'), now_seconds)
-        online_assoc_minutes_by_mac[mac.lower()] = (assoc_seconds // 60) if assoc_seconds is not None else 0
+    if online_assoc_minutes_by_mac is None:
+        online_assoc_minutes_by_mac = {}
+        for client in api.get_api_data('stat/sta'):
+            mac = client.get('mac')
+            if not isinstance(mac, str):
+                continue
+            assoc_seconds = normalize_online_seconds(client.get('assoc_time'), now_seconds)
+            if assoc_seconds is None:
+                assoc_seconds = normalize_online_seconds(client.get('latest_assoc_time'), now_seconds)
+            online_assoc_minutes_by_mac[mac.lower()] = (assoc_seconds // 60) if assoc_seconds is not None else 0
+    else:
+        online_assoc_minutes_by_mac = {
+            mac.lower(): max(0, int(minutes))
+            for mac, minutes in online_assoc_minutes_by_mac.items()
+        }
 
     offline_minutes_by_mac: dict[str, int] = {}
-    for client in api.get_api_data('stat/alluser'):
-        mac = client.get('mac')
-        if not isinstance(mac, str):
-            continue
-        key = mac.lower()
-        if key in online_assoc_minutes_by_mac:
-            continue
-        last_seen = parse_epoch_seconds(client.get('last_seen'))
-        if last_seen is None:
-            continue
-        offline_minutes_by_mac[key] = max(0, (now_seconds - last_seen) // 60)
+    needs_offline_lookup = any(row['mac'].lower() not in online_assoc_minutes_by_mac for row in rows)
+    if needs_offline_lookup:
+        for client in api.get_api_data('stat/alluser'):
+            mac = client.get('mac')
+            if not isinstance(mac, str):
+                continue
+            key = mac.lower()
+            if key in online_assoc_minutes_by_mac:
+                continue
+            last_seen = parse_epoch_seconds(client.get('last_seen'))
+            if last_seen is None:
+                continue
+            offline_minutes_by_mac[key] = max(0, (now_seconds - last_seen) // 60)
 
     for row in rows:
         key = row['mac'].lower()
@@ -411,105 +426,225 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
         row['recent_activity'] = series_by_mac.get(row['mac'], default_series.copy())
 
 
-def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, live_update_seconds: int) -> DashboardData:
-    'Assemble all dashboard fields needed by HTML render, API snapshot, and SSE stream.'
+def build_dashboard_data(
+    window_name: WindowName,
+    activity_span: ActivitySpan,
+    live_update_seconds: int,
+    include_insights: bool = True,
+) -> DashboardData:
+    'Assemble dashboard fields for HTML render and lightweight API snapshot/SSE payloads.'
     organization_paid_vlan_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_VLAN_NAMES if name.strip())
     organization_paid_mac_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_DEVICE_MACS if name.strip())
     organization_paid_user_id_criteria = sorted(name.strip() for name in cfg.ORGANIZATION_PAID_USER_IDS if name.strip())
+    organization_paid_vlan_criteria_lower = {name.lower() for name in organization_paid_vlan_criteria}
+    organization_paid_mac_criteria_lower = {name.lower() for name in organization_paid_mac_criteria}
+    organization_paid_user_id_criteria_lower = {name.lower() for name in organization_paid_user_id_criteria}
+    connected_snapshots: list[ClientSnapshot] = []
+    needs_live_rows = window_name in {WINDOW_ONLINE_NOW, WINDOW_ACTIVE_NOW}
+    needs_live_org_paid_enrichment = include_insights and bool(
+        organization_paid_vlan_criteria
+        or organization_paid_mac_criteria
+        or organization_paid_user_id_criteria
+    )
+    if needs_live_rows or needs_live_org_paid_enrichment:
+        connected_snapshots = get_connected_clients()
 
     def is_organization_paid_identity(mac: str, user_id: str | None, vlan_name: str | None) -> bool:
         mac_key = mac.strip().lower()
         user_key = user_id.strip().lower() if user_id else ''
         vlan_key = vlan_name.strip().lower() if vlan_name else ''
         return (
-            vlan_key in {name.lower() for name in organization_paid_vlan_criteria}
-            or mac_key in {name.lower() for name in organization_paid_mac_criteria}
-            or user_key in {name.lower() for name in organization_paid_user_id_criteria}
+            vlan_key in organization_paid_vlan_criteria_lower
+            or mac_key in organization_paid_mac_criteria_lower
+            or user_key in organization_paid_user_id_criteria_lower
         )
 
-    insights = db.get_global_month_insights(top_limit=6)
-    top_users_by_mac_this_month = db.get_global_top_users_current_month(
-        limit=60,
-        exclude_organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
-        exclude_organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-        exclude_organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
-    )
-    top_users_this_month = aggregate_top_users_by_identity(top_users_by_mac_this_month, limit=6)
-    daily_network_usage = db.get_global_daily_network_usage_current_month()
-    payer_split = db.get_global_payer_split_current_month(
-        organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
-        organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-        organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
-    )
-    organization_paid_clients = db.get_global_organization_paid_clients_current_month(
-        organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
-        organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-        organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
-        limit=12,
-    )
-    organization_paid_clients_by_mac = {entry.mac.lower(): entry for entry in organization_paid_clients}
-    for snapshot in get_connected_clients():
-        client = snapshot.client
-        if not is_organization_paid_identity(client.mac, client.user_id, client.vlan_name):
-            continue
-        mac_key = client.mac.lower()
-        if mac_key in organization_paid_clients_by_mac:
-            continue
-        organization_paid_clients.append(
-            db.GlobalTopUser(
-                mac=client.mac,
-                name=client.name or client.mac,
-                user_id=client.user_id or '',
-                vlan_name=client.vlan_name or '',
-                total_mb=0.0,
-                active_minutes=0,
-            )
+    active_users_daily_min = 0
+    active_users_daily_mean = 0.0
+    active_users_daily_max = 0
+    active_users_today = 0
+    active_users_days_in_period = 0
+    active_users_chart_x_labels: list[int] = []
+    active_users_chart_full_labels: list[str] = []
+    active_users_chart_counts: list[int] = []
+    top_users_this_month: list[db.GlobalTopUser] = []
+    top_access_points_this_month: list[db.ApUsageInsight] = []
+    daily_network_x_labels: list[int] = []
+    daily_network_full_labels: list[str] = []
+    daily_network_basic_mb: list[float] = []
+    daily_network_plus_mb: list[float] = []
+    daily_network_basic_minutes: list[int] = []
+    daily_network_plus_minutes: list[int] = []
+    organization_paid_total_mb = 0.0
+    organization_paid_cost_cents = 0.0
+    organization_paid_minutes = 0
+    user_paid_total_mb = 0.0
+    user_paid_cost_cents = 0.0
+    user_paid_minutes = 0
+    organization_paid_clients_data: list[dict[str, object]] = []
+    peak_concurrency_x_labels: list[int] = []
+    peak_concurrency_full_labels: list[str] = []
+    peak_concurrency_counts: list[int] = []
+    peak_concurrency_time_labels: list[str] = []
+    concurrency_heatmap_day_labels: list[str] = []
+    concurrency_heatmap_hour_labels: list[str] = []
+    concurrency_heatmap_values: list[list[float]] = []
+    concurrency_heatmap_sample_counts: list[list[int]] = []
+    throttling_profile_labels: list[str] = []
+    throttling_profile_minutes: list[int] = []
+    throttling_total_active_minutes = 0
+    throttling_minutes = 0
+    throttling_pct = 0.0
+    speed_limits_by_name: dict[str, SpeedLimit] = {}
+
+    if include_insights:
+        insights = db.get_global_month_insights(top_limit=6)
+        top_users_by_mac_this_month = db.get_global_top_users_current_month(
+            limit=60,
+            exclude_organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
+            exclude_organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+            exclude_organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+        )
+        top_users_this_month = aggregate_top_users_by_identity(top_users_by_mac_this_month, limit=6)
+        daily_network_usage = db.get_global_daily_network_usage_current_month()
+        payer_split = db.get_global_payer_split_current_month(
+            organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
+            organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+            organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+        )
+        organization_paid_clients = db.get_global_organization_paid_clients_current_month(
+            organization_paid_macs=cfg.ORGANIZATION_PAID_DEVICE_MACS,
+            organization_paid_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+            organization_paid_vlan_names=cfg.ORGANIZATION_PAID_VLAN_NAMES,
+            limit=12,
+        )
+        organization_paid_clients_by_mac = {entry.mac.lower(): entry for entry in organization_paid_clients}
+        if needs_live_org_paid_enrichment:
+            for snapshot in connected_snapshots:
+                client = snapshot.client
+                if not is_organization_paid_identity(client.mac, client.user_id, client.vlan_name):
+                    continue
+                mac_key = client.mac.lower()
+                if mac_key in organization_paid_clients_by_mac:
+                    continue
+                organization_paid_clients.append(
+                    db.GlobalTopUser(
+                        mac=client.mac,
+                        name=client.name or client.mac,
+                        user_id=client.user_id or '',
+                        vlan_name=client.vlan_name or '',
+                        total_mb=0.0,
+                        active_minutes=0,
+                    )
+                )
+
+        organization_paid_clients = sorted(
+            organization_paid_clients,
+            key=lambda entry: (entry.total_mb, entry.active_minutes, entry.name.lower()),
+            reverse=True,
+        )[:12]
+        speed_limits_by_name = {
+            limit.name: limit for limit in api.get_speed_limits()
+        }
+        concurrency_insights = db.get_global_concurrency_insights_current_month()
+        throttling_effectiveness = db.get_global_throttling_effectiveness_current_month()
+        allowed_throttling_profiles = {level.profile_name for level in cfg.THROTTLING_LEVELS}
+        throttling_profile_totals = sorted(
+            (
+                (profile_key, minutes)
+                for profile_key, minutes in throttling_effectiveness.profile_minutes.items()
+                if profile_key in allowed_throttling_profiles
+            ),
+            key=lambda pair: pair[1],
+            reverse=True,
         )
 
-    organization_paid_clients = sorted(
-        organization_paid_clients,
-        key=lambda entry: (entry.total_mb, entry.active_minutes, entry.name.lower()),
-        reverse=True,
-    )[:12]
-    speed_limits_by_name = {
-        limit.name: limit for limit in api.get_speed_limits()
-    }
-    concurrency_insights = db.get_global_concurrency_insights_current_month()
-    throttling_effectiveness = db.get_global_throttling_effectiveness_current_month()
-    allowed_throttling_profiles = {level.profile_name for level in cfg.THROTTLING_LEVELS}
-    throttling_profile_totals = sorted(
-        (
-            (profile_key, minutes)
-            for profile_key, minutes in throttling_effectiveness.profile_minutes.items()
-            if profile_key in allowed_throttling_profiles
-        ),
-        key=lambda pair: pair[1],
-        reverse=True,
-    )
+        active_users_daily_min = insights.active_users_min
+        active_users_daily_mean = insights.active_users_mean
+        active_users_daily_max = insights.active_users_max
+        active_users_today = insights.active_users_today
+        active_users_days_in_period = insights.days_in_period
+        active_users_chart_x_labels = insights.active_users_daily_x_labels
+        active_users_chart_full_labels = insights.active_users_daily_full_labels
+        active_users_chart_counts = insights.active_users_daily_counts
+        top_access_points_this_month = insights.top_access_points
+        daily_network_x_labels = [network_row.usage_day.day for network_row in daily_network_usage]
+        daily_network_full_labels = [f'{network_row.usage_day.strftime("%b")} {network_row.usage_day.day}' for network_row in daily_network_usage]
+        daily_network_basic_mb = [network_row.basic_mb for network_row in daily_network_usage]
+        daily_network_plus_mb = [network_row.plus_mb for network_row in daily_network_usage]
+        daily_network_basic_minutes = [network_row.basic_minutes for network_row in daily_network_usage]
+        daily_network_plus_minutes = [network_row.plus_minutes for network_row in daily_network_usage]
+        organization_paid_total_mb = payer_split.organization_paid_total_mb
+        organization_paid_cost_cents = calculate_month_cost_cents(payer_split.organization_paid_total_mb)
+        organization_paid_minutes = payer_split.organization_paid_minutes
+        user_paid_total_mb = payer_split.user_paid_total_mb
+        user_paid_cost_cents = calculate_month_cost_cents(payer_split.user_paid_total_mb)
+        user_paid_minutes = payer_split.user_paid_minutes
+        organization_paid_clients_data = [
+            {
+                'mac': organization_row.mac,
+                'name': organization_row.name,
+                'user_id': organization_row.user_id,
+                'vlan_name': organization_row.vlan_name,
+                'total_mb': organization_row.total_mb,
+                'month_cost_cents': calculate_month_cost_cents(organization_row.total_mb),
+                'active_minutes': organization_row.active_minutes,
+            }
+            for organization_row in organization_paid_clients
+        ]
+        peak_concurrency_x_labels = concurrency_insights.daily_x_labels
+        peak_concurrency_full_labels = concurrency_insights.daily_full_labels
+        peak_concurrency_counts = concurrency_insights.daily_peak_counts
+        peak_concurrency_time_labels = concurrency_insights.daily_peak_time_labels
+        concurrency_heatmap_day_labels = concurrency_insights.heatmap_day_labels
+        concurrency_heatmap_hour_labels = concurrency_insights.heatmap_hour_labels
+        concurrency_heatmap_values = concurrency_insights.heatmap_values
+        concurrency_heatmap_sample_counts = concurrency_insights.heatmap_sample_counts
+        throttling_profile_labels = [
+            profile_display_label(profile_key, speed_limits_by_name)
+            for profile_key, _ in throttling_profile_totals
+        ]
+        throttling_profile_minutes = [minutes for _, minutes in throttling_profile_totals]
+        throttling_total_active_minutes = throttling_effectiveness.total_active_minutes
+        throttling_minutes = throttling_effectiveness.throttled_minutes
+        throttling_pct = throttling_effectiveness.throttled_pct
     if window_name == WINDOW_ONLINE_NOW:
-        rows = build_rows_for_online_clients()
+        rows = build_rows_for_online_clients(snapshots=connected_snapshots)
     elif window_name == WINDOW_ACTIVE_NOW:
-        rows = build_rows_for_online_clients(active_only=True)
+        rows = build_rows_for_online_clients(active_only=True, snapshots=connected_snapshots)
     else:
         rows = build_rows_for_historical_window(window_name, speed_limits_by_name)
-    add_current_connection_minutes(rows)
+    online_assoc_minutes_by_mac: dict[str, int] | None = None
+    if connected_snapshots:
+        online_assoc_minutes_by_mac = {
+            snapshot.client.mac.lower(): (
+                (snapshot.client.assoc_time_seconds // 60)
+                if isinstance(snapshot.client.assoc_time_seconds, int) and snapshot.client.assoc_time_seconds >= 0
+                else 0
+            )
+            for snapshot in connected_snapshots
+        }
+    add_current_connection_minutes(rows, online_assoc_minutes_by_mac=online_assoc_minutes_by_mac)
     add_recent_activity(rows, activity_span)
+    total_today_mb = db.get_total_today_usage()
+    total_last_7_days_mb = db.get_total_last_7_days_usage()
+    total_calendar_month_mb = db.get_total_calendar_month_usage()
     return {
         'clients': rows,
         'selected_window': window_name,
         'selected_activity_span': activity_span,
         'current_month_label': render_month_label(datetime.now()),
-        'total_today_mb': db.get_total_today_usage(),
-        'total_last_7_days_mb': db.get_total_last_7_days_usage(),
-        'total_calendar_month_mb': db.get_total_calendar_month_usage(),
-        'active_users_daily_min': insights.active_users_min,
-        'active_users_daily_mean': insights.active_users_mean,
-        'active_users_daily_max': insights.active_users_max,
-        'active_users_today': insights.active_users_today,
-        'active_users_days_in_period': insights.days_in_period,
-        'active_users_chart_x_labels': insights.active_users_daily_x_labels,
-        'active_users_chart_full_labels': insights.active_users_daily_full_labels,
-        'active_users_chart_counts': insights.active_users_daily_counts,
+        'total_today_mb': total_today_mb,
+        'total_last_7_days_mb': total_last_7_days_mb,
+        'total_calendar_month_mb': total_calendar_month_mb,
+        'active_users_daily_min': active_users_daily_min,
+        'active_users_daily_mean': active_users_daily_mean,
+        'active_users_daily_max': active_users_daily_max,
+        'active_users_today': active_users_today,
+        'active_users_days_in_period': active_users_days_in_period,
+        'active_users_chart_x_labels': active_users_chart_x_labels,
+        'active_users_chart_full_labels': active_users_chart_full_labels,
+        'active_users_chart_counts': active_users_chart_counts,
         'top_users_this_month': [
             {
                 'mac': top_row.mac,
@@ -523,55 +658,41 @@ def build_dashboard_data(window_name: WindowName, activity_span: ActivitySpan, l
         ],
         'top_access_points_this_month': [
             {
-                'ap_name': insight_row.ap_name,
-                'total_mb': insight_row.total_mb,
-                'active_minutes': insight_row.active_minutes,
+                'ap_name': top_ap_row.ap_name,
+                'total_mb': top_ap_row.total_mb,
+                'active_minutes': top_ap_row.active_minutes,
             }
-            for insight_row in insights.top_access_points
+            for top_ap_row in top_access_points_this_month
         ],
-        'daily_network_x_labels': [network_row.usage_day.day for network_row in daily_network_usage],
-        'daily_network_full_labels': [f'{network_row.usage_day.strftime("%b")} {network_row.usage_day.day}' for network_row in daily_network_usage],
-        'daily_network_basic_mb': [network_row.basic_mb for network_row in daily_network_usage],
-        'daily_network_plus_mb': [network_row.plus_mb for network_row in daily_network_usage],
-        'daily_network_basic_minutes': [network_row.basic_minutes for network_row in daily_network_usage],
-        'daily_network_plus_minutes': [network_row.plus_minutes for network_row in daily_network_usage],
-        'organization_paid_total_mb': payer_split.organization_paid_total_mb,
-        'organization_paid_cost_cents': calculate_month_cost_cents(payer_split.organization_paid_total_mb),
-        'organization_paid_minutes': payer_split.organization_paid_minutes,
-        'user_paid_total_mb': payer_split.user_paid_total_mb,
-        'user_paid_cost_cents': calculate_month_cost_cents(payer_split.user_paid_total_mb),
-        'user_paid_minutes': payer_split.user_paid_minutes,
-        'organization_paid_clients': [
-            {
-                'mac': organization_row.mac,
-                'name': organization_row.name,
-                'user_id': organization_row.user_id,
-                'vlan_name': organization_row.vlan_name,
-                'total_mb': organization_row.total_mb,
-                'month_cost_cents': calculate_month_cost_cents(organization_row.total_mb),
-                'active_minutes': organization_row.active_minutes,
-            }
-            for organization_row in organization_paid_clients
-        ],
+        'daily_network_x_labels': daily_network_x_labels,
+        'daily_network_full_labels': daily_network_full_labels,
+        'daily_network_basic_mb': daily_network_basic_mb,
+        'daily_network_plus_mb': daily_network_plus_mb,
+        'daily_network_basic_minutes': daily_network_basic_minutes,
+        'daily_network_plus_minutes': daily_network_plus_minutes,
+        'organization_paid_total_mb': organization_paid_total_mb,
+        'organization_paid_cost_cents': organization_paid_cost_cents,
+        'organization_paid_minutes': organization_paid_minutes,
+        'user_paid_total_mb': user_paid_total_mb,
+        'user_paid_cost_cents': user_paid_cost_cents,
+        'user_paid_minutes': user_paid_minutes,
+        'organization_paid_clients': organization_paid_clients_data,
         'organization_paid_vlan_criteria': organization_paid_vlan_criteria,
         'organization_paid_mac_criteria': organization_paid_mac_criteria,
         'organization_paid_user_id_criteria': organization_paid_user_id_criteria,
-        'peak_concurrency_x_labels': concurrency_insights.daily_x_labels,
-        'peak_concurrency_full_labels': concurrency_insights.daily_full_labels,
-        'peak_concurrency_counts': concurrency_insights.daily_peak_counts,
-        'peak_concurrency_time_labels': concurrency_insights.daily_peak_time_labels,
-        'concurrency_heatmap_day_labels': concurrency_insights.heatmap_day_labels,
-        'concurrency_heatmap_hour_labels': concurrency_insights.heatmap_hour_labels,
-        'concurrency_heatmap_values': concurrency_insights.heatmap_values,
-        'concurrency_heatmap_sample_counts': concurrency_insights.heatmap_sample_counts,
-        'throttling_profile_labels': [
-            profile_display_label(profile_key, speed_limits_by_name)
-            for profile_key, _ in throttling_profile_totals
-        ],
-        'throttling_profile_minutes': [minutes for _, minutes in throttling_profile_totals],
-        'throttling_total_active_minutes': throttling_effectiveness.total_active_minutes,
-        'throttling_minutes': throttling_effectiveness.throttled_minutes,
-        'throttling_pct': throttling_effectiveness.throttled_pct,
+        'peak_concurrency_x_labels': peak_concurrency_x_labels,
+        'peak_concurrency_full_labels': peak_concurrency_full_labels,
+        'peak_concurrency_counts': peak_concurrency_counts,
+        'peak_concurrency_time_labels': peak_concurrency_time_labels,
+        'concurrency_heatmap_day_labels': concurrency_heatmap_day_labels,
+        'concurrency_heatmap_hour_labels': concurrency_heatmap_hour_labels,
+        'concurrency_heatmap_values': concurrency_heatmap_values,
+        'concurrency_heatmap_sample_counts': concurrency_heatmap_sample_counts,
+        'throttling_profile_labels': throttling_profile_labels,
+        'throttling_profile_minutes': throttling_profile_minutes,
+        'throttling_total_active_minutes': throttling_total_active_minutes,
+        'throttling_minutes': throttling_minutes,
+        'throttling_pct': throttling_pct,
         'live_update_seconds': live_update_seconds,
     }
 
