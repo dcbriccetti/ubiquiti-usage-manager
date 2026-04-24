@@ -110,6 +110,7 @@
             "detailPattern": url_for('client_detail', mac='__MAC__'),
             "streamBaseUrl": url_for('dashboard_stream'),
             "snapshotBaseUrl": url_for('dashboard_snapshot'),
+            "clientUsageTodayEmbedPattern": url_for('client_usage_today_embed', mac='__MAC__'),
             "initialPayload": initial_dashboard_payload
         } | tojson }}
     </script>

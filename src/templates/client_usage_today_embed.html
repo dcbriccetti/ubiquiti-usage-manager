@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block title %}Usage Today{% endblock %}
+
+{% block content %}
+    <section class="grid">
+        <article class="panel">
+            <div class="panel-body">
+                <h2>{{ usage_scale.title }}</h2>
+                <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+                {% include "_usage_scale_chart.html" %}
+            </div>
+        </article>
+    </section>
+{% endblock %}

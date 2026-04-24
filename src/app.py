@@ -841,6 +841,27 @@ def create_app() -> Flask:
         except LookupError:
             abort(404)
 
+    @flask_app.route("/clients/<mac>/usage-today-embed")
+    def client_usage_today_embed(mac: str):
+        'Render embeddable "Usage Today" panel for one client MAC.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        try:
+            context = get_client_usage_context(mac)
+        except LookupError:
+            abort(404)
+
+        daily_scale = next((scale for scale in context['usage_scales'] if scale['key'] == 'daily'), None)
+        if daily_scale is None:
+            abort(404)
+
+        return render_template(
+            "client_usage_today_embed.html",
+            mac=context['mac'],
+            usage_scale=daily_scale,
+        )
+
     @flask_app.route("/my-usage", methods=["GET", "POST"])
     def my_usage():
         'Render usage details for the LAN client identified by request IP/MAC mapping.'
