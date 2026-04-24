@@ -833,38 +833,6 @@ def create_app() -> Flask:
             **context,
         )
 
-    @flask_app.route("/my-usage/report")
-    def my_usage_report():
-        'Render print-friendly monthly billing report for the current requester.'
-        request_ip = resolve_request_ip()
-        detected_mac, lookup_error = resolve_my_usage_mac(request_ip)
-        if lookup_error:
-            return render_template(
-                "my_usage_report.html",
-                error_message=lookup_error,
-                request_ip=request_ip or "",
-                detected_mac="",
-            )
-
-        try:
-            context = get_client_usage_context(detected_mac)
-        except LookupError:
-            return render_template(
-                "my_usage_report.html",
-                error_message="We identified your device, but no usage record is available yet.",
-                request_ip=request_ip,
-                detected_mac=detected_mac,
-            )
-
-        return render_template(
-            "my_usage_report.html",
-            request_ip=request_ip,
-            detected_mac=detected_mac,
-            generated_at=datetime.now(),
-            organization_title=get_organization_title(),
-            **context,
-        )
-
     @flask_app.route("/invoices/plus-users")
     def plus_user_invoices():
         'Render month-to-date Plus-user invoice summaries for admins.'
