@@ -3,15 +3,32 @@
     {% set chart_id_prefix = "usage-scale-chart-" ~ (mac or "client")|replace(":", "") ~ "-" ~ usage_scale.key %}
     {% set mb_chart_id = chart_id_prefix ~ "-mb" %}
     {% set minutes_chart_id = chart_id_prefix ~ "-minutes" %}
+    {% set mb_ap_pie_id = chart_id_prefix ~ "-mb-ap" %}
+    {% set minutes_ap_pie_id = chart_id_prefix ~ "-minutes-ap" %}
     {% set labels = usage_points | map(attribute='bucket_value') | list %}
     {% set full_labels = usage_points | map(attribute='bucket_label') | list %}
     {% set mb_series = usage_points | map(attribute='total_mb') | list %}
 
-    <div class="month-chart-wrap" style="height: 220px;">
-        <canvas id="{{ mb_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} MB usage"></canvas>
+    <div class="usage-scale-row">
+        <div class="usage-scale-primary month-chart-wrap" style="height: 220px;">
+            <canvas id="{{ mb_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} MB usage"></canvas>
+        </div>
+        <aside class="usage-scale-side month-chart-wrap usage-scale-pie-wrap" style="height: 220px;">
+            <h3>Usage Volume by Access Point</h3>
+            <canvas id="{{ mb_ap_pie_id }}" class="usage-scale-pie-canvas" role="img" aria-label="MB by access point"></canvas>
+            <p class="muted usage-scale-empty" data-empty-for="{{ mb_ap_pie_id }}" hidden>No access-point usage data.</p>
+        </aside>
     </div>
-    <div class="month-chart-wrap" style="height: 220px;">
-        <canvas id="{{ minutes_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} active minutes"></canvas>
+
+    <div class="usage-scale-row">
+        <div class="usage-scale-primary month-chart-wrap" style="height: 220px;">
+            <canvas id="{{ minutes_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} active minutes"></canvas>
+        </div>
+        <aside class="usage-scale-side month-chart-wrap usage-scale-pie-wrap" style="height: 220px;">
+            <h3>Active Time by Access Point</h3>
+            <canvas id="{{ minutes_ap_pie_id }}" class="usage-scale-pie-canvas" role="img" aria-label="Minutes by access point"></canvas>
+            <p class="muted usage-scale-empty" data-empty-for="{{ minutes_ap_pie_id }}" hidden>No access-point usage data.</p>
+        </aside>
     </div>
 
     <script>
@@ -20,7 +37,9 @@
         (() => {
             const mbCanvas = document.getElementById({{ mb_chart_id|tojson }});
             const minutesCanvas = document.getElementById({{ minutes_chart_id|tojson }});
-            if (!mbCanvas || !minutesCanvas || typeof Chart === "undefined") {
+            const mbApPieCanvas = document.getElementById({{ mb_ap_pie_id|tojson }});
+            const minutesApPieCanvas = document.getElementById({{ minutes_ap_pie_id|tojson }});
+            if (!mbCanvas || !minutesCanvas || !mbApPieCanvas || !minutesApPieCanvas || typeof Chart === "undefined") {
                 return;
             }
 
@@ -33,6 +52,9 @@
             const xAxisTitle = {{ usage_scale.x_axis_title|tojson }};
             const mbAxisTitle = {{ usage_scale.mb_axis_title|tojson }};
             const minutesAxisTitle = {{ usage_scale.minutes_axis_title|tojson }};
+            const apLabels = {{ usage_scale.access_point_labels|tojson }};
+            const apMbValues = {{ usage_scale.access_point_mb_values|tojson }};
+            const apMinutesValues = {{ usage_scale.access_point_minutes_values|tojson }};
 
             const commonBarStyle = {
                 barPercentage: 0.72,
@@ -62,6 +84,20 @@
                 "rgba(8, 145, 178, 0.82)",
                 "rgba(21, 128, 61, 0.82)",
                 "rgba(100, 116, 139, 0.82)"
+            ];
+            const accessPointPalette = [
+                "rgba(0, 114, 178, 0.9)",
+                "rgba(204, 121, 167, 0.9)",
+                "rgba(0, 158, 115, 0.9)",
+                "rgba(213, 94, 0, 0.9)",
+                "rgba(86, 180, 233, 0.9)",
+                "rgba(117, 112, 179, 0.9)",
+                "rgba(181, 101, 29, 0.9)",
+                "rgba(52, 64, 84, 0.9)",
+                "rgba(0, 128, 128, 0.9)",
+                "rgba(230, 159, 0, 0.9)",
+                "rgba(228, 26, 28, 0.9)",
+                "rgba(77, 77, 77, 0.9)"
             ];
 
             const mbStackedMode = Array.isArray(deviceSeriesRaw) && deviceSeriesRaw.length > 0;
@@ -241,6 +277,71 @@
                     }
                 }
             });
+
+            const renderAccessPointPie = (canvas, values, valueLabel) => {
+                const emptyMessage = document.querySelector(`[data-empty-for="${canvas.id}"]`);
+                const series = apLabels
+                    .map((apLabel, idx) => ({
+                        label: apLabel,
+                        value: Number(values[idx] || 0),
+                    }))
+                    .filter((row) => row.value > 0);
+
+                if (!series.length) {
+                    canvas.hidden = true;
+                    if (emptyMessage) {
+                        emptyMessage.hidden = false;
+                    }
+                    return;
+                }
+
+                if (emptyMessage) {
+                    emptyMessage.hidden = true;
+                }
+
+                const total = series.reduce((sum, row) => sum + row.value, 0);
+                new Chart(canvas, {
+                    type: "pie",
+                    data: {
+                        labels: series.map((row) => row.label),
+                        datasets: [
+                            {
+                                data: series.map((row) => row.value),
+                                backgroundColor: series.map((_, idx) => accessPointPalette[idx % accessPointPalette.length]),
+                                borderColor: "rgba(255, 255, 255, 0.85)",
+                                borderWidth: 1,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: "bottom",
+                                labels: {
+                                    boxWidth: 12,
+                                    boxHeight: 12,
+                                    usePointStyle: true,
+                                    pointStyle: "circle",
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: (tooltipItem) => {
+                                        const value = Number(tooltipItem.parsed || 0);
+                                        const pct = total > 0 ? (value * 100.0) / total : 0;
+                                        return `${tooltipItem.label}: ${value.toFixed(valueLabel === "MB" ? 1 : 0)} ${valueLabel} (${pct.toFixed(1)}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            renderAccessPointPie(mbApPieCanvas, apMbValues, "MB");
+            renderAccessPointPie(minutesApPieCanvas, apMinutesValues, "minutes");
         })();
     </script>
 {% else %}

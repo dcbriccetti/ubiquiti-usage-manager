@@ -70,6 +70,9 @@ class UsageScaleContext(TypedDict):
     summary_text: str
     points: list[UsageScalePoint]
     usage_device_series: list[dict[str, object]]
+    access_point_labels: list[str]
+    access_point_mb_values: list[float]
+    access_point_minutes_values: list[int]
     throttle_x_values: list[int]
     throttle_datasets: list[ThrottleChartDataset]
 
@@ -700,6 +703,9 @@ def create_app() -> Flask:
         ]
         daily_throttle_rows = db.get_today_hourly_profile_minutes(mac)
         daily_throttle_datasets = build_throttle_datasets(daily_throttle_rows, speed_limits_by_name)
+        daily_access_points = db.get_today_access_point_totals(mac)
+
+        monthly_access_points = db.get_calendar_month_access_point_totals(mac)
 
         usage_scales: list[UsageScaleContext] = [
             {
@@ -716,6 +722,9 @@ def create_app() -> Flask:
                         'data': [point['total_mb'] for point in daily_hourly_usage],
                     }
                 ],
+                'access_point_labels': [ap_name for ap_name, _, _ in daily_access_points],
+                'access_point_mb_values': [total_mb for _, total_mb, _ in daily_access_points],
+                'access_point_minutes_values': [active_minutes for _, _, active_minutes in daily_access_points],
                 'throttle_x_values': [hour for hour, _ in daily_throttle_rows],
                 'throttle_datasets': daily_throttle_datasets,
             },
@@ -733,6 +742,9 @@ def create_app() -> Flask:
                         'data': [point['total_mb'] for point in month_daily_usage],
                     }
                 ],
+                'access_point_labels': [ap_name for ap_name, _, _ in monthly_access_points],
+                'access_point_mb_values': [total_mb for _, total_mb, _ in monthly_access_points],
+                'access_point_minutes_values': [active_minutes for _, _, active_minutes in monthly_access_points],
                 'throttle_x_values': [usage_day for usage_day, _ in month_throttle_rows],
                 'throttle_datasets': month_throttle_datasets,
             },
