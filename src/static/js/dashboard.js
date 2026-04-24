@@ -110,6 +110,15 @@
         if (!text) return '';
         return text.slice(-5);
     };
+    const renderAccessPointCell = (client) => {
+        const primary = normalizeApName(client.ap_name || '');
+        const apCount = Number(client.ap_count) || 0;
+        const extraCount = Math.max(0, apCount - 1);
+        const breakdown = client.ap_breakdown || '';
+        const titleText = breakdown || primary;
+        const extraSuffix = extraCount > 0 ? ` +${extraCount}` : '';
+        return `<span title="${escapeHtml(titleText)}">${escapeHtml(primary)}${escapeHtml(extraSuffix)}</span>`;
+    };
 
     const activityScaleViewKey = () => `${selectedWindow}:${selectedActivitySpan}`;
 
@@ -201,10 +210,10 @@
                     <td class="nowrap-col">${escapeHtml(client.user_id)}</td>
                     <td><a class="mac-link" href="${detailHref}" title="Usage details">${escapeHtml(client.name)}</a></td>
                     <td class="mono mac-cell">${escapeHtml(formatMacShort(client.mac))}</td>
-                    <td class="nowrap-col">${escapeHtml(client.ip_half || '')}</td>
+                    <td class="nowrap-col ip-col">${escapeHtml(client.ip_half || '')}</td>
                     <td>${escapeHtml(client.vlan_name)}</td>
-                    <td class="ap-col">${escapeHtml(normalizeApName(client.ap_name))}</td>
-                    <td>${escapeHtml(signal)}</td>
+                    <td class="ap-col">${renderAccessPointCell(client)}</td>
+                    <td class="sig-col">${escapeHtml(signal)}</td>
                     <td class="activity-col">${renderRecentActivity(client.recent_activity)}</td>
                     <td class="nowrap-col">${escapeHtml(client.connection_duration || '')}</td>
                     <td class="num nowrap-col mbps-col">${formatAvgMbps(client.interval_mb)}</td>

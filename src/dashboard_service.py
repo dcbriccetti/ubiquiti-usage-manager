@@ -52,6 +52,8 @@ class DashboardRow(TypedDict):
     user_id: str
     name: str
     ap_name: str
+    ap_count: int
+    ap_breakdown: str
     mac: str
     ip_half: str
     vlan_name: str
@@ -257,6 +259,8 @@ def build_rows_for_online_clients(
             'user_id': snapshot.client.user_id or '',
             'name': snapshot.client.name,
             'ap_name': snapshot.client.ap_name or '',
+            'ap_count': 1 if snapshot.client.ap_name else 0,
+            'ap_breakdown': snapshot.client.ap_name or '',
             'mac': snapshot.client.mac,
             'ip_half': right_half_ip(snapshot.client.ip_address),
             'vlan_name': snapshot.client.vlan_name or 'Unknown',
@@ -296,6 +300,7 @@ def build_rows_for_historical_window(
 ) -> list[DashboardRow]:
     'Build dashboard rows from usage ledger summaries for non-live windows.'
     summaries = db.get_usage_window_summary(window_name)
+    ap_rollups_by_mac = db.get_usage_window_access_point_minutes(window_name)
     rows: list[DashboardRow] = []
     for summary in summaries:
         speed_limit_name = ''
@@ -309,10 +314,25 @@ def build_rows_for_historical_window(
                 speed_limit_up_kbps = speed_limit.up_kbps
                 speed_limit_down_kbps = speed_limit.down_kbps
 
+        ap_rollups = ap_rollups_by_mac.get(summary.mac, [])
+        if ap_rollups:
+            primary_ap_name = ap_rollups[0][0]
+            ap_count = len(ap_rollups)
+            ap_breakdown_parts = [f'{ap_name} ({minutes}m)' for ap_name, minutes in ap_rollups[:4]]
+            if len(ap_rollups) > 4:
+                ap_breakdown_parts.append(f'+{len(ap_rollups) - 4} more')
+            ap_breakdown = ', '.join(ap_breakdown_parts)
+        else:
+            primary_ap_name = summary.ap_name or ''
+            ap_count = 1 if primary_ap_name else 0
+            ap_breakdown = primary_ap_name
+
         row: DashboardRow = {
             'user_id': summary.user_id or '',
             'name': summary.name or summary.mac,
-            'ap_name': summary.ap_name or '',
+            'ap_name': primary_ap_name,
+            'ap_count': ap_count,
+            'ap_breakdown': ap_breakdown,
             'mac': summary.mac,
             'ip_half': '',
             'vlan_name': summary.vlan or 'Unknown',

@@ -534,6 +534,50 @@ def get_usage_window_summary(window: str) -> list[UsageWindowSummary]:
     )
 
 
+def get_usage_window_access_point_minutes(window: str) -> dict[str, list[tuple[str, int]]]:
+    'Return per-client AP minute counts for the requested dashboard window.'
+    now = datetime.now()
+    today_start = datetime.combine(now.date(), time.min)
+    seven_days_ago = now - timedelta(days=7)
+    month_start = datetime.combine(now.date().replace(day=1), time.min)
+
+    window_start = month_start
+    if window == 'today':
+        window_start = today_start
+    elif window == 'last_7_days':
+        window_start = seven_days_ago
+
+    stmt = (
+        select(UsageRecord.mac, UsageRecord.ap_name)
+        .where(
+            UsageRecord.timestamp >= window_start,
+            UsageRecord.timestamp <= now,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    ap_minutes_by_mac: dict[str, dict[str, int]] = {}
+    for row_mac, row_ap_name in rows:
+        if not isinstance(row_mac, str):
+            continue
+        ap_name = row_ap_name.strip() if isinstance(row_ap_name, str) and row_ap_name.strip() else 'Unknown'
+        if ap_name.lower().endswith(' ap'):
+            ap_name = ap_name[:-3].rstrip() or 'Unknown'
+        ap_counts = ap_minutes_by_mac.setdefault(row_mac, {})
+        ap_counts[ap_name] = ap_counts.get(ap_name, 0) + 1
+
+    return {
+        mac: sorted(
+            ap_counts.items(),
+            key=lambda item: (item[1], item[0].lower()),
+            reverse=True,
+        )
+        for mac, ap_counts in ap_minutes_by_mac.items()
+    }
+
+
 def get_calendar_month_daily_totals(mac: str) -> list[tuple[date, float, int]]:
     'Return per-day usage totals and active-minute counts for current month, oldest to newest.'
     now = datetime.now()
