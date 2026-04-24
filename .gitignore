@@ -1,6 +1,5 @@
 /.idea/
 /.venv/
-/src/keys.py
 /src/config_local.py
 /src/__pycache__/
 /unifi-experiments.iml

@@ -10,13 +10,13 @@ import logging
 
 import requests
 import urllib3
-from keys import API_KEY
+import config as cfg
 from speedlimit import SpeedLimit
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 BASE_URL = "https://192.168.0.1/proxy/network/api/s/default"
-HEADERS = {"X-API-KEY": API_KEY, "Accept": "application/json"}
+HEADERS = {"X-API-KEY": cfg.API_KEY, "Accept": "application/json"}
 API_RETRY_ATTEMPTS = 3
 API_RETRY_BACKOFF_SECONDS = 0.35
 TRANSIENT_STATUS_CODES = {500, 502, 503, 504}
