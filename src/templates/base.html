@@ -44,6 +44,10 @@
             color: inherit;
         }
 
+        a[href] {
+            cursor: pointer;
+        }
+
         a.mac-link {
             color: var(--accent);
             text-decoration: none;
@@ -83,6 +87,43 @@
 
         .detail-hero .stat {
             min-width: 220px;
+        }
+
+        .detail-links {
+            display: flex;
+            gap: var(--space-3);
+            align-items: center;
+            margin-bottom: var(--space-2);
+        }
+
+        .detail-links a {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 8px;
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .detail-links a:hover,
+        .detail-links a:focus-visible {
+            background: rgba(15, 118, 110, 0.10);
+            outline: none;
+        }
+
+        .report-user-stat {
+            border-color: rgba(15, 118, 110, 0.32);
+            background:
+                linear-gradient(160deg, rgba(15, 118, 110, 0.18), rgba(15, 118, 110, 0.07)),
+                var(--panel);
+        }
+
+        .report-user-stat .label {
+            color: rgba(15, 118, 110, 0.88);
+        }
+
+        .report-user-stat .value {
+            font-size: 2.15rem;
+            letter-spacing: 0.01em;
         }
 
         .hero h1 {
@@ -168,6 +209,11 @@
         table.compact-table {
             width: max-content;
             min-width: 1180px;
+        }
+
+        table.fit-content-table {
+            width: max-content;
+            min-width: 0;
         }
 
         th,

@@ -5,8 +5,11 @@
 {% block content %}
     <section class="hero detail-hero">
         <div>
-            <p><a href="{{ url_for('plus_user_invoices') }}">Back to Plus invoices</a></p>
-            <h1>{{ plus_report_label }}: {{ summary.user_id }}</h1>
+            <div class="detail-links">
+                <a href="{{ url_for('plus_user_invoices') }}">Back to Plus invoices</a>
+                <a href="{{ url_for('plus_user_invoice_pdf', user_id=summary.user_id) }}">Export as PDF</a>
+            </div>
+            <h1>{{ plus_report_label }}</h1>
             {% if organization_title %}
                 <p class="muted">{{ organization_title }}</p>
             {% endif %}
@@ -17,13 +20,13 @@
     </section>
 
     <section class="grid stats">
+        <article class="panel stat report-user-stat">
+            <span class="label">User ID</span>
+            <span class="value mono">{{ summary.user_id }}</span>
+        </article>
         <article class="panel stat">
             <span class="label">Usage {{ report_period_label }}</span>
             <span class="value">{{ "{:,.0f}".format(summary.total_mb) }} MB</span>
-        </article>
-        <article class="panel stat">
-            <span class="label">Cost</span>
-            <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
         </article>
         <article class="panel stat">
             <span class="label">Active Minutes</span>
@@ -33,6 +36,10 @@
             <span class="label">Devices</span>
             <span class="value">{{ "{:,.0f}".format(summary.device_count) }}</span>
         </article>
+        <article class="panel stat">
+            <span class="label">Cost</span>
+            <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
+        </article>
     </section>
 
     <article class="panel">
@@ -41,7 +48,6 @@
             <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
             {% set chart_key = summary.user_id %}
             {% include "_month_usage_mb_chart.html" %}
-            <p class="muted">Export as PDF: <a href="{{ url_for('plus_user_invoice_pdf', user_id=summary.user_id) }}">Download summary PDF</a></p>
         </div>
     </article>
 
@@ -49,61 +55,34 @@
         <article class="panel">
             <div class="panel-body">
                 <h2>Devices</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>MAC</th>
-                            <th class="num">MB</th>
-                            <th class="num">Minutes</th>
-                            <th>Primary Access Point</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for device in summary.devices %}
+                <div class="table-wrap">
+                    <table class="fit-content-table">
+                        <thead>
                             <tr>
-                                <td>{{ device.name }}</td>
-                                <td class="mono">{{ device.mac }}</td>
-                                <td class="num">{{ "{:,.0f}".format(device.total_mb) }}</td>
-                                <td class="num">{{ "{:,.0f}".format(device.active_minutes) }}</td>
-                                <td>{{ device.top_access_point }}</td>
+                                <th>Name</th>
+                                <th>MAC</th>
+                                <th class="num">MB</th>
+                                <th class="num">Minutes</th>
                             </tr>
-                        {% else %}
-                            <tr>
-                                <td colspan="5" class="muted">No device activity found for this month.</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {% for device in summary.devices %}
+                                <tr>
+                                    <td>{{ device.name }}</td>
+                                    <td class="mono">{{ device.mac }}</td>
+                                    <td class="num">{{ "{:,.0f}".format(device.total_mb) }}</td>
+                                    <td class="num">{{ "{:,.0f}".format(device.active_minutes) }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="muted">No device activity found for this month.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </article>
 
-        <article class="panel">
-            <div class="panel-body">
-                <h2>Access Point Usage</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Access Point</th>
-                            <th class="num">MB</th>
-                            <th class="num">Minutes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for ap in summary.access_points %}
-                            <tr>
-                                <td>{{ ap.ap_name }}</td>
-                                <td class="num">{{ "{:,.0f}".format(ap.total_mb) }}</td>
-                                <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
-                            </tr>
-                        {% else %}
-                            <tr>
-                                <td colspan="3" class="muted">No access-point activity found for this month.</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </article>
     </section>
 {% endblock %}
