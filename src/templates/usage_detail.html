@@ -1,10 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}My Usage | UniFi Usage{% endblock %}
+{% block title %}{{ page_title or ((latest_record.name or display_mac or "Usage Details") ~ " | UniFi Usage") }}{% endblock %}
 
 {% block content %}
-    {% set display_mac = detected_mac %}
-    {% include "_client_usage_hero.html" %}
+    {% if latest_record is defined %}
+        {% set display_mac = display_mac or mac %}
+        {% include "_client_usage_hero.html" %}
+    {% else %}
+        <section class="hero detail-hero">
+            <div>
+                <h1>My Usage</h1>
+                {% if detected_mac %}
+                    <p class="mono">{{ detected_mac }}</p>
+                {% endif %}
+                {% if request_ip %}
+                    <p class="muted">Request IP: {{ request_ip }}</p>
+                {% endif %}
+            </div>
+        </section>
+    {% endif %}
 
     {% if error_message %}
         <article class="panel">

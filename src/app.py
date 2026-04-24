@@ -728,7 +728,16 @@ def create_app() -> Flask:
             abort(403)
 
         try:
-            return render_template("client_detail.html", **get_client_usage_context(mac))
+            context = get_client_usage_context(mac)
+            return render_template(
+                "usage_detail.html",
+                page_title=f"{context['latest_record'].name or context['mac']} | UniFi Usage",
+                can_set_speed_limit=False,
+                speed_limit_options=[],
+                selected_speed_limit_name="",
+                speed_limit_form_message="",
+                **context,
+            )
         except LookupError:
             abort(404)
 
@@ -737,7 +746,8 @@ def create_app() -> Flask:
         'Render usage details for the LAN client identified by request IP/MAC mapping.'
         if not (request_ip := resolve_request_ip()):
             return render_template(
-                "my_usage.html",
+                "usage_detail.html",
+                page_title="My Usage | UniFi Usage",
                 error_message="Could not determine your client IP address from this request.",
                 request_ip="",
                 detected_mac="",
@@ -745,7 +755,8 @@ def create_app() -> Flask:
 
         if not (detected_mac := find_client_mac_for_ip(request_ip)):
             return render_template(
-                "my_usage.html",
+                "usage_detail.html",
+                page_title="My Usage | UniFi Usage",
                 error_message=(
                     "Could not map your IP to a UniFi client right now. "
                     "Try again in a moment after generating some network activity."
@@ -758,7 +769,8 @@ def create_app() -> Flask:
             context = get_client_usage_context(detected_mac)
         except LookupError:
             return render_template(
-                "my_usage.html",
+                "usage_detail.html",
+                page_title="My Usage | UniFi Usage",
                 error_message="We identified your device, but no usage record is available yet.",
                 request_ip=request_ip,
                 detected_mac=detected_mac,
@@ -800,7 +812,8 @@ def create_app() -> Flask:
         ]
 
         return render_template(
-            "my_usage.html",
+            "usage_detail.html",
+            page_title="My Usage | UniFi Usage",
             request_ip=request_ip,
             detected_mac=detected_mac,
             can_set_speed_limit=can_set_speed_limit,
