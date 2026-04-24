@@ -485,6 +485,26 @@ def create_app() -> Flask:
             return dev_request_ip
         return get_request_ip(request)
 
+    def resolve_my_usage_mac(request_ip: str | None) -> tuple[str | None, str]:
+        'Resolve MAC for my-usage routes, allowing MY_USAGE_OVERRIDE_MAC env override.'
+        override_mac_raw = os.getenv("MY_USAGE_OVERRIDE_MAC", "").strip()
+        if override_mac_raw:
+            override_mac_normalized = override_mac_raw.lower().replace('-', ':')
+            if re.fullmatch(r'(?:[0-9a-f]{2}:){5}[0-9a-f]{2}', override_mac_normalized):
+                return override_mac_normalized, ''
+            return None, "MY_USAGE_OVERRIDE_MAC is set but is not a valid MAC address."
+
+        if not request_ip:
+            return None, "Could not determine your client IP address from this request."
+
+        if detected_mac := find_client_mac_for_ip(request_ip):
+            return detected_mac, ''
+
+        return None, (
+            "Could not map your IP to a UniFi client right now. "
+            "Try again in a moment after generating some network activity."
+        )
+
     def dev_force_plus_admin_enabled() -> bool:
         'Return True when DEV_FORCE_PLUS_ADMIN requests admin-access bypass for testing.'
         return os.getenv("DEV_FORCE_PLUS_ADMIN", "").strip().lower() in {"1", "true", "yes", "on"}
@@ -744,24 +764,14 @@ def create_app() -> Flask:
     @flask_app.route("/my-usage", methods=["GET", "POST"])
     def my_usage():
         'Render usage details for the LAN client identified by request IP/MAC mapping.'
-        if not (request_ip := resolve_request_ip()):
+        request_ip = resolve_request_ip()
+        detected_mac, lookup_error = resolve_my_usage_mac(request_ip)
+        if lookup_error:
             return render_template(
                 "usage_detail.html",
                 page_title="My Usage | UniFi Usage",
-                error_message="Could not determine your client IP address from this request.",
-                request_ip="",
-                detected_mac="",
-            )
-
-        if not (detected_mac := find_client_mac_for_ip(request_ip)):
-            return render_template(
-                "usage_detail.html",
-                page_title="My Usage | UniFi Usage",
-                error_message=(
-                    "Could not map your IP to a UniFi client right now. "
-                    "Try again in a moment after generating some network activity."
-                ),
-                request_ip=request_ip,
+                error_message=lookup_error,
+                request_ip=request_ip or "",
                 detected_mac="",
             )
 
@@ -826,22 +836,13 @@ def create_app() -> Flask:
     @flask_app.route("/my-usage/report")
     def my_usage_report():
         'Render print-friendly monthly billing report for the current requester.'
-        if not (request_ip := resolve_request_ip()):
+        request_ip = resolve_request_ip()
+        detected_mac, lookup_error = resolve_my_usage_mac(request_ip)
+        if lookup_error:
             return render_template(
                 "my_usage_report.html",
-                error_message="Could not determine your client IP address from this request.",
-                request_ip="",
-                detected_mac="",
-            )
-
-        if not (detected_mac := find_client_mac_for_ip(request_ip)):
-            return render_template(
-                "my_usage_report.html",
-                error_message=(
-                    "Could not map your IP to a UniFi client right now. "
-                    "Try again in a moment after generating some network activity."
-                ),
-                request_ip=request_ip,
+                error_message=lookup_error,
+                request_ip=request_ip or "",
                 detected_mac="",
             )
 
