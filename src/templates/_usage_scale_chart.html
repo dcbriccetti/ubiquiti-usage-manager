@@ -1,0 +1,248 @@
+{% set usage_points = usage_scale.points or [] %}
+{% if usage_points %}
+    {% set chart_id_prefix = "usage-scale-chart-" ~ (mac or "client")|replace(":", "") ~ "-" ~ usage_scale.key %}
+    {% set mb_chart_id = chart_id_prefix ~ "-mb" %}
+    {% set minutes_chart_id = chart_id_prefix ~ "-minutes" %}
+    {% set labels = usage_points | map(attribute='bucket_value') | list %}
+    {% set full_labels = usage_points | map(attribute='bucket_label') | list %}
+    {% set mb_series = usage_points | map(attribute='total_mb') | list %}
+
+    <div class="month-chart-wrap" style="height: 220px;">
+        <canvas id="{{ mb_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} MB usage"></canvas>
+    </div>
+    <div class="month-chart-wrap" style="height: 220px;">
+        <canvas id="{{ minutes_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} active minutes"></canvas>
+    </div>
+
+    <script>
+        // @ts-nocheck
+        /* global Chart */
+        (() => {
+            const mbCanvas = document.getElementById({{ mb_chart_id|tojson }});
+            const minutesCanvas = document.getElementById({{ minutes_chart_id|tojson }});
+            if (!mbCanvas || !minutesCanvas || typeof Chart === "undefined") {
+                return;
+            }
+
+            const labels = {{ labels|tojson }};
+            const mbSeries = {{ mb_series|tojson }};
+            const fullLabels = {{ full_labels|tojson }};
+            const deviceSeriesRaw = {{ usage_scale.usage_device_series|default([], true)|tojson }};
+            const throttleLabels = {{ usage_scale.throttle_x_values|tojson }};
+            const throttleRawDatasets = {{ usage_scale.throttle_datasets|tojson }};
+            const xAxisTitle = {{ usage_scale.x_axis_title|tojson }};
+            const mbAxisTitle = {{ usage_scale.mb_axis_title|tojson }};
+            const minutesAxisTitle = {{ usage_scale.minutes_axis_title|tojson }};
+
+            const commonBarStyle = {
+                barPercentage: 0.72,
+                categoryPercentage: 0.72,
+                maxBarThickness: 20
+            };
+            const commonXAxis = {
+                offset: true,
+                title: {
+                    display: true,
+                    text: xAxisTitle
+                },
+                grid: {
+                    display: false
+                },
+                ticks: {
+                    maxRotation: 0,
+                    autoSkip: true,
+                    maxTicksLimit: 12
+                }
+            };
+            const stackedDevicePalette = [
+                "rgba(15, 118, 110, 0.82)",
+                "rgba(37, 99, 235, 0.82)",
+                "rgba(194, 65, 12, 0.82)",
+                "rgba(79, 70, 229, 0.82)",
+                "rgba(8, 145, 178, 0.82)",
+                "rgba(21, 128, 61, 0.82)",
+                "rgba(100, 116, 139, 0.82)"
+            ];
+
+            const mbStackedMode = Array.isArray(deviceSeriesRaw) && deviceSeriesRaw.length > 0;
+            const mbHasNamedSeries = mbStackedMode && deviceSeriesRaw.some((series) => {
+                const label = (series && typeof series.label === "string") ? series.label.trim() : "";
+                return label.length > 0;
+            });
+            const mbDatasets = mbStackedMode
+                ? deviceSeriesRaw.map((series, idx) => {
+                    const label = (series && typeof series.label === "string") ? series.label : "";
+                    return {
+                        label,
+                        data: labels.map((_, bucketIdx) => {
+                            const points = Array.isArray(series?.data) ? series.data : [];
+                            return Number(points[bucketIdx] || 0);
+                        }),
+                        backgroundColor: stackedDevicePalette[idx % stackedDevicePalette.length],
+                        borderRadius: 2,
+                        stack: "devices",
+                        ...commonBarStyle
+                    };
+                })
+                : [
+                    {
+                        label: "Usage",
+                        data: mbSeries,
+                        backgroundColor: "rgba(15, 118, 110, 0.62)",
+                        borderRadius: 3,
+                        ...commonBarStyle
+                    }
+                ];
+
+            new Chart(mbCanvas, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: mbDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: mbHasNamedSeries,
+                            position: "top",
+                            align: "start",
+                            labels: {
+                                boxWidth: 20,
+                                boxHeight: 10,
+                                useBorderRadius: true,
+                                borderRadius: 3
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: (tooltipItems) => {
+                                    const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                    return fullLabels[idx] || "";
+                                },
+                                afterBody: (tooltipItems) => {
+                                    if (!mbStackedMode) return "";
+                                    const total = tooltipItems.reduce((sum, item) => sum + (item.parsed?.y || 0), 0);
+                                    return `Total: ${total.toFixed(3)}`;
+                                },
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: mbStackedMode,
+                            ...commonXAxis
+                        },
+                        y: {
+                            stacked: mbStackedMode,
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: mbAxisTitle
+                            },
+                            grid: {
+                                color: "rgba(31, 41, 51, 0.20)"
+                            }
+                        }
+                    }
+                }
+            });
+
+            const throttleColors = [
+                "rgba(194, 65, 12, 0.82)",
+                "rgba(15, 118, 110, 0.72)",
+                "rgba(59, 130, 246, 0.76)",
+                "rgba(161, 98, 7, 0.78)",
+                "rgba(2, 132, 199, 0.78)",
+                "rgba(190, 24, 93, 0.78)",
+                "rgba(22, 163, 74, 0.78)",
+                "rgba(107, 114, 128, 0.78)"
+            ];
+            const throttleLabelToIndex = new Map(
+                throttleLabels.map((bucketLabel, idx) => [Number(bucketLabel), idx])
+            );
+            const throttleDatasets = throttleRawDatasets.map((series, idx) => ({
+                label: series.label,
+                data: labels.map((bucketLabel) => {
+                    const mappedIndex = throttleLabelToIndex.get(Number(bucketLabel));
+                    if (mappedIndex === undefined) {
+                        return 0;
+                    }
+                    const seriesData = Array.isArray(series.data) ? series.data : [];
+                    return Number(seriesData[mappedIndex] || 0);
+                }),
+                backgroundColor: series.label === "Default"
+                    ? "rgba(107, 114, 128, 0.38)"
+                    : throttleColors[idx % throttleColors.length],
+                borderRadius: 2,
+                stack: "throttle",
+                ...commonBarStyle
+            }));
+
+            new Chart(minutesCanvas, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: throttleDatasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: "top",
+                            align: "start",
+                            labels: {
+                                boxWidth: 20,
+                                boxHeight: 10,
+                                useBorderRadius: true,
+                                borderRadius: 3
+                            }
+                        },
+                        tooltip: {
+                            filter: (tooltipItem) => (tooltipItem.parsed?.y || 0) > 0,
+                            callbacks: {
+                                title: (tooltipItems) => {
+                                    const idx = tooltipItems[0]?.dataIndex ?? 0;
+                                    return fullLabels[idx] || "";
+                                },
+                                afterBody: (tooltipItems) => {
+                                    const total = tooltipItems.reduce((sum, item) => sum + (item.parsed?.y || 0), 0);
+                                    return `Total active minutes: ${total}`;
+                                },
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            ...commonXAxis
+                        },
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: minutesAxisTitle
+                            },
+                            grid: {
+                                color: "rgba(31, 41, 51, 0.20)"
+                            }
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
+{% else %}
+    <p class="muted">No usage measurements available yet.</p>
+{% endif %}

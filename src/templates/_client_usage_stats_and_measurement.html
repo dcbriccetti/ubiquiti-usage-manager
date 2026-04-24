@@ -19,10 +19,14 @@
 
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 
-<article class="panel">
-    <div class="panel-body">
-        <h2>{{ current_month_label }} Usage</h2>
-        {% include "_month_usage_chart.html" %}
-        <p class="muted">Top chart: MB/day. Bottom chart: active minutes/day stacked by speed-limit profile. Use browser print to save as PDF.</p>
-    </div>
-</article>
+{% for usage_scale in usage_scales %}
+    {% if usage_scale.key != "daily" or daily_total_mb > 0 %}
+    <article class="panel">
+        <div class="panel-body">
+            <h2>{{ usage_scale.title }}</h2>
+            {% include "_usage_scale_chart.html" %}
+            <p class="muted">{{ usage_scale.summary_text }}</p>
+        </div>
+    </article>
+    {% endif %}
+{% endfor %}

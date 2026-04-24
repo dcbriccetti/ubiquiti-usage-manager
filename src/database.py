@@ -573,6 +573,42 @@ def get_calendar_month_daily_totals(mac: str) -> list[tuple[date, float, int]]:
     return series
 
 
+def get_today_hourly_totals(mac: str) -> list[tuple[int, float, int]]:
+    'Return per-hour usage totals and active-minute counts for today, oldest to newest.'
+    now = datetime.now()
+    today = now.date()
+    today_start_dt = datetime.combine(today, time.min)
+    today_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.mb_used)
+        .where(
+            UsageRecord.mac == mac,
+            UsageRecord.timestamp >= today_start_dt,
+            UsageRecord.timestamp <= today_end_dt,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    totals_by_hour: dict[int, float] = {}
+    active_minutes_by_hour: dict[int, int] = {}
+    for row_timestamp, row_mb_used in rows:
+        if not isinstance(row_timestamp, datetime):
+            continue
+        usage_hour = row_timestamp.hour
+        totals_by_hour[usage_hour] = totals_by_hour.get(usage_hour, 0.0) + float(row_mb_used or 0.0)
+        active_minutes_by_hour[usage_hour] = active_minutes_by_hour.get(usage_hour, 0) + 1
+
+    series: list[tuple[int, float, int]] = []
+    for hour in range(0, now.hour + 1):
+        series.append((hour, totals_by_hour.get(hour, 0.0), active_minutes_by_hour.get(hour, 0)))
+
+    return series
+
+
 def get_calendar_month_daily_profile_minutes(mac: str) -> list[tuple[date, dict[str, int]]]:
     'Return per-day active-minute counts grouped by profile for current month.'
     now = datetime.now()
@@ -609,6 +645,43 @@ def get_calendar_month_daily_profile_minutes(mac: str) -> list[tuple[date, dict[
     while day <= today:
         series.append((day, day_profile_counts.get(day, {})))
         day += timedelta(days=1)
+
+    return series
+
+
+def get_today_hourly_profile_minutes(mac: str) -> list[tuple[int, dict[str, int]]]:
+    'Return per-hour active-minute counts grouped by profile for today.'
+    now = datetime.now()
+    today = now.date()
+    today_start_dt = datetime.combine(today, time.min)
+    today_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.profile)
+        .where(
+            UsageRecord.mac == mac,
+            UsageRecord.timestamp >= today_start_dt,
+            UsageRecord.timestamp <= today_end_dt,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    hour_profile_counts: dict[int, dict[str, int]] = {}
+    for row_timestamp, row_profile in rows:
+        if not isinstance(row_timestamp, datetime):
+            continue
+
+        usage_hour = row_timestamp.hour
+        profile_key = row_profile.strip() if isinstance(row_profile, str) and row_profile.strip() else ''
+        profile_counts = hour_profile_counts.setdefault(usage_hour, {})
+        profile_counts[profile_key] = profile_counts.get(profile_key, 0) + 1
+
+    series: list[tuple[int, dict[str, int]]] = []
+    for hour in range(0, now.hour + 1):
+        series.append((hour, hour_profile_counts.get(hour, {})))
 
     return series
 

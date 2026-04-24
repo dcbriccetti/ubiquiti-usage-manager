@@ -52,6 +52,28 @@ class ThrottleChartDataset(TypedDict):
     data: list[int]
 
 
+class UsageScalePoint(TypedDict):
+    'One bucketed usage point (hourly or daily).'
+    bucket_label: str
+    bucket_value: int
+    total_mb: float
+    active_minutes: int
+
+
+class UsageScaleContext(TypedDict):
+    'Renderable chart context for one usage scale section.'
+    key: str
+    title: str
+    x_axis_title: str
+    mb_axis_title: str
+    minutes_axis_title: str
+    summary_text: str
+    points: list[UsageScalePoint]
+    usage_device_series: list[dict[str, object]]
+    throttle_x_values: list[int]
+    throttle_datasets: list[ThrottleChartDataset]
+
+
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
     mac: str
@@ -61,11 +83,7 @@ class ClientUsageContext(TypedDict):
     last_7_days_total_mb: float
     calendar_month_total_mb: float
     month_cost_cents: float
-    month_daily_usage: list[DailyUsagePoint]
-    month_usage_device_series: list[dict[str, object]]
-    month_throttle_day_labels: list[str]
-    month_throttle_x_labels: list[int]
-    month_throttle_datasets: list[ThrottleChartDataset]
+    usage_scales: list[UsageScaleContext]
     current_month_label: str
     speed_limits_by_name: SpeedLimitsByName
 
@@ -626,39 +644,98 @@ def create_app() -> Flask:
             )
             usage_history = []
 
+        def build_throttle_datasets(
+            bucket_rows: list[tuple[int, dict[str, int]]],
+            speed_limits_map: SpeedLimitsByName,
+        ) -> list[ThrottleChartDataset]:
+            'Build sorted stacked-profile datasets for one bucketed time scale.'
+            totals_by_profile_key: dict[str, int] = {}
+            for _, bucket_counts in bucket_rows:
+                for profile_key, minutes in bucket_counts.items():
+                    totals_by_profile_key[profile_key] = totals_by_profile_key.get(profile_key, 0) + minutes
+
+            sorted_profile_keys = sorted(
+                totals_by_profile_key.keys(),
+                key=lambda key: (
+                    profile_throttling_impact(key, speed_limits_map),
+                    totals_by_profile_key[key],
+                ),
+            )
+
+            return [
+                {
+                    'label': profile_display_label(profile_key, speed_limits_map),
+                    'data': [bucket_counts.get(profile_key, 0) for _, bucket_counts in bucket_rows],
+                }
+                for profile_key in sorted_profile_keys
+            ]
+
         speed_limits_by_name = get_speed_limits_by_name()
+        now = datetime.now()
+        current_month_label = render_month_label(now)
         calendar_month_total_mb = db.get_calendar_month_total(mac)
-        month_daily_usage: list[DailyUsagePoint] = [
+        month_daily_usage: list[UsageScalePoint] = [
             {
-                'day_label': f'{usage_day.strftime("%b")} {usage_day.day}',
-                'day_of_month': usage_day.day,
+                'bucket_label': f'{usage_day.strftime("%b")} {usage_day.day}',
+                'bucket_value': usage_day.day,
                 'total_mb': total_mb,
                 'active_minutes': active_minutes,
             }
             for usage_day, total_mb, active_minutes in db.get_calendar_month_daily_totals(mac)
         ]
-        month_throttle_rows = db.get_calendar_month_daily_profile_minutes(mac)
-        month_throttle_day_labels = [f'{usage_day.strftime("%b")} {usage_day.day}' for usage_day, _ in month_throttle_rows]
-        month_throttle_x_labels = [usage_day.day for usage_day, _ in month_throttle_rows]
+        month_throttle_rows = [
+            (usage_day.day, daily_counts)
+            for usage_day, daily_counts in db.get_calendar_month_daily_profile_minutes(mac)
+        ]
+        month_throttle_datasets = build_throttle_datasets(month_throttle_rows, speed_limits_by_name)
 
-        totals_by_profile_key: dict[str, int] = {}
-        for _, daily_counts in month_throttle_rows:
-            for profile_key, minutes in daily_counts.items():
-                totals_by_profile_key[profile_key] = totals_by_profile_key.get(profile_key, 0) + minutes
-
-        sorted_profile_keys = sorted(
-            totals_by_profile_key.keys(),
-            key=lambda key: (
-                profile_throttling_impact(key, speed_limits_by_name),
-                totals_by_profile_key[key],
-            ),
-        )
-        month_throttle_datasets: list[ThrottleChartDataset] = [
+        daily_hourly_usage: list[UsageScalePoint] = [
             {
-                'label': profile_display_label(profile_key, speed_limits_by_name),
-                'data': [daily_counts.get(profile_key, 0) for _, daily_counts in month_throttle_rows],
+                'bucket_label': f'{hour:02d}:00',
+                'bucket_value': hour,
+                'total_mb': total_mb,
+                'active_minutes': active_minutes,
             }
-            for profile_key in sorted_profile_keys
+            for hour, total_mb, active_minutes in db.get_today_hourly_totals(mac)
+        ]
+        daily_throttle_rows = db.get_today_hourly_profile_minutes(mac)
+        daily_throttle_datasets = build_throttle_datasets(daily_throttle_rows, speed_limits_by_name)
+
+        usage_scales: list[UsageScaleContext] = [
+            {
+                'key': 'daily',
+                'title': f'Usage Today ({now.strftime("%b")} {now.day})',
+                'x_axis_title': 'Hour of day',
+                'mb_axis_title': 'MB/hour',
+                'minutes_axis_title': 'minutes/hour',
+                'summary_text': 'Top chart: MB/hour. Bottom chart: active minutes/hour stacked by speed-limit profile.',
+                'points': daily_hourly_usage,
+                'usage_device_series': [
+                    {
+                        'label': '',
+                        'data': [point['total_mb'] for point in daily_hourly_usage],
+                    }
+                ],
+                'throttle_x_values': [hour for hour, _ in daily_throttle_rows],
+                'throttle_datasets': daily_throttle_datasets,
+            },
+            {
+                'key': 'monthly',
+                'title': f'{current_month_label} Usage',
+                'x_axis_title': 'Day of month',
+                'mb_axis_title': 'MB/day',
+                'minutes_axis_title': 'minutes/day',
+                'summary_text': 'Top chart: MB/day. Bottom chart: active minutes/day stacked by speed-limit profile.',
+                'points': month_daily_usage,
+                'usage_device_series': [
+                    {
+                        'label': '',
+                        'data': [point['total_mb'] for point in month_daily_usage],
+                    }
+                ],
+                'throttle_x_values': [usage_day for usage_day, _ in month_throttle_rows],
+                'throttle_datasets': month_throttle_datasets,
+            },
         ]
 
         return {
@@ -669,17 +746,8 @@ def create_app() -> Flask:
             'last_7_days_total_mb': db.get_last_7_days_total(mac),
             'calendar_month_total_mb': calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
-            'month_daily_usage': month_daily_usage,
-            'month_usage_device_series': [
-                {
-                    'label': '',
-                    'data': [point['total_mb'] for point in month_daily_usage],
-                }
-            ],
-            'month_throttle_day_labels': month_throttle_day_labels,
-            'month_throttle_x_labels': month_throttle_x_labels,
-            'month_throttle_datasets': month_throttle_datasets,
-            'current_month_label': render_month_label(datetime.now()),
+            'usage_scales': usage_scales,
+            'current_month_label': current_month_label,
             'speed_limits_by_name': speed_limits_by_name,
         }
 
