@@ -222,7 +222,7 @@
             return `
                 <tr data-client-mac="${escapeHtml(client.mac)}">
                     <td class="nowrap-col">${escapeHtml(client.user_id)}</td>
-                    <td><a class="mac-link" href="${detailHref}" title="Usage details">${escapeHtml(client.name)}</a></td>
+                    <td class="client-name-col"><a class="mac-link" href="${detailHref}" title="Usage details">${escapeHtml(client.name)}</a></td>
                     <td class="mono mac-cell">${escapeHtml(formatMacShort(client.mac))}</td>
                     <td class="nowrap-col ip-col">${escapeHtml(client.ip_half || '')}</td>
                     <td>${escapeHtml(client.vlan_name)}</td>
@@ -238,7 +238,7 @@
                     <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
                     <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
                     <td class="num usage-col usage-last">${formatCost(client.month_cost_cents)}</td>
-                    <td class="nowrap-col speed-col">${escapeHtml(client.speed_limit_name || '')}</td>
+                    <td class="nowrap-col speed-col speed-first">${escapeHtml(client.speed_limit_name || '')}</td>
                     <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_up_kbps) ? Math.round(client.speed_limit_up_kbps).toLocaleString() : ''}</td>
                     <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_down_kbps) ? Math.round(client.speed_limit_down_kbps).toLocaleString() : ''}</td>
                 </tr>
