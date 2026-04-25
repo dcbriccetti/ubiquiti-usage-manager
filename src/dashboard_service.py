@@ -72,6 +72,13 @@ class DashboardRow(TypedDict):
     speed_limit_down_kbps: int | None
 
 
+class TopCurrentConsumer(TypedDict):
+    'Serialized chart slice for clients currently moving data.'
+    label: str
+    mac: str
+    interval_mb: float
+
+
 class InsightsData(TypedDict):
     'Insights-page data payload.'
     current_month_label: str
@@ -124,6 +131,7 @@ class DashboardPayload(TypedDict):
     total_today_mb: float
     total_last_7_days_mb: float
     total_calendar_month_mb: float
+    top_current_consumers: list[TopCurrentConsumer]
     clients: list[DashboardRow]
     live_update_seconds: int
 
@@ -426,11 +434,34 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
         row['recent_activity'] = series_by_mac.get(row['mac'], default_series.copy())
 
 
-def _build_live_dashboard_rows(window_name: WindowName, activity_span: ActivitySpan) -> list[DashboardRow]:
-    connected_snapshots: list[ClientSnapshot] = []
-    if window_name in {WINDOW_ONLINE_NOW, WINDOW_ACTIVE_NOW}:
-        connected_snapshots = get_connected_clients()
+def build_top_current_consumers(snapshots: list[ClientSnapshot], limit: int = 6) -> list[TopCurrentConsumer]:
+    'Return the top currently active clients for the dashboard pie chart.'
+    active_snapshots = sorted(
+        (snapshot for snapshot in snapshots if snapshot.interval_mb > 0.0),
+        key=lambda snapshot: (
+            snapshot.interval_mb,
+            snapshot.day_total_mb,
+            (snapshot.client.user_id or snapshot.client.name or snapshot.client.mac).lower(),
+        ),
+        reverse=True,
+    )
+    consumers: list[TopCurrentConsumer] = []
+    for snapshot in active_snapshots[:max(1, limit)]:
+        client = snapshot.client
+        label = client.user_id or client.name or client.mac
+        consumers.append({
+            'label': label,
+            'mac': client.mac,
+            'interval_mb': snapshot.interval_mb,
+        })
+    return consumers
 
+
+def _build_live_dashboard_rows(
+    window_name: WindowName,
+    activity_span: ActivitySpan,
+    connected_snapshots: list[ClientSnapshot],
+) -> list[DashboardRow]:
     if window_name == WINDOW_ONLINE_NOW:
         rows = build_rows_for_online_clients(snapshots=connected_snapshots)
     elif window_name == WINDOW_ACTIVE_NOW:
@@ -460,7 +491,8 @@ def build_live_dashboard_payload(
     live_update_seconds: int,
 ) -> DashboardPayload:
     'Assemble live dashboard payload used by /, snapshot API, and SSE.'
-    rows = _build_live_dashboard_rows(window_name, activity_span)
+    connected_snapshots = get_connected_clients()
+    rows = _build_live_dashboard_rows(window_name, activity_span, connected_snapshots)
     return {
         'selected_window': window_name,
         'selected_activity_span': activity_span,
@@ -468,6 +500,7 @@ def build_live_dashboard_payload(
         'total_today_mb': db.get_total_today_usage(),
         'total_last_7_days_mb': db.get_total_last_7_days_usage(),
         'total_calendar_month_mb': db.get_total_calendar_month_usage(),
+        'top_current_consumers': build_top_current_consumers(connected_snapshots),
         'clients': rows,
         'live_update_seconds': live_update_seconds,
     }

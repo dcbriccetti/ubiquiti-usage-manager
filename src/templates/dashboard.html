@@ -31,6 +31,13 @@
             <span class="label" id="stat-usage-month-label">Usage {{ payload.current_month_label }}</span>
             <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(payload.total_calendar_month_mb) }} MB</span>
         </article>
+        <article class="panel stat top-consumers-panel">
+            <span class="label">Top Current Consumers</span>
+            <div class="top-consumers-chart-wrap">
+                <canvas id="top-current-consumers-chart"></canvas>
+                <p class="muted top-consumers-empty" id="top-current-consumers-empty">No current usage.</p>
+            </div>
+        </article>
     </section>
 
     <section class="grid">
@@ -114,5 +121,6 @@
             "initialPayload": initial_dashboard_payload
         } | tojson }}
     </script>
+    <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

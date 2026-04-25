@@ -23,11 +23,14 @@
     const statUsageThisMonth = document.getElementById('stat-usage-this-month');
     const statUsageMonthLabel = document.getElementById('stat-usage-month-label');
     const usageMonthHeader = document.getElementById('usage-month-header');
+    const topCurrentConsumersCanvas = document.getElementById('top-current-consumers-chart');
+    const topCurrentConsumersEmpty = document.getElementById('top-current-consumers-empty');
 
     if (
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
         !windowSelect || !activitySpanSelect || !statUsageToday || !statUsage7Days ||
-        !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader
+        !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader ||
+        !topCurrentConsumersCanvas || !topCurrentConsumersEmpty
     ) {
         return;
     }
@@ -53,6 +56,7 @@
     let activityHoverLoading = null;
     let activeSparkline = null;
     let activityHoverLoadTimer = null;
+    let topCurrentConsumersChart = null;
     const activityScaleQuantile = 0.95;
     const activityScaleFloorMb = 0.05;
     const activityScaleShrinkFactor = 0.90;
@@ -242,6 +246,104 @@
         }).join('');
     };
 
+    const topConsumerColors = [
+        '#0f766e',
+        '#c2410c',
+        '#2563eb',
+        '#7c3aed',
+        '#ca8a04',
+        '#475569'
+    ];
+
+    const formatPieMb = (value) => {
+        const numeric = Number(value) || 0;
+        if (numeric >= 10) {
+            return `${Math.round(numeric).toLocaleString()} MB`;
+        }
+        return `${numeric.toLocaleString(undefined, {
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
+        })} MB`;
+    };
+
+    const renderTopCurrentConsumers = (consumers) => {
+        if (typeof Chart === 'undefined') {
+            topCurrentConsumersCanvas.hidden = true;
+            topCurrentConsumersEmpty.hidden = false;
+            topCurrentConsumersEmpty.textContent = 'Chart unavailable.';
+            return;
+        }
+
+        const slices = (Array.isArray(consumers) ? consumers : [])
+            .map((consumer) => ({
+                label: String(consumer.label || consumer.mac || 'Unknown'),
+                intervalMb: Number(consumer.interval_mb) || 0
+            }))
+            .filter((consumer) => consumer.intervalMb > 0);
+
+        if (!slices.length) {
+            topCurrentConsumersCanvas.hidden = true;
+            topCurrentConsumersEmpty.hidden = false;
+            topCurrentConsumersEmpty.textContent = 'No current usage.';
+            if (topCurrentConsumersChart) {
+                topCurrentConsumersChart.destroy();
+                topCurrentConsumersChart = null;
+            }
+            return;
+        }
+
+        topCurrentConsumersCanvas.hidden = false;
+        topCurrentConsumersEmpty.hidden = true;
+        const labels = slices.map((consumer) => consumer.label);
+        const values = slices.map((consumer) => consumer.intervalMb);
+        const colors = values.map((_value, index) => topConsumerColors[index % topConsumerColors.length]);
+
+        if (!topCurrentConsumersChart) {
+            topCurrentConsumersChart = new Chart(topCurrentConsumersCanvas, {
+                type: 'pie',
+                data: {
+                    labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colors,
+                        borderColor: 'rgba(255, 251, 245, 0.95)',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                boxWidth: 10,
+                                boxHeight: 10,
+                                color: '#52606d',
+                                font: { size: 11 }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => {
+                                    const value = Number(context.raw) || 0;
+                                    const mbps = (value * 8) / 60;
+                                    return `${context.label}: ${formatPieMb(value)} (${mbps.toFixed(3)} Mbps)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            return;
+        }
+
+        topCurrentConsumersChart.data.labels = labels;
+        topCurrentConsumersChart.data.datasets[0].data = values;
+        topCurrentConsumersChart.data.datasets[0].backgroundColor = colors;
+        topCurrentConsumersChart.update('none');
+    };
+
     const getStreamUrl = () => `${streamBaseUrl}?window=${encodeURIComponent(selectedWindow)}&activity_span=${encodeURIComponent(selectedActivitySpan)}`;
     const getSnapshotUrl = () => `${snapshotBaseUrl}?window=${encodeURIComponent(selectedWindow)}&activity_span=${encodeURIComponent(selectedActivitySpan)}`;
 
@@ -398,6 +500,7 @@
 
         updateActivityScale(data.clients);
         applyWindowColumnVisibility();
+        renderTopCurrentConsumers(data.top_current_consumers);
         renderConnectedClients(data.clients);
     };
 
