@@ -313,14 +313,19 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    layout: {
+                        padding: 0
+                    },
                     plugins: {
                         legend: {
                             position: 'right',
+                            align: 'center',
                             labels: {
-                                boxWidth: 10,
-                                boxHeight: 10,
+                                boxWidth: 8,
+                                boxHeight: 8,
+                                padding: 6,
                                 color: '#52606d',
-                                font: { size: 11 }
+                                font: { size: 10 }
                             }
                         },
                         tooltip: {

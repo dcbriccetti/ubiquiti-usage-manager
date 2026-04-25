@@ -6,31 +6,32 @@
 
 {% block content %}
     {% set payload = initial_dashboard_payload %}
-    <section class="hero">
-        <div>
-            <h1>Network Usage Controller</h1>
-            <p>
-                Live usage and management dashboard for UniFi clients, with switchable views
-                for active now, online now, today, 7 days, and this month.
-                <a href="{{ url_for('insights') }}">Open Insights</a>.
-                <a href="{{ url_for('plus_user_invoices') }}">Open Plus invoices</a>.
-            </p>
+    <section class="hero dashboard-hero">
+        <div class="dashboard-hero-main">
+            <div>
+                <h1>Network Usage Controller</h1>
+                <p>
+                    Live usage and management dashboard for UniFi clients, with switchable views
+                    for active now, online now, today, 7 days, and this month.
+                    <a href="{{ url_for('insights') }}">Open Insights</a>.
+                    <a href="{{ url_for('plus_user_invoices') }}">Open Plus invoices</a>.
+                </p>
+            </div>
+            <section class="grid stats dashboard-stats">
+                <article class="panel stat">
+                    <span class="label">Usage Today</span>
+                    <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(payload.total_today_mb) }} MB</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Usage 7&nbsp;Days</span>
+                    <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(payload.total_last_7_days_mb) }} MB</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label" id="stat-usage-month-label">Usage {{ payload.current_month_label }}</span>
+                    <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(payload.total_calendar_month_mb) }} MB</span>
+                </article>
+            </section>
         </div>
-    </section>
-
-    <section class="grid stats">
-        <article class="panel stat">
-            <span class="label">Usage Today</span>
-            <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(payload.total_today_mb) }} MB</span>
-        </article>
-        <article class="panel stat">
-            <span class="label">Usage 7&nbsp;Days</span>
-            <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(payload.total_last_7_days_mb) }} MB</span>
-        </article>
-        <article class="panel stat">
-            <span class="label" id="stat-usage-month-label">Usage {{ payload.current_month_label }}</span>
-            <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(payload.total_calendar_month_mb) }} MB</span>
-        </article>
         <article class="panel stat top-consumers-panel">
             <span class="label">Top Current Consumers</span>
             <div class="top-consumers-chart-wrap">
