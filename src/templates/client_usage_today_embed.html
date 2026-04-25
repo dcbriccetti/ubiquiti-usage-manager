@@ -9,6 +9,7 @@
                 <h2>{{ usage_scale.title }}</h2>
                 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
                 {% include "_usage_scale_chart.html" %}
+                <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>
             </div>
         </article>
     </section>

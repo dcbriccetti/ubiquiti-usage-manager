@@ -48,6 +48,7 @@
             <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
             {% set chart_key = summary.user_id %}
             {% include "_month_usage_mb_chart.html" %}
+            <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>
         </div>
     </article>
 

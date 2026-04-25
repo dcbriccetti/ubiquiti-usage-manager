@@ -243,272 +243,29 @@
         </article>
     </section>
 
-    <script>
-        // @ts-nocheck
-        /* global Chart */
-        (function () {
-            if (typeof Chart === "undefined") {
-                return;
-            }
-
-            const activeUsersXLabels = {{ active_users_chart_x_labels|tojson }};
-            const activeUsersFullLabels = {{ active_users_chart_full_labels|tojson }};
-            const activeUsersCounts = {{ active_users_chart_counts|tojson }};
-            const xLabels = {{ daily_network_x_labels|tojson }};
-            const fullLabels = {{ daily_network_full_labels|tojson }};
-            const basicMb = {{ daily_network_basic_mb|tojson }};
-            const plusMb = {{ daily_network_plus_mb|tojson }};
-            const basicMinutes = {{ daily_network_basic_minutes|tojson }};
-            const plusMinutes = {{ daily_network_plus_minutes|tojson }};
-            const peakConcurrencyXLabels = {{ peak_concurrency_x_labels|tojson }};
-            const peakConcurrencyFullLabels = {{ peak_concurrency_full_labels|tojson }};
-            const peakConcurrencyCounts = {{ peak_concurrency_counts|tojson }};
-            const peakConcurrencyTimeLabels = {{ peak_concurrency_time_labels|tojson }};
-            const heatmapDayLabels = {{ concurrency_heatmap_day_labels|tojson }};
-            const heatmapHourLabels = {{ concurrency_heatmap_hour_labels|tojson }};
-            const heatmapValues = {{ concurrency_heatmap_values|tojson }};
-            const heatmapSampleCounts = {{ concurrency_heatmap_sample_counts|tojson }};
-            const throttlingProfileLabels = {{ throttling_profile_labels|tojson }};
-            const throttlingProfileMinutes = {{ throttling_profile_minutes|tojson }};
-
-            const activeClientsCanvas = document.getElementById("global-daily-active-clients-chart");
-            if (activeClientsCanvas) {
-                new Chart(activeClientsCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: activeUsersXLabels,
-                        datasets: [
-                            {
-                                label: "Active Clients",
-                                data: activeUsersCounts,
-                                backgroundColor: "rgba(59, 130, 246, 0.78)"
-                            }
-                        ]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    title: (tooltipItems) => {
-                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
-                                        return activeUsersFullLabels[idx] || "";
-                                    },
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                title: { display: true, text: "Day of month" },
-                                grid: { display: false },
-                                ticks: {
-                                    maxRotation: 0,
-                                    autoSkip: true,
-                                    maxTicksLimit: 12
-                                }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: "Active clients/day" },
-                                grid: { color: "rgba(31, 41, 51, 0.20)" }
-                            }
-                        }
-                    }
-                });
-            }
-
-            const sharedStackedOptions = {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: "index",
-                    intersect: false
-                },
-                plugins: {
-                    legend: {
-                        position: "top",
-                        align: "start"
-                    },
-                    tooltip: {
-                        callbacks: {
-                            title: (tooltipItems) => {
-                                const idx = tooltipItems[0]?.dataIndex ?? 0;
-                                return fullLabels[idx] || "";
-                            },
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        stacked: true,
-                        title: {
-                            display: true,
-                            text: "Day of month"
-                        },
-                        grid: { display: false },
-                        ticks: {
-                            maxRotation: 0,
-                            autoSkip: true,
-                            maxTicksLimit: 12
-                        }
-                    },
-                    y: {
-                        stacked: true,
-                        beginAtZero: true,
-                        grid: {
-                            color: "rgba(31, 41, 51, 0.20)"
-                        }
-                    }
-                }
-            };
-
-            const mbCanvas = document.getElementById("global-daily-mb-chart");
-            if (mbCanvas) {
-                new Chart(mbCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: xLabels,
-                        datasets: [
-                            { label: "Basic", data: basicMb, backgroundColor: "rgba(15, 118, 110, 0.72)" },
-                            { label: "Plus", data: plusMb, backgroundColor: "rgba(194, 65, 12, 0.82)" }
-                        ]
-                    },
-                    options: {
-                        ...sharedStackedOptions,
-                        scales: {
-                            ...sharedStackedOptions.scales,
-                            y: { ...sharedStackedOptions.scales.y, title: { display: true, text: "MB/day" } }
-                        }
-                    }
-                });
-            }
-
-            const minutesCanvas = document.getElementById("global-daily-minutes-chart");
-            if (minutesCanvas) {
-                new Chart(minutesCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: xLabels,
-                        datasets: [
-                            { label: "Basic", data: basicMinutes, backgroundColor: "rgba(15, 118, 110, 0.72)" },
-                            { label: "Plus", data: plusMinutes, backgroundColor: "rgba(194, 65, 12, 0.82)" }
-                        ]
-                    },
-                    options: {
-                        ...sharedStackedOptions,
-                        scales: {
-                            ...sharedStackedOptions.scales,
-                            y: { ...sharedStackedOptions.scales.y, title: { display: true, text: "Active minutes/day" } }
-                        }
-                    }
-                });
-            }
-
-            const peakConcurrencyCanvas = document.getElementById("global-peak-concurrency-chart");
-            if (peakConcurrencyCanvas) {
-                new Chart(peakConcurrencyCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: peakConcurrencyXLabels,
-                        datasets: [{ label: "Peak simultaneous users", data: peakConcurrencyCounts, backgroundColor: "rgba(2, 132, 199, 0.76)" }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    title: (tooltipItems) => {
-                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
-                                        return peakConcurrencyFullLabels[idx] || "";
-                                    },
-                                    afterBody: (tooltipItems) => {
-                                        const idx = tooltipItems[0]?.dataIndex ?? 0;
-                                        const peakTime = peakConcurrencyTimeLabels[idx] || "n/a";
-                                        return `Peak time: ${peakTime}`;
-                                    },
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                title: { display: true, text: "Day of month" },
-                                grid: { display: false },
-                                ticks: {
-                                    maxRotation: 0,
-                                    autoSkip: true,
-                                    maxTicksLimit: 12
-                                }
-                            },
-                            y: {
-                                beginAtZero: true,
-                                title: { display: true, text: "Peak concurrent users" },
-                                grid: { color: "rgba(31, 41, 51, 0.20)" }
-                            }
-                        }
-                    }
-                });
-            }
-
-            const profileMinutesCanvas = document.getElementById("global-throttling-profile-minutes-chart");
-            if (profileMinutesCanvas && throttlingProfileLabels.length) {
-                new Chart(profileMinutesCanvas, {
-                    type: "bar",
-                    data: {
-                        labels: throttlingProfileLabels,
-                        datasets: [{ label: "Minutes", data: throttlingProfileMinutes, backgroundColor: "rgba(194, 65, 12, 0.72)" }]
-                    },
-                    options: {
-                        indexAxis: "y",
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: {
-                                beginAtZero: true,
-                                title: { display: true, text: "Active minutes this month" },
-                                grid: { color: "rgba(31, 41, 51, 0.20)" }
-                            },
-                            y: { grid: { display: false } }
-                        }
-                    }
-                });
-            }
-
-            const heatmapContainer = document.getElementById("global-concurrency-heatmap");
-            if (heatmapContainer) {
-                const flatValues = heatmapValues.flat();
-                const maxValue = Math.max(...flatValues, 0);
-                const minValue = Math.min(...flatValues, 0);
-                const colorForValue = (value) => {
-                    if (maxValue <= minValue) return "rgba(148, 163, 184, 0.24)";
-                    const ratio = (value - minValue) / (maxValue - minValue);
-                    const alpha = 0.12 + (ratio * 0.78);
-                    return `rgba(14, 116, 144, ${alpha.toFixed(3)})`;
-                };
-                let html = '<div class="cell header"></div>';
-                for (const hourLabel of heatmapHourLabels) {
-                    html += `<div class="cell header hour">${hourLabel.slice(0, 2)}</div>`;
-                }
-                for (let dayIndex = 0; dayIndex < heatmapDayLabels.length; dayIndex += 1) {
-                    html += `<div class="cell header day">${heatmapDayLabels[dayIndex]}</div>`;
-                    const row = heatmapValues[dayIndex] || [];
-                    const sampleRow = heatmapSampleCounts[dayIndex] || [];
-                    for (let hourIndex = 0; hourIndex < heatmapHourLabels.length; hourIndex += 1) {
-                        const value = Number(row[hourIndex] || 0);
-                        const sampleCount = Number(sampleRow[hourIndex] || 0);
-                        const coveragePct = Math.min(100, (sampleCount / 60) * 100);
-                        const klass = "cell value";
-                        const title = `${heatmapDayLabels[dayIndex]} ${heatmapHourLabels[hourIndex]} | total user-minutes: ${Math.round(value)} | active minutes observed: ${sampleCount} | hour coverage: ${coveragePct.toFixed(1)}%`;
-                        const cellText = Math.round(value).toLocaleString();
-                        html += `<div class="${klass}" style="background:${colorForValue(value)}" title="${title}">${cellText}</div>`;
-                    }
-                }
-                heatmapContainer.innerHTML = html;
-            }
-        })();
+    <script id="insights-chart-config" type="application/json" data-usage-chart-config>
+        {{ {
+            "type": "insights",
+            "activeUsersXLabels": active_users_chart_x_labels,
+            "activeUsersFullLabels": active_users_chart_full_labels,
+            "activeUsersCounts": active_users_chart_counts,
+            "xLabels": daily_network_x_labels,
+            "fullLabels": daily_network_full_labels,
+            "basicMb": daily_network_basic_mb,
+            "plusMb": daily_network_plus_mb,
+            "basicMinutes": daily_network_basic_minutes,
+            "plusMinutes": daily_network_plus_minutes,
+            "peakConcurrencyXLabels": peak_concurrency_x_labels,
+            "peakConcurrencyFullLabels": peak_concurrency_full_labels,
+            "peakConcurrencyCounts": peak_concurrency_counts,
+            "peakConcurrencyTimeLabels": peak_concurrency_time_labels,
+            "heatmapDayLabels": concurrency_heatmap_day_labels,
+            "heatmapHourLabels": concurrency_heatmap_hour_labels,
+            "heatmapValues": concurrency_heatmap_values,
+            "heatmapSampleCounts": concurrency_heatmap_sample_counts,
+            "throttlingProfileLabels": throttling_profile_labels,
+            "throttlingProfileMinutes": throttling_profile_minutes
+        } | tojson }}
     </script>
+    <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>
 {% endblock %}
