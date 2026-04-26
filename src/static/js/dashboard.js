@@ -310,6 +310,16 @@
                         borderWidth: 2
                     }]
                 },
+                plugins: [{
+                    id: 'topConsumersLegendOffset',
+                    afterInit(chart) {
+                        const originalFit = chart.legend.fit;
+                        chart.legend.fit = function fitWithLeftOffset() {
+                            originalFit.bind(chart.legend)();
+                            this.width += 28;
+                        };
+                    }
+                }],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -321,11 +331,11 @@
                             position: 'right',
                             align: 'center',
                             labels: {
-                                boxWidth: 8,
-                                boxHeight: 8,
-                                padding: 6,
+                                boxWidth: 14,
+                                boxHeight: 14,
+                                padding: 12,
                                 color: '#52606d',
-                                font: { size: 10 }
+                                font: { size: 16 }
                             }
                         },
                         tooltip: {
