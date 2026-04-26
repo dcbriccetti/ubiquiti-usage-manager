@@ -24,13 +24,14 @@
     const statUsageMonthLabel = document.getElementById('stat-usage-month-label');
     const usageMonthHeader = document.getElementById('usage-month-header');
     const topCurrentConsumersCanvas = document.getElementById('top-current-consumers-chart');
+    const topCurrentConsumersLegend = document.getElementById('top-current-consumers-legend');
     const topCurrentConsumersEmpty = document.getElementById('top-current-consumers-empty');
 
     if (
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
         !windowSelect || !activitySpanSelect || !statUsageToday || !statUsage7Days ||
         !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader ||
-        !topCurrentConsumersCanvas || !topCurrentConsumersEmpty
+        !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty
     ) {
         return;
     }
@@ -256,9 +257,24 @@
         })} MB`;
     };
 
+    const renderTopCurrentConsumersLegend = (slices, colors) => {
+        topCurrentConsumersLegend.innerHTML = slices.map((consumer, index) => {
+            const value = Number(consumer.intervalMb) || 0;
+            const mbps = (value * 8) / 60;
+            const title = `${consumer.label}: ${formatPieMb(value)} (${mbps.toFixed(3)} Mbps)`;
+            return `
+                <div class="top-consumers-legend-item" title="${escapeHtml(title)}">
+                    <span class="top-consumers-legend-swatch" style="background:${escapeHtml(colors[index])}"></span>
+                    <span class="top-consumers-legend-label">${escapeHtml(consumer.label)}</span>
+                </div>
+            `;
+        }).join('');
+    };
+
     const renderTopCurrentConsumers = (consumers) => {
         if (typeof Chart === 'undefined') {
             topCurrentConsumersCanvas.hidden = true;
+            topCurrentConsumersLegend.hidden = true;
             topCurrentConsumersEmpty.hidden = false;
             topCurrentConsumersEmpty.textContent = 'Chart unavailable.';
             return;
@@ -273,6 +289,7 @@
 
         if (!slices.length) {
             topCurrentConsumersCanvas.hidden = true;
+            topCurrentConsumersLegend.hidden = true;
             topCurrentConsumersEmpty.hidden = false;
             topCurrentConsumersEmpty.textContent = 'No current usage.';
             if (topCurrentConsumersChart) {
@@ -283,10 +300,12 @@
         }
 
         topCurrentConsumersCanvas.hidden = false;
+        topCurrentConsumersLegend.hidden = false;
         topCurrentConsumersEmpty.hidden = true;
         const labels = slices.map((consumer) => consumer.label);
         const values = slices.map((consumer) => consumer.intervalMb);
         const colors = values.map((_value, index) => topConsumerColors[index % topConsumerColors.length]);
+        renderTopCurrentConsumersLegend(slices, colors);
 
         if (!topCurrentConsumersChart) {
             topCurrentConsumersChart = new Chart(topCurrentConsumersCanvas, {
@@ -300,16 +319,6 @@
                         borderWidth: 2
                     }]
                 },
-                plugins: [{
-                    id: 'topConsumersLegendOffset',
-                    afterInit(chart) {
-                        const originalFit = chart.legend.fit;
-                        chart.legend.fit = function fitWithLeftOffset() {
-                            originalFit.bind(chart.legend)();
-                            this.width += 28;
-                        };
-                    }
-                }],
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
@@ -318,15 +327,7 @@
                     },
                     plugins: {
                         legend: {
-                            position: 'right',
-                            align: 'center',
-                            labels: {
-                                boxWidth: 14,
-                                boxHeight: 14,
-                                padding: 12,
-                                color: '#52606d',
-                                font: { size: 16 }
-                            }
+                            display: false
                         },
                         tooltip: {
                             callbacks: {

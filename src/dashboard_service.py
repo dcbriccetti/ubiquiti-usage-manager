@@ -17,6 +17,7 @@ in one place, so UI changes do not require route-level rewrites.
 '''
 
 from datetime import datetime
+import re
 from typing import Literal, TypedDict, cast
 
 import config as cfg
@@ -436,6 +437,26 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
 
 def build_top_current_consumers(snapshots: list[ClientSnapshot], limit: int = 6) -> list[TopCurrentConsumer]:
     'Return the top currently active clients for the dashboard pie chart.'
+    def duplicate_suffix(client_label: str, device_name: str, mac: str) -> str:
+        'Return a compact secondary label for repeated chart labels.'
+        if not device_name or device_name == client_label:
+            return mac[-5:]
+        suffix = device_name.strip()
+        compact_device_patterns = (
+            (r'\b(macbook(?:\s+(?:air|pro))?)\b', 'MacBook'),
+            (r'\b(iphone(?:\s+\d+\w*)?(?:\s+plus|\s+pro|\s+max)?)\b', 'iPhone'),
+            (r'\b(ipad(?:\s+pro|\s+air|\s+mini)?)\b', 'iPad'),
+            (r'\b(galaxy(?:[-\s]s?\d+\w*)?)\b', 'Galaxy'),
+            (r'\b(pixel(?:\s+\d+\w*)?)\b', 'Pixel'),
+        )
+        for pattern, fallback in compact_device_patterns:
+            if matched_device := re.search(pattern, suffix, flags=re.IGNORECASE):
+                suffix = matched_device.group(1) or fallback
+                break
+        if len(suffix) > 18:
+            suffix = f'{suffix[:15].rstrip()}...'
+        return suffix
+
     active_snapshots = sorted(
         (snapshot for snapshot in snapshots if snapshot.interval_mb > 0.0),
         key=lambda snapshot: (
@@ -445,10 +466,22 @@ def build_top_current_consumers(snapshots: list[ClientSnapshot], limit: int = 6)
         ),
         reverse=True,
     )
+    top_snapshots = active_snapshots[:max(1, limit)]
+    base_labels = [
+        (snapshot.client.user_id or snapshot.client.name or snapshot.client.mac)
+        for snapshot in top_snapshots
+    ]
+    duplicate_base_labels = {
+        label for label in base_labels
+        if sum(1 for candidate in base_labels if candidate == label) > 1
+    }
     consumers: list[TopCurrentConsumer] = []
-    for snapshot in active_snapshots[:max(1, limit)]:
+    for snapshot, base_label in zip(top_snapshots, base_labels):
         client = snapshot.client
-        label = client.user_id or client.name or client.mac
+        label = base_label
+        if base_label in duplicate_base_labels:
+            secondary_label = duplicate_suffix(base_label, client.name, client.mac)
+            label = f'{base_label} - {secondary_label}'
         consumers.append({
             'label': label,
             'mac': client.mac,

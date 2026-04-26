@@ -190,15 +190,57 @@
 
         .top-consumers-chart-wrap {
             position: relative;
+            display: grid;
+            grid-template-columns: minmax(138px, 150px) minmax(0, 1fr);
+            gap: var(--space-4);
+            align-items: center;
             height: 150px;
             margin-top: var(--space-2);
             overflow: hidden;
         }
 
-        .top-consumers-chart-wrap canvas {
+        .top-consumers-chart-frame {
+            width: min(150px, 100%);
+            aspect-ratio: 1;
+            justify-self: center;
+            min-width: 0;
+        }
+
+        .top-consumers-chart-frame canvas {
             width: 100% !important;
             height: 100% !important;
             display: block;
+        }
+
+        .top-consumers-legend {
+            display: grid;
+            gap: 7px 10px;
+            align-content: center;
+            min-width: 0;
+        }
+
+        .top-consumers-legend-item {
+            display: grid;
+            grid-template-columns: 12px minmax(0, 1fr);
+            gap: 9px;
+            align-items: center;
+            min-width: 0;
+            color: var(--muted);
+            font-size: 0.94rem;
+            line-height: 1.15;
+        }
+
+        .top-consumers-legend-swatch {
+            width: 12px;
+            height: 12px;
+            border: 1px solid rgba(255, 251, 245, 0.95);
+        }
+
+        .top-consumers-legend-label {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         .top-consumers-empty {
@@ -764,12 +806,30 @@
                 grid-template-columns: 1fr;
             }
 
+            .top-consumers-chart-wrap {
+                grid-template-columns: minmax(138px, 160px) minmax(0, 1fr);
+            }
+
             .usage-scale-row {
                 grid-template-columns: 1fr;
             }
 
             .usage-scale-primary .month-chart-canvas {
                 min-width: 860px;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .top-consumers-chart-wrap {
+                grid-template-columns: 1fr;
+                grid-template-rows: minmax(130px, 1fr) auto;
+                height: auto;
+                min-height: 230px;
+                align-items: stretch;
+            }
+
+            .top-consumers-legend {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
     </style>
