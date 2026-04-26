@@ -38,10 +38,9 @@
     const detailPattern = String(bootstrap.detailPattern || '');
     const streamBaseUrl = String(bootstrap.streamBaseUrl || '');
     const snapshotBaseUrl = String(bootstrap.snapshotBaseUrl || '');
-    const clientUsageTodayEmbedPattern = String(bootstrap.clientUsageTodayEmbedPattern || '');
     const initialPayload = bootstrap.initialPayload || {};
 
-    if (!detailPattern || !streamBaseUrl || !snapshotBaseUrl || !clientUsageTodayEmbedPattern) {
+    if (!detailPattern || !streamBaseUrl || !snapshotBaseUrl) {
         return;
     }
 
@@ -49,13 +48,6 @@
     let stream = null;
     let selectedWindow = windowSelect.value;
     let selectedActivitySpan = activitySpanSelect.value;
-    let activityHoverPanel = null;
-    let activityHoverFrame = null;
-    let activityHoverTitle = null;
-    let activityHoverMeta = null;
-    let activityHoverLoading = null;
-    let activeSparkline = null;
-    let activityHoverLoadTimer = null;
     let topCurrentConsumersChart = null;
     const activityScaleQuantile = 0.95;
     const activityScaleFloorMb = 0.05;
@@ -122,7 +114,6 @@
         if (!text) return '';
         return text.slice(-5);
     };
-    const getClientUsageTodayEmbedUrl = (mac) => clientUsageTodayEmbedPattern.replace('__MAC__', encodeURIComponent(mac));
     const renderAccessPointCell = (client) => {
         const primary = normalizeApName(client.ap_name || '');
         const apCount = Number(client.ap_count) || 0;
@@ -209,7 +200,6 @@
     };
 
     const renderConnectedClients = (clients) => {
-        hideActivityHoverPanel();
         if (!clients.length) {
             connectedBody.innerHTML = `<tr><td colspan="20" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
             return;
@@ -362,135 +352,6 @@
     const getStreamUrl = () => `${streamBaseUrl}?window=${encodeURIComponent(selectedWindow)}&activity_span=${encodeURIComponent(selectedActivitySpan)}`;
     const getSnapshotUrl = () => `${snapshotBaseUrl}?window=${encodeURIComponent(selectedWindow)}&activity_span=${encodeURIComponent(selectedActivitySpan)}`;
 
-    const ensureActivityHoverPanel = () => {
-        if (activityHoverPanel) {
-            return;
-        }
-        activityHoverPanel = document.createElement('aside');
-        activityHoverPanel.className = 'activity-hover-panel';
-        activityHoverPanel.hidden = true;
-        activityHoverPanel.innerHTML = `
-            <h3>Usage Today</h3>
-            <p class="activity-hover-title"></p>
-            <p class="activity-hover-meta"></p>
-            <p class="activity-hover-loading">Loading...</p>
-            <iframe class="activity-hover-frame"></iframe>
-        `;
-        document.body.appendChild(activityHoverPanel);
-        activityHoverTitle = activityHoverPanel.querySelector('.activity-hover-title');
-        activityHoverMeta = activityHoverPanel.querySelector('.activity-hover-meta');
-        activityHoverLoading = activityHoverPanel.querySelector('.activity-hover-loading');
-        activityHoverFrame = activityHoverPanel.querySelector('.activity-hover-frame');
-    };
-
-    const hideActivityHoverPanel = () => {
-        if (!activityHoverPanel) {
-            return;
-        }
-        if (activityHoverLoadTimer) {
-            clearTimeout(activityHoverLoadTimer);
-            activityHoverLoadTimer = null;
-        }
-        activityHoverPanel.hidden = true;
-        activityHoverPanel.style.removeProperty('left');
-        activityHoverPanel.style.removeProperty('top');
-        if (activityHoverLoading) {
-            activityHoverLoading.hidden = true;
-        }
-        activeSparkline = null;
-    };
-
-    const positionActivityHoverPanel = (event) => {
-        if (!activityHoverPanel || activityHoverPanel.hidden) {
-            return;
-        }
-        const panelRect = activityHoverPanel.getBoundingClientRect();
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const left = Math.max(12, Math.min(event.clientX + 18, viewportWidth - panelRect.width - 12));
-        const top = Math.max(12, Math.min(event.clientY + 14, viewportHeight - panelRect.height - 12));
-        activityHoverPanel.style.left = `${left}px`;
-        activityHoverPanel.style.top = `${top}px`;
-    };
-
-    const showActivityHoverPanel = (sparkline, event) => {
-        ensureActivityHoverPanel();
-        if (!activityHoverPanel || !activityHoverTitle || !activityHoverMeta || !activityHoverLoading || !activityHoverFrame) {
-            return;
-        }
-
-        const row = sparkline.closest('tr');
-        const clientMac = String(row?.getAttribute('data-client-mac') || '');
-        const rowNameCell = row?.querySelector('td:nth-child(2)');
-        const rowUserIdCell = row?.querySelector('td:nth-child(1)');
-        const rowTodayCell = row?.querySelector('td.today-col');
-        const fallbackClientName = String(rowNameCell?.textContent || '').trim();
-        const fallbackUserId = String(rowUserIdCell?.textContent || '').trim();
-        const fallbackToday = String(rowTodayCell?.textContent || '').trim();
-        activityHoverTitle.textContent = fallbackUserId ? `${fallbackClientName} (${fallbackUserId})` : fallbackClientName;
-        activityHoverMeta.textContent = fallbackToday ? `Today: ${fallbackToday} MB` : '';
-        activityHoverLoading.hidden = false;
-        activityHoverFrame.hidden = true;
-
-        activityHoverPanel.hidden = false;
-        activeSparkline = sparkline;
-        positionActivityHoverPanel(event);
-
-        if (!clientMac) {
-            activityHoverLoading.textContent = 'Usage detail unavailable.';
-            return;
-        }
-
-        const embedUrl = getClientUsageTodayEmbedUrl(clientMac);
-        if (activityHoverFrame.dataset.loadedSrc !== embedUrl) {
-            activityHoverFrame.dataset.loadedSrc = embedUrl;
-            activityHoverFrame.hidden = true;
-            activityHoverLoading.hidden = false;
-            activityHoverLoading.textContent = 'Loading...';
-            if (activityHoverLoadTimer) {
-                clearTimeout(activityHoverLoadTimer);
-            }
-            activityHoverFrame.onload = () => {
-                if (activeSparkline !== sparkline || !activityHoverFrame || !activityHoverLoading) {
-                    return;
-                }
-                if (activityHoverLoadTimer) {
-                    clearTimeout(activityHoverLoadTimer);
-                    activityHoverLoadTimer = null;
-                }
-                activityHoverLoading.hidden = true;
-                activityHoverFrame.hidden = false;
-            };
-            activityHoverFrame.onerror = () => {
-                if (activeSparkline !== sparkline || !activityHoverLoading) {
-                    return;
-                }
-                if (activityHoverLoadTimer) {
-                    clearTimeout(activityHoverLoadTimer);
-                    activityHoverLoadTimer = null;
-                }
-                activityHoverLoading.hidden = false;
-                activityHoverLoading.textContent = 'Usage detail unavailable.';
-            };
-            activityHoverLoadTimer = window.setTimeout(() => {
-                if (activeSparkline !== sparkline || !activityHoverLoading || !activityHoverFrame) {
-                    return;
-                }
-                activityHoverLoading.hidden = false;
-                activityHoverLoading.textContent = 'Still loading... open client page for full detail.';
-                activityHoverFrame.hidden = true;
-            }, 2000);
-            activityHoverFrame.src = embedUrl;
-        } else {
-            if (activityHoverLoadTimer) {
-                clearTimeout(activityHoverLoadTimer);
-                activityHoverLoadTimer = null;
-            }
-            activityHoverLoading.hidden = true;
-            activityHoverFrame.hidden = false;
-        }
-    };
-
     const applyPayload = (data) => {
         statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
         statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
@@ -577,39 +438,6 @@
 
     windowSelect.addEventListener('change', reconnectForNewSelection);
     activitySpanSelect.addEventListener('change', reconnectForNewSelection);
-
-    connectedBody.addEventListener('mouseover', (event) => {
-        const target = event.target;
-        if (!(target instanceof Element)) {
-            return;
-        }
-        const sparkline = target.closest('.sparkline');
-        if (!(sparkline instanceof HTMLElement) || !connectedBody.contains(sparkline)) {
-            return;
-        }
-        showActivityHoverPanel(sparkline, event);
-    });
-
-    connectedBody.addEventListener('mousemove', (event) => {
-        if (!activeSparkline) {
-            return;
-        }
-        positionActivityHoverPanel(event);
-    });
-
-    connectedBody.addEventListener('mouseout', (event) => {
-        if (!activeSparkline) {
-            return;
-        }
-        const nextTarget = event.relatedTarget;
-        if (nextTarget instanceof Node && activeSparkline.contains(nextTarget)) {
-            return;
-        }
-        hideActivityHoverPanel();
-    });
-
-    window.addEventListener('scroll', hideActivityHoverPanel, { passive: true });
-    window.addEventListener('blur', hideActivityHoverPanel);
 
     applyPayload(initialPayload);
     connectStream();
