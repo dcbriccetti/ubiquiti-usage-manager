@@ -67,7 +67,7 @@
         const isRealtime = realtimeWindows.has(selectedWindow);
         clientsTable.classList.toggle('realtime-window', isRealtime);
         clientsTable.classList.toggle('non-realtime-window', !isRealtime);
-        preUsageGroupHeader.colSpan = isRealtime ? 10 : 9;
+        preUsageGroupHeader.colSpan = isRealtime ? 10 : 7;
         usageGroupHeader.colSpan = isRealtime ? 7 : 4;
         clientsTable.classList.remove('focus-minute-total', 'focus-today', 'focus-7-days', 'focus-month');
         if (windowFocusClassByWindow[selectedWindow]) {
