@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}RADIUS Users | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero detail-hero">
+        <div>
+            <h1>RADIUS Users</h1>
+            <p class="muted">
+                Local UniFi RADIUS accounts{% if generated_at %} · Loaded {{ generated_at.strftime("%Y-%m-%d %H:%M:%S") }}{% endif %}
+            </p>
+            <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+        </div>
+    </section>
+
+    <article class="panel">
+        <div class="panel-body">
+            <h2>Users ({{ radius_user_rows|length }})</h2>
+            <div class="table-wrap">
+                <table class="fit-content-table">
+                    <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th class="num">VLAN</th>
+                        <th class="num">Tunnel Type</th>
+                        <th class="num">Tunnel Medium</th>
+                        <th>ID</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in radius_user_rows %}
+                        <tr>
+                            <td>{{ row.name }}</td>
+                            <td class="num">{{ row.vlan }}</td>
+                            <td class="num">{{ row.tunnel_type }}</td>
+                            <td class="num">{{ row.tunnel_medium_type }}</td>
+                            <td class="mono">{{ row.id }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="5" class="muted">No local RADIUS users found.</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </article>
+{% endblock %}

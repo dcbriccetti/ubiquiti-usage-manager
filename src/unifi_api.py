@@ -59,6 +59,10 @@ def get_speed_limits() -> list[SpeedLimit]:
         if '_id' in g and 'name' in g and isinstance(g['_id'], str) and isinstance(g['name'], str)
     ]
 
+def get_radius_accounts() -> list[dict[str, Any]]:
+    'Return configured local RADIUS user accounts.'
+    return get_api_data('rest/account')
+
 def get_ap_names_by_mac() -> dict[str, str]:
     'Return a mapping of AP MAC address to AP display name/model.'
     devices = get_api_data('stat/device')

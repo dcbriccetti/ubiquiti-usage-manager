@@ -481,6 +481,12 @@ def create_app() -> Flask:
         'Return mapping of speed-limit profile name to SpeedLimit object.'
         return {limit.name: limit for limit in api.get_speed_limits()}
 
+    def render_radius_value(value: object) -> str:
+        'Return a readable display value for optional RADIUS account fields.'
+        if value is None or value == '':
+            return ''
+        return str(value)
+
     def get_live_client_record_by_mac(mac: str) -> dict[str, Any] | None:
         'Return live UniFi station payload for one MAC, if currently connected.'
         target_mac = mac.lower()
@@ -786,6 +792,31 @@ def create_app() -> Flask:
         return render_template(
             "insights.html",
             **build_insights_data(),
+        )
+
+    @flask_app.route("/radius/users")
+    def radius_users():
+        'Render local RADIUS users configured in UniFi.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        accounts = api.get_radius_accounts()
+        radius_user_rows = [
+            {
+                'id': render_radius_value(account.get('_id')),
+                'name': render_radius_value(account.get('name')),
+                'vlan': render_radius_value(account.get('vlan') or account.get('network_id')),
+                'tunnel_type': render_radius_value(account.get('tunnel_type')),
+                'tunnel_medium_type': render_radius_value(account.get('tunnel_medium_type')),
+            }
+            for account in accounts
+        ]
+        radius_user_rows.sort(key=lambda row: row['name'].lower())
+
+        return render_template(
+            "radius_users.html",
+            generated_at=datetime.now(),
+            radius_user_rows=radius_user_rows,
         )
 
     @flask_app.route("/api/dashboard-snapshot")
