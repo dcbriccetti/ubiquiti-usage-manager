@@ -330,6 +330,12 @@
             border-left: 1px solid rgba(194, 65, 12, 0.22);
         }
 
+        th.cost-group {
+            text-align: center;
+            background: rgba(15, 118, 110, 0.13);
+            border-left: 1px solid rgba(15, 118, 110, 0.24);
+        }
+
         th.num,
         td.num {
             text-align: right;
@@ -353,6 +359,7 @@
 
         th.usage-last,
         td.usage-last {
+            border-left: 1px solid rgba(15, 118, 110, 0.24);
             border-right: 1px solid rgba(15, 118, 110, 0.18);
         }
 
@@ -373,6 +380,12 @@
             display: none;
         }
 
+        table.hide-cost-column th.usage-last,
+        table.hide-cost-column th.cost-group,
+        table.hide-cost-column td.usage-last {
+            display: none;
+        }
+
         table.non-realtime-window th.today-col,
         table.non-realtime-window td.today-col {
             border-left: 1px solid rgba(15, 118, 110, 0.24);
@@ -382,7 +395,9 @@
         table.focus-today td.today-col,
         table.focus-7-days td.seven-days-col,
         table.focus-month td.month-col,
-        table.compact-table td.usage-last {
+        table.focus-today td.usage-last,
+        table.focus-7-days td.usage-last,
+        table.focus-month td.usage-last {
             font-weight: 700;
             color: #172026;
         }

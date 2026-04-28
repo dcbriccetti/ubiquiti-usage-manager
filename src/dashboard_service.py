@@ -66,7 +66,9 @@ class DashboardRow(TypedDict):
     minute_tx_mb: float | None
     interval_mb: float
     day_total_mb: float
+    day_cost_cents: float
     last_7_days_total_mb: float
+    last_7_days_cost_cents: float
     calendar_month_total_mb: float
     month_cost_cents: float
     speed_limit_name: str
@@ -290,7 +292,9 @@ def build_rows_for_online_clients(
             'minute_tx_mb': minute_tx_mb,
             'interval_mb': snapshot.interval_mb,
             'day_total_mb': snapshot.day_total_mb,
+            'day_cost_cents': calculate_month_cost_cents(snapshot.day_total_mb),
             'last_7_days_total_mb': snapshot.last_7_days_total_mb,
+            'last_7_days_cost_cents': calculate_month_cost_cents(snapshot.last_7_days_total_mb),
             'calendar_month_total_mb': snapshot.calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(snapshot.calendar_month_total_mb),
             'speed_limit_name': speed_limit.name if speed_limit else '',
@@ -363,7 +367,9 @@ def build_rows_for_historical_window(
             'minute_tx_mb': None,
             'interval_mb': 0.0,
             'day_total_mb': summary.day_total_mb,
+            'day_cost_cents': calculate_month_cost_cents(summary.day_total_mb),
             'last_7_days_total_mb': summary.last_7_days_total_mb,
+            'last_7_days_cost_cents': calculate_month_cost_cents(summary.last_7_days_total_mb),
             'calendar_month_total_mb': summary.calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(summary.calendar_month_total_mb),
             'speed_limit_name': speed_limit_name,

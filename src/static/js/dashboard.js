@@ -23,6 +23,8 @@
     const statUsageThisMonth = document.getElementById('stat-usage-this-month');
     const statUsageMonthLabel = document.getElementById('stat-usage-month-label');
     const usageMonthHeader = document.getElementById('usage-month-header');
+    const usageCostHeader = document.getElementById('usage-cost-header');
+    const costGroupHeader = document.getElementById('cost-group-header');
     const topCurrentConsumersCanvas = document.getElementById('top-current-consumers-chart');
     const topCurrentConsumersLegend = document.getElementById('top-current-consumers-legend');
     const topCurrentConsumersEmpty = document.getElementById('top-current-consumers-empty');
@@ -31,7 +33,8 @@
     if (
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
         !windowSelect || !activitySpanSelect || !statUsageToday || !statUsage7Days ||
-        !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader ||
+        !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader || !usageCostHeader ||
+        !costGroupHeader ||
         !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty ||
         !ipPrefixHeader
     ) {
@@ -65,17 +68,26 @@
         last_7_days: 'focus-7-days',
         this_month: 'focus-month'
     };
+    const costHeaderByWindow = {
+        active_now: 'Cost',
+        online_now: 'Cost',
+        today: 'Today Cost',
+        last_7_days: '7-Day Cost',
+        this_month: 'Month Cost'
+    };
 
     const applyWindowColumnVisibility = () => {
         const isRealtime = realtimeWindows.has(selectedWindow);
         clientsTable.classList.toggle('realtime-window', isRealtime);
         clientsTable.classList.toggle('non-realtime-window', !isRealtime);
+        clientsTable.classList.toggle('hide-cost-column', isRealtime);
         preUsageGroupHeader.colSpan = isRealtime ? 10 : 7;
-        usageGroupHeader.colSpan = isRealtime ? 7 : 4;
+        usageGroupHeader.colSpan = isRealtime ? 6 : 3;
         clientsTable.classList.remove('focus-minute-total', 'focus-today', 'focus-7-days', 'focus-month');
         if (windowFocusClassByWindow[selectedWindow]) {
             clientsTable.classList.add(windowFocusClassByWindow[selectedWindow]);
         }
+        usageCostHeader.textContent = costHeaderByWindow[selectedWindow] || 'Cost';
     };
 
     const formatInt = (value) => Math.round(value).toLocaleString();
@@ -108,6 +120,18 @@
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         });
+    };
+    const costCentsForSelectedWindow = (client) => {
+        if (selectedWindow === 'today') {
+            return client.day_cost_cents;
+        }
+        if (selectedWindow === 'last_7_days') {
+            return client.last_7_days_cost_cents;
+        }
+        if (selectedWindow === 'this_month') {
+            return client.month_cost_cents;
+        }
+        return null;
     };
     const normalizeApName = (value) => {
         const text = String(value || '');
@@ -238,7 +262,7 @@
                     <td class="num usage-col today-col">${formatWhole(client.day_total_mb)}</td>
                     <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
                     <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
-                    <td class="num usage-col usage-last">${formatCost(client.month_cost_cents)}</td>
+                    <td class="num usage-col usage-last">${formatCost(costCentsForSelectedWindow(client))}</td>
                     <td class="nowrap-col speed-col speed-first">${escapeHtml(client.speed_limit_name || '')}</td>
                     <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_up_kbps) ? Math.round(client.speed_limit_up_kbps).toLocaleString() : ''}</td>
                     <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_down_kbps) ? Math.round(client.speed_limit_down_kbps).toLocaleString() : ''}</td>
