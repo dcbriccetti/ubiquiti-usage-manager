@@ -16,7 +16,7 @@ The goal is to keep route handlers thin while centralizing dashboard data behavi
 in one place, so UI changes do not require route-level rewrites.
 '''
 
-from datetime import datetime
+from datetime import datetime, time
 import re
 from typing import Literal, TypedDict, cast
 
@@ -81,6 +81,7 @@ class TopCurrentConsumer(TypedDict):
     label: str
     mac: str
     interval_mb: float
+    slice_type: str
 
 
 class InsightsData(TypedDict):
@@ -137,6 +138,7 @@ class DashboardPayload(TypedDict):
     total_today_mb: float
     total_last_7_days_mb: float
     total_calendar_month_mb: float
+    top_consumers_title: str
     top_current_consumers: list[TopCurrentConsumer]
     clients: list[DashboardRow]
     live_update_seconds: int
@@ -452,8 +454,55 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
         row['recent_activity'] = series_by_mac.get(row['mac'], default_series.copy())
 
 
-def build_top_current_consumers(snapshots: list[ClientSnapshot], limit: int = 6) -> list[TopCurrentConsumer]:
-    'Return the top currently active clients for the dashboard pie chart.'
+def render_dashboard_window_label(window_name: WindowName, current_month_label: str) -> str:
+    'Return a short display label for a dashboard window.'
+    if window_name == WINDOW_ACTIVE_NOW:
+        return 'Active Now'
+    if window_name == WINDOW_ONLINE_NOW:
+        return 'Online Now'
+    if window_name == WINDOW_TODAY:
+        return 'Today'
+    if window_name == WINDOW_LAST_7_DAYS:
+        return '7 Days'
+    return current_month_label
+
+
+def capacity_minutes_for_window(window_name: WindowName, now: datetime) -> int:
+    'Return elapsed/counted minutes represented by one dashboard window.'
+    if window_name in {WINDOW_ACTIVE_NOW, WINDOW_ONLINE_NOW}:
+        return 1
+    if window_name == WINDOW_TODAY:
+        return max(1, int((now - datetime.combine(now.date(), time.min)).total_seconds() // 60))
+    if window_name == WINDOW_LAST_7_DAYS:
+        return 7 * 24 * 60
+    month_start = datetime(now.year, now.month, 1)
+    return max(1, int((now - month_start).total_seconds() // 60))
+
+
+def expected_capacity_mb(window_name: WindowName, now: datetime) -> float:
+    'Return expected download capacity in MB for one dashboard window.'
+    expected_mbps = max(0.0, float(cfg.EXPECTED_DOWNLOAD_MBPS))
+    return (expected_mbps * 60.0 * capacity_minutes_for_window(window_name, now)) / 8.0
+
+
+def usage_value_for_window(row: DashboardRow, window_name: WindowName) -> float:
+    'Return row usage in MB for the selected dashboard window.'
+    if window_name in {WINDOW_ACTIVE_NOW, WINDOW_ONLINE_NOW}:
+        return float(row['interval_mb'] or 0.0)
+    if window_name == WINDOW_TODAY:
+        return float(row['day_total_mb'] or 0.0)
+    if window_name == WINDOW_LAST_7_DAYS:
+        return float(row['last_7_days_total_mb'] or 0.0)
+    return float(row['calendar_month_total_mb'] or 0.0)
+
+
+def build_top_consumers_for_window(
+    rows: list[DashboardRow],
+    window_name: WindowName,
+    now: datetime,
+    limit: int = 5,
+) -> list[TopCurrentConsumer]:
+    'Return mode-specific usage/capacity slices for the dashboard pie chart.'
     def duplicate_suffix(client_label: str, device_name: str, mac: str) -> str:
         'Return a compact secondary label for repeated chart labels.'
         if not device_name or device_name == client_label:
@@ -474,35 +523,59 @@ def build_top_current_consumers(snapshots: list[ClientSnapshot], limit: int = 6)
             suffix = f'{suffix[:15].rstrip()}...'
         return suffix
 
-    active_snapshots = sorted(
-        (snapshot for snapshot in snapshots if snapshot.interval_mb > 0.0),
-        key=lambda snapshot: (
-            snapshot.interval_mb,
-            snapshot.day_total_mb,
-            (snapshot.client.user_id or snapshot.client.name or snapshot.client.mac).lower(),
+    usage_rows = sorted(
+        (
+            (row, usage_value_for_window(row, window_name))
+            for row in rows
+            if usage_value_for_window(row, window_name) > 0.0
+        ),
+        key=lambda entry: (
+            entry[1],
+            float(entry[0]['day_total_mb'] or 0.0),
+            str(entry[0]['name'] or entry[0]['mac']).lower(),
         ),
         reverse=True,
     )
-    top_snapshots = active_snapshots[:max(1, limit)]
+    top_rows = usage_rows[:max(1, limit)]
     base_labels = [
-        (snapshot.client.user_id or snapshot.client.name or snapshot.client.mac)
-        for snapshot in top_snapshots
+        str(row['user_id'] or row['name'] or row['mac'])
+        for row, _ in top_rows
     ]
     duplicate_base_labels = {
         label for label in base_labels
         if sum(1 for candidate in base_labels if candidate == label) > 1
     }
     consumers: list[TopCurrentConsumer] = []
-    for snapshot, base_label in zip(top_snapshots, base_labels):
-        client = snapshot.client
+    for (row, usage_mb), base_label in zip(top_rows, base_labels):
         label = base_label
         if base_label in duplicate_base_labels:
-            secondary_label = duplicate_suffix(base_label, client.name, client.mac)
+            secondary_label = duplicate_suffix(base_label, str(row['name']), str(row['mac']))
             label = f'{base_label} - {secondary_label}'
         consumers.append({
             'label': label,
-            'mac': client.mac,
-            'interval_mb': snapshot.interval_mb,
+            'mac': str(row['mac']),
+            'interval_mb': usage_mb,
+            'slice_type': 'usage',
+        })
+
+    total_usage_mb = sum(usage_mb for _, usage_mb in usage_rows)
+    top_usage_mb = sum(usage_mb for _, usage_mb in top_rows)
+    other_usage_mb = max(0.0, total_usage_mb - top_usage_mb)
+    if other_usage_mb > 0.0:
+        consumers.append({
+            'label': 'Other usage',
+            'mac': '',
+            'interval_mb': other_usage_mb,
+            'slice_type': 'other',
+        })
+
+    unused_mb = max(0.0, expected_capacity_mb(window_name, now) - total_usage_mb)
+    if window_name in {WINDOW_ACTIVE_NOW, WINDOW_ONLINE_NOW} and unused_mb > 0.0:
+        consumers.append({
+            'label': 'Unused capacity',
+            'mac': '',
+            'interval_mb': unused_mb,
+            'slice_type': 'unused',
         })
     return consumers
 
@@ -541,16 +614,19 @@ def build_live_dashboard_payload(
     live_update_seconds: int,
 ) -> DashboardPayload:
     'Assemble live dashboard payload used by /, snapshot API, and SSE.'
+    now = datetime.now()
+    current_month_label = render_month_label(now)
     connected_snapshots = get_connected_clients()
     rows = _build_live_dashboard_rows(window_name, activity_span, connected_snapshots)
     return {
         'selected_window': window_name,
         'selected_activity_span': activity_span,
-        'current_month_label': render_month_label(datetime.now()),
+        'current_month_label': current_month_label,
         'total_today_mb': db.get_total_today_usage(),
         'total_last_7_days_mb': db.get_total_last_7_days_usage(),
         'total_calendar_month_mb': db.get_total_calendar_month_usage(),
-        'top_current_consumers': build_top_current_consumers(connected_snapshots),
+        'top_consumers_title': f"Usage Share ({render_dashboard_window_label(window_name, current_month_label)})",
+        'top_current_consumers': build_top_consumers_for_window(rows, window_name, now),
         'clients': rows,
         'live_update_seconds': live_update_seconds,
     }

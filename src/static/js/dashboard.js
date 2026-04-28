@@ -25,6 +25,7 @@
     const usageMonthHeader = document.getElementById('usage-month-header');
     const usageCostHeader = document.getElementById('usage-cost-header');
     const costGroupHeader = document.getElementById('cost-group-header');
+    const topConsumersTitle = document.getElementById('top-consumers-title');
     const topCurrentConsumersCanvas = document.getElementById('top-current-consumers-chart');
     const topCurrentConsumersLegend = document.getElementById('top-current-consumers-legend');
     const topCurrentConsumersEmpty = document.getElementById('top-current-consumers-empty');
@@ -34,7 +35,7 @@
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
         !windowSelect || !activitySpanSelect || !statUsageToday || !statUsage7Days ||
         !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader || !usageCostHeader ||
-        !costGroupHeader ||
+        !costGroupHeader || !topConsumersTitle ||
         !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty ||
         !ipPrefixHeader
     ) {
@@ -279,6 +280,10 @@
         '#ca8a04',
         '#475569'
     ];
+    const topConsumerColorByType = {
+        unused: '#d1d5db',
+        other: '#64748b'
+    };
 
     const formatPieMb = (value) => {
         const numeric = Number(value) || 0;
@@ -291,11 +296,18 @@
         })} MB`;
     };
 
+    const formatPieDetail = (value) => {
+        if (selectedWindow === 'active_now' || selectedWindow === 'online_now') {
+            const mbps = (value * 8) / 60;
+            return `${formatPieMb(value)} (${mbps.toFixed(3)} Mbps)`;
+        }
+        return formatPieMb(value);
+    };
+
     const renderTopCurrentConsumersLegend = (slices, colors) => {
         topCurrentConsumersLegend.innerHTML = slices.map((consumer, index) => {
             const value = Number(consumer.intervalMb) || 0;
-            const mbps = (value * 8) / 60;
-            const title = `${consumer.label}: ${formatPieMb(value)} (${mbps.toFixed(3)} Mbps)`;
+            const title = `${consumer.label}: ${formatPieDetail(value)}`;
             return `
                 <div class="top-consumers-legend-item" title="${escapeHtml(title)}">
                     <span class="top-consumers-legend-swatch" style="background:${escapeHtml(colors[index])}"></span>
@@ -317,7 +329,8 @@
         const slices = (Array.isArray(consumers) ? consumers : [])
             .map((consumer) => ({
                 label: String(consumer.label || consumer.mac || 'Unknown'),
-                intervalMb: Number(consumer.interval_mb) || 0
+                intervalMb: Number(consumer.interval_mb) || 0,
+                sliceType: String(consumer.slice_type || 'usage')
             }))
             .filter((consumer) => consumer.intervalMb > 0);
 
@@ -325,7 +338,7 @@
             topCurrentConsumersCanvas.hidden = true;
             topCurrentConsumersLegend.hidden = true;
             topCurrentConsumersEmpty.hidden = false;
-            topCurrentConsumersEmpty.textContent = 'No current usage.';
+            topCurrentConsumersEmpty.textContent = 'No usage.';
             if (topCurrentConsumersChart) {
                 topCurrentConsumersChart.destroy();
                 topCurrentConsumersChart = null;
@@ -338,7 +351,7 @@
         topCurrentConsumersEmpty.hidden = true;
         const labels = slices.map((consumer) => consumer.label);
         const values = slices.map((consumer) => consumer.intervalMb);
-        const colors = values.map((_value, index) => topConsumerColors[index % topConsumerColors.length]);
+        const colors = slices.map((consumer, index) => topConsumerColorByType[consumer.sliceType] || topConsumerColors[index % topConsumerColors.length]);
         renderTopCurrentConsumersLegend(slices, colors);
 
         if (!topCurrentConsumersChart) {
@@ -367,8 +380,7 @@
                             callbacks: {
                                 label: (context) => {
                                     const value = Number(context.raw) || 0;
-                                    const mbps = (value * 8) / 60;
-                                    return `${context.label}: ${formatPieMb(value)} (${mbps.toFixed(3)} Mbps)`;
+                                    return `${context.label}: ${formatPieDetail(value)}`;
                                 }
                             }
                         }
@@ -411,6 +423,7 @@
 
         updateActivityScale(data.clients);
         applyWindowColumnVisibility();
+        topConsumersTitle.textContent = String(data.top_consumers_title || 'Usage Share');
         renderTopCurrentConsumers(data.top_current_consumers);
         renderConnectedClients(data.clients);
     };

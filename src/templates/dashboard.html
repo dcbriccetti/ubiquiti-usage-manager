@@ -34,13 +34,13 @@
             </section>
         </div>
         <article class="panel stat top-consumers-panel">
-            <span class="label">Top Current Consumers</span>
+            <span class="label" id="top-consumers-title">{{ payload.top_consumers_title }}</span>
             <div class="top-consumers-chart-wrap">
                 <div class="top-consumers-chart-frame">
                     <canvas id="top-current-consumers-chart"></canvas>
                 </div>
                 <div class="top-consumers-legend" id="top-current-consumers-legend"></div>
-                <p class="muted top-consumers-empty" id="top-current-consumers-empty">No current usage.</p>
+                <p class="muted top-consumers-empty" id="top-current-consumers-empty">No usage.</p>
             </div>
         </article>
     </section>
