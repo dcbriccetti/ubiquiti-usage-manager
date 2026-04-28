@@ -84,6 +84,8 @@ class TopCurrentConsumer(TypedDict):
 class InsightsData(TypedDict):
     'Insights-page data payload.'
     current_month_label: str
+    isp_base_cost_usd: float
+    isp_topoff_cost_usd: float
     active_users_daily_min: int
     active_users_daily_mean: float
     active_users_daily_max: int
@@ -625,6 +627,8 @@ def build_insights_data() -> InsightsData:
 
     return {
         'current_month_label': render_month_label(datetime.now()),
+        'isp_base_cost_usd': float(cfg.ISP_BASE_COST_USD),
+        'isp_topoff_cost_usd': float(cfg.ISP_TOPOFF_COST_USD),
         'active_users_daily_min': insights.active_users_min,
         'active_users_daily_mean': insights.active_users_mean,
         'active_users_daily_max': insights.active_users_max,

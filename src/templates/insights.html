@@ -101,30 +101,36 @@
                 <h2>Payer & Infrastructure</h2>
                 <section class="grid columns insights-tables">
                     <article class="insights-summary">
-                        <h3>Payer Split ({{ current_month_label }})</h3>
+                        <h3>Usage Split ({{ current_month_label }})</h3>
                         {% set total_split_mb = organization_paid_total_mb + user_paid_total_mb %}
                         {% set organization_share_pct = ((organization_paid_total_mb * 100.0) / total_split_mb) if total_split_mb > 0 else 0.0 %}
                         {% set user_share_pct = ((user_paid_total_mb * 100.0) / total_split_mb) if total_split_mb > 0 else 0.0 %}
+                        <p class="muted">
+                            The organization pays the ISP
+                            ${{ "{:,.2f}".format(isp_base_cost_usd) }}
+                            + ${{ "{:,.2f}".format(isp_topoff_cost_usd) }} × topoffs needed.
+                            The table below allocates measured usage at the configured internal rate.
+                        </p>
                         <table class="insights-table">
                             <thead>
                                 <tr>
                                     <th>Category</th>
                                     <th class="num">MB</th>
-                                    <th class="num">Cost</th>
+                                    <th class="num">Allocated</th>
                                     <th class="num">%</th>
                                     <th class="num">Minutes</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td class="nowrap-col">Organization-paid</td>
+                                    <td class="nowrap-col">Organization use</td>
                                     <td class="num">{{ "{:,.0f}".format(organization_paid_total_mb) }}</td>
                                     <td class="num">${{ "{:,.2f}".format((organization_paid_cost_cents or 0) / 100.0) }}</td>
                                     <td class="num">{{ "{:.1f}%".format(organization_share_pct) }}</td>
                                     <td class="num">{{ "{:,.0f}".format(organization_paid_minutes) }}</td>
                                 </tr>
                                 <tr>
-                                    <td class="nowrap-col">User-paid</td>
+                                    <td class="nowrap-col">User use</td>
                                     <td class="num">{{ "{:,.0f}".format(user_paid_total_mb) }}</td>
                                     <td class="num">${{ "{:,.2f}".format((user_paid_cost_cents or 0) / 100.0) }}</td>
                                     <td class="num">{{ "{:.1f}%".format(user_share_pct) }}</td>
