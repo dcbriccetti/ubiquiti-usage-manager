@@ -87,29 +87,24 @@
                             <th colspan="3" class="speed-group">Speed Limit (kbps)</th>
                         </tr>
                         <tr>
-                            <th class="nowrap-col" rowspan="2">User ID</th>
-                            <th class="client-name-col" rowspan="2">Name</th>
-                            <th rowspan="2">MAC</th>
-                            <th class="nowrap-col ip-col" rowspan="2" id="ip-prefix-header" title="Left half shown in header; cells show right half of client IPv4 address.">IP</th>
-                            <th rowspan="2">VLAN</th>
-                            <th class="ap-col" rowspan="2">Access Point</th>
-                            <th class="sig-col" rowspan="2">Sig</th>
-                            <th class="activity-col" rowspan="2" title="Recent activity bars for the selected range.">Activity</th>
-                            <th class="nowrap-col" rowspan="2" title="Current duration from recent UniFi query (positive = connected, negative = disconnected).">Connected</th>
-                            <th class="num nowrap-col mbps-col" rowspan="2" title="Average throughput over the last minute (megabits per second).">Mbps</th>
-                            <th class="usage-group minute-group" colspan="3">Minute</th>
-                            <th class="num usage-col today-col" rowspan="2">Today</th>
-                            <th class="num usage-col seven-days-col" rowspan="2">7&nbsp;Days</th>
-                            <th class="num usage-col month-col" rowspan="2" id="usage-month-header">{{ payload.current_month_label }}</th>
-                            <th class="num usage-col usage-last" rowspan="2" id="usage-cost-header">Cost</th>
-                            <th class="nowrap-col speed-col speed-first" rowspan="2">Name</th>
-                            <th class="num nowrap-col speed-col" rowspan="2">Up</th>
-                            <th class="num nowrap-col speed-col" rowspan="2">Dn</th>
-                        </tr>
-                        <tr>
-                            <th class="num usage-col usage-first minute-col">Up</th>
-                            <th class="num usage-col minute-col">Dn</th>
-                            <th class="num usage-col minute-col minute-total-col">Total</th>
+                            <th class="nowrap-col">User ID</th>
+                            <th class="client-name-col">Name</th>
+                            <th>MAC</th>
+                            <th class="nowrap-col ip-col" id="ip-prefix-header" title="Left half shown in header; cells show right half of client IPv4 address.">IP</th>
+                            <th>VLAN</th>
+                            <th class="ap-col">Access Point</th>
+                            <th class="sig-col">Sig</th>
+                            <th class="activity-col" title="Recent activity bars for the selected range.">Activity</th>
+                            <th class="nowrap-col" title="Current duration from recent UniFi query (positive = connected, negative = disconnected).">Connected</th>
+                            <th class="num nowrap-col mbps-col" title="Average throughput over the last minute (megabits per second).">Mbps</th>
+                            <th class="num usage-col usage-first minute-col minute-total-col">Minute</th>
+                            <th class="num usage-col today-col">Today</th>
+                            <th class="num usage-col seven-days-col">7&nbsp;Days</th>
+                            <th class="num usage-col month-col" id="usage-month-header">{{ payload.current_month_label }}</th>
+                            <th class="num usage-col usage-last" id="usage-cost-header">Cost</th>
+                            <th class="nowrap-col speed-col speed-first">Name</th>
+                            <th class="num nowrap-col speed-col">Up</th>
+                            <th class="num nowrap-col speed-col">Dn</th>
                         </tr>
                         </thead>
                         <tbody id="connected-clients-body"></tbody>

@@ -83,7 +83,7 @@
         clientsTable.classList.toggle('non-realtime-window', !isRealtime);
         clientsTable.classList.toggle('hide-cost-column', isRealtime);
         preUsageGroupHeader.colSpan = isRealtime ? 10 : 7;
-        usageGroupHeader.colSpan = isRealtime ? 6 : 3;
+        usageGroupHeader.colSpan = isRealtime ? 4 : 3;
         clientsTable.classList.remove('focus-minute-total', 'focus-today', 'focus-7-days', 'focus-month');
         if (windowFocusClassByWindow[selectedWindow]) {
             clientsTable.classList.add(windowFocusClassByWindow[selectedWindow]);
@@ -106,6 +106,13 @@
             minimumFractionDigits: 3,
             maximumFractionDigits: 3
         });
+    };
+    const renderMinuteTotalCell = (client) => {
+        const totalText = formatMinute(client.interval_mb);
+        const upText = formatMinute(client.minute_tx_mb) || '0';
+        const downText = formatMinute(client.minute_rx_mb) || '0';
+        const title = totalText ? `Up: ${upText} MB; Dn: ${downText} MB` : '';
+        return `<td class="num usage-col usage-first minute-col minute-total-col" title="${escapeHtml(title)}">${totalText}</td>`;
     };
     const formatWhole = (value) => {
         if (!value) return '';
@@ -237,7 +244,7 @@
         ipPrefixHeader.textContent = ipPrefixes.size === 1 ? `${[...ipPrefixes][0]}.` : defaultIpHeader;
 
         if (!clients.length) {
-            connectedBody.innerHTML = `<tr><td colspan="20" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+            connectedBody.innerHTML = `<tr><td colspan="18" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
             return;
         }
 
@@ -257,9 +264,7 @@
                     <td class="activity-col">${renderRecentActivity(client)}</td>
                     <td class="nowrap-col">${escapeHtml(client.connection_duration || '')}</td>
                     <td class="num nowrap-col mbps-col">${formatAvgMbps(client.interval_mb)}</td>
-                    <td class="num usage-col usage-first minute-col">${formatMinute(client.minute_tx_mb)}</td>
-                    <td class="num usage-col minute-col">${formatMinute(client.minute_rx_mb)}</td>
-                    <td class="num usage-col minute-col minute-total-col">${formatMinute(client.interval_mb)}</td>
+                    ${renderMinuteTotalCell(client)}
                     <td class="num usage-col today-col">${formatWhole(client.day_total_mb)}</td>
                     <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
                     <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
