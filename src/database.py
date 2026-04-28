@@ -894,7 +894,7 @@ def get_global_month_insights(top_limit: int = 5) -> GlobalInsights:
             )
             for ap_name, totals in ap_totals.items()
         ),
-        key=lambda row: (row.active_minutes, row.total_mb),
+        key=lambda row: (row.total_mb, row.active_minutes),
         reverse=True,
     )[:max(1, top_limit)]
 
