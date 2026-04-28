@@ -56,6 +56,7 @@ class DashboardRow(TypedDict):
     ap_count: int
     ap_breakdown: str
     mac: str
+    ip_prefix: str
     ip_half: str
     vlan_name: str
     signal: int | None
@@ -246,6 +247,12 @@ def build_rows_for_online_clients(
     snapshots: list[ClientSnapshot] | None = None,
 ) -> list[DashboardRow]:
     'Build dashboard rows from live controller client snapshots.'
+    def left_half_ip(ip_address: str) -> str:
+        parts = ip_address.split('.')
+        if len(parts) == 4:
+            return '.'.join(parts[:2])
+        return ''
+
     def right_half_ip(ip_address: str) -> str:
         parts = ip_address.split('.')
         if len(parts) == 4:
@@ -271,6 +278,7 @@ def build_rows_for_online_clients(
             'ap_count': 1 if snapshot.client.ap_name else 0,
             'ap_breakdown': snapshot.client.ap_name or '',
             'mac': snapshot.client.mac,
+            'ip_prefix': left_half_ip(snapshot.client.ip_address),
             'ip_half': right_half_ip(snapshot.client.ip_address),
             'vlan_name': snapshot.client.vlan_name or 'Unknown',
             'signal': snapshot.client.signal if snapshot.client.signal else None,
@@ -343,6 +351,7 @@ def build_rows_for_historical_window(
             'ap_count': ap_count,
             'ap_breakdown': ap_breakdown,
             'mac': summary.mac,
+            'ip_prefix': '',
             'ip_half': '',
             'vlan_name': summary.vlan or 'Unknown',
             'signal': None,

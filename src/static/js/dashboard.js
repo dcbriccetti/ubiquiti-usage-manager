@@ -26,12 +26,14 @@
     const topCurrentConsumersCanvas = document.getElementById('top-current-consumers-chart');
     const topCurrentConsumersLegend = document.getElementById('top-current-consumers-legend');
     const topCurrentConsumersEmpty = document.getElementById('top-current-consumers-empty');
+    const ipPrefixHeader = document.getElementById('ip-prefix-header');
 
     if (
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
         !windowSelect || !activitySpanSelect || !statUsageToday || !statUsage7Days ||
         !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader ||
-        !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty
+        !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty ||
+        !ipPrefixHeader
     ) {
         return;
     }
@@ -39,6 +41,7 @@
     const detailPattern = String(bootstrap.detailPattern || '');
     const streamBaseUrl = String(bootstrap.streamBaseUrl || '');
     const snapshotBaseUrl = String(bootstrap.snapshotBaseUrl || '');
+    const defaultIpHeader = String(bootstrap.defaultIpHeader || 'IP');
     const initialPayload = bootstrap.initialPayload || {};
 
     if (!detailPattern || !streamBaseUrl || !snapshotBaseUrl) {
@@ -201,6 +204,13 @@
     };
 
     const renderConnectedClients = (clients) => {
+        const ipPrefixes = new Set(
+            clients
+                .map((client) => String(client.ip_prefix || ''))
+                .filter(Boolean)
+        );
+        ipPrefixHeader.textContent = ipPrefixes.size === 1 ? `${[...ipPrefixes][0]}.` : defaultIpHeader;
+
         if (!clients.length) {
             connectedBody.innerHTML = `<tr><td colspan="20" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
             return;

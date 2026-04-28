@@ -89,7 +89,7 @@
                             <th class="nowrap-col" rowspan="2">User ID</th>
                             <th class="client-name-col" rowspan="2">Name</th>
                             <th rowspan="2">MAC</th>
-                            <th class="nowrap-col ip-col" rowspan="2" title="Right half of client IPv4 address (last two octets).">IP</th>
+                            <th class="nowrap-col ip-col" rowspan="2" id="ip-prefix-header" title="Left half shown in header; cells show right half of client IPv4 address.">IP</th>
                             <th rowspan="2">VLAN</th>
                             <th class="ap-col" rowspan="2">Access Point</th>
                             <th class="sig-col" rowspan="2">Sig</th>
@@ -122,6 +122,7 @@
             "detailPattern": url_for('client_detail', mac='__MAC__'),
             "streamBaseUrl": url_for('dashboard_stream'),
             "snapshotBaseUrl": url_for('dashboard_snapshot'),
+            "defaultIpHeader": "IP",
             "initialPayload": initial_dashboard_payload
         } | tojson }}
     </script>
