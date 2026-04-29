@@ -59,6 +59,8 @@ class DashboardRow(TypedDict):
     ip_prefix: str
     ip_half: str
     vlan_name: str
+    frequency_band: str
+    channel: str
     signal: int | None
     recent_activity: list[float]
     connection_duration: str
@@ -287,6 +289,8 @@ def build_rows_for_online_clients(
             'ip_prefix': left_half_ip(snapshot.client.ip_address),
             'ip_half': right_half_ip(snapshot.client.ip_address),
             'vlan_name': snapshot.client.vlan_name or 'Unknown',
+            'frequency_band': snapshot.client.frequency_band,
+            'channel': snapshot.client.channel,
             'signal': snapshot.client.signal if snapshot.client.signal else None,
             'recent_activity': [],
             'connection_duration': '',
@@ -362,6 +366,8 @@ def build_rows_for_historical_window(
             'ip_prefix': '',
             'ip_half': '',
             'vlan_name': summary.vlan or 'Unknown',
+            'frequency_band': '',
+            'channel': '',
             'signal': None,
             'recent_activity': [],
             'connection_duration': '',

@@ -82,7 +82,7 @@
         clientsTable.classList.toggle('realtime-window', isRealtime);
         clientsTable.classList.toggle('non-realtime-window', !isRealtime);
         clientsTable.classList.toggle('hide-cost-column', isRealtime);
-        preUsageGroupHeader.colSpan = isRealtime ? 10 : 7;
+        preUsageGroupHeader.colSpan = isRealtime ? 12 : 7;
         usageGroupHeader.colSpan = isRealtime ? 4 : 3;
         clientsTable.classList.remove('focus-minute-total', 'focus-today', 'focus-7-days', 'focus-month');
         if (windowFocusClassByWindow[selectedWindow]) {
@@ -158,6 +158,14 @@
         const titleText = breakdown || primary;
         const extraSuffix = extraCount > 0 ? ` +${extraCount}` : '';
         return `<span title="${escapeHtml(titleText)}">${escapeHtml(primary)}${escapeHtml(extraSuffix)}</span>`;
+    };
+    const renderBandCell = (client) => {
+        const band = String(client.frequency_band || '');
+        return `<td class="num band-col">${escapeHtml(band)}</td>`;
+    };
+    const renderChannelCell = (client) => {
+        const channel = String(client.channel || '');
+        return `<td class="num channel-col">${escapeHtml(channel)}</td>`;
     };
 
     const activityScaleViewKey = () => `${selectedWindow}:${selectedActivitySpan}`;
@@ -244,7 +252,7 @@
         ipPrefixHeader.textContent = ipPrefixes.size === 1 ? `${[...ipPrefixes][0]}.` : defaultIpHeader;
 
         if (!clients.length) {
-            connectedBody.innerHTML = `<tr><td colspan="18" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+            connectedBody.innerHTML = `<tr><td colspan="20" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
             return;
         }
 
@@ -260,7 +268,9 @@
                     <td class="nowrap-col ip-col">${escapeHtml(client.ip_half || '')}</td>
                     <td>${escapeHtml(client.vlan_name)}</td>
                     <td class="ap-col">${renderAccessPointCell(client)}</td>
-                    <td class="sig-col">${escapeHtml(signal)}</td>
+                    ${renderBandCell(client)}
+                    ${renderChannelCell(client)}
+                    <td class="num sig-col">${escapeHtml(signal)}</td>
                     <td class="activity-col">${renderRecentActivity(client)}</td>
                     <td class="nowrap-col">${escapeHtml(client.connection_duration || '')}</td>
                     <td class="num nowrap-col mbps-col">${formatAvgMbps(client.interval_mb)}</td>

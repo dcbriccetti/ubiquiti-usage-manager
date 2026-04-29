@@ -14,6 +14,8 @@ class ClientInfo:
     vlan_name: str
     speed_limit: SpeedLimit | None
     ap_name: str
+    frequency_band: str
+    channel: str
     signal: int
     tx_mb_since_connection: float
     rx_mb_since_connection: float
@@ -36,6 +38,52 @@ class ClientInfo:
         if c.get('is_wired'):
             ap_name = ''
         return ap_name
+
+    @staticmethod
+    def _resolve_frequency_band(c: dict) -> str:
+        'Return compact Wi-Fi frequency band label when UniFi exposes one.'
+        raw_values = [
+            c.get('radio'),
+            c.get('radio_name'),
+            c.get('radio_proto'),
+            c.get('radio_desc'),
+        ]
+        joined = ' '.join(str(value).lower() for value in raw_values if value)
+        if any(token in joined for token in ('6 ghz', '6ghz', '6e', 'wifi6e', 'wi-fi 6e', '11ax_6')):
+            return '6'
+        if '2.4' in joined or '2 ghz' in joined or '2ghz' in joined or 'ng' in joined or '11n' in joined:
+            return '2.4'
+        if any(token in joined for token in ('5 ghz', '5ghz', 'na', '11ac')):
+            return '5'
+
+        raw_channel = c.get('channel')
+        try:
+            channel = int(raw_channel)
+        except (TypeError, ValueError):
+            return ''
+
+        if channel <= 14:
+            return '2.4'
+        if 1 <= channel <= 233:
+            five_ghz_channels = {
+                32, 36, 40, 44, 48, 52, 56, 60, 64, 68,
+                96, 100, 104, 108, 112, 116, 120, 124, 128,
+                132, 136, 140, 144, 149, 153, 157, 161, 165,
+                169, 173, 177,
+            }
+            if channel not in five_ghz_channels and (channel - 1) % 4 == 0:
+                return '6'
+            if channel in five_ghz_channels:
+                return '5'
+        return '5'
+
+    @staticmethod
+    def _resolve_channel(c: dict) -> str:
+        'Return Wi-Fi channel label when UniFi exposes one.'
+        channel = c.get('channel')
+        if channel is None or channel == '':
+            return ''
+        return str(channel)
 
     @classmethod
     def create(cls, c: dict, speed_limits_by_id: dict[str, SpeedLimit], ap_names_by_mac: dict[str, str]):
@@ -66,6 +114,8 @@ class ClientInfo:
             vlan_name=c.get('network', ''),
             speed_limit     = speed_limit,
             ap_name=ap_name,
+            frequency_band=cls._resolve_frequency_band(c),
+            channel=cls._resolve_channel(c),
             signal=c.get('signal', 0),
             # UniFi station tx/rx counters are AP-centric; flip for client-centric semantics.
             tx_mb_since_connection=c.get('rx_bytes', 0) / (1000 * 1000),
