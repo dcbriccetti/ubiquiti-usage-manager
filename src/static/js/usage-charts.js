@@ -387,7 +387,7 @@
                         }
                     },
                     scales: {
-                        x: xAxis("Day of month", false),
+                        x: xAxis("Day of month"),
                         y: {
                             beginAtZero: true,
                             title: { display: true, text: "Active clients/day" },
@@ -419,7 +419,7 @@
             scales: {
                 x: {
                     stacked: true,
-                    ...xAxis("Day of month", false)
+                    ...xAxis("Day of month")
                 },
                 y: {
                     stacked: true,
@@ -498,7 +498,7 @@
                         }
                     },
                     scales: {
-                        x: xAxis("Day of month", false),
+                        x: xAxis("Day of month"),
                         y: {
                             beginAtZero: true,
                             title: { display: true, text: "Peak concurrent users" },

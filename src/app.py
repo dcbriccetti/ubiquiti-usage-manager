@@ -9,7 +9,7 @@ This module keeps the web entrypoint intentionally small:
 Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 import csv
 import io
 import os
@@ -44,6 +44,25 @@ class DailyUsagePoint(TypedDict):
     day_of_month: int
     total_mb: float
     active_minutes: int
+
+
+class MonthOption(TypedDict):
+    'One selectable calendar month option.'
+    value: str
+    label: str
+    selected: bool
+
+
+class InvoicePeriodContext(TypedDict):
+    'Template and query context for month-selected invoice reports.'
+    period_start: datetime
+    period_end: datetime
+    report_period_label: str
+    selected_month: date
+    selected_month_value: str
+    current_month_value: str
+    previous_month_value: str
+    month_options: list[MonthOption]
 
 
 class ThrottleChartDataset(TypedDict):
@@ -125,16 +144,80 @@ def create_app() -> Flask:
             return f'{prefix} Network Usage Report'
         return 'Network Usage Report'
 
-    def render_report_period_label(now: datetime) -> str:
-        'Return report period label with month and year.'
-        return now.strftime('%B %Y')
+    def add_months(month_start: date, month_delta: int) -> date:
+        'Return the first day of a month offset from another month start.'
+        month_index = (month_start.year * 12) + (month_start.month - 1) + month_delta
+        return date(month_index // 12, (month_index % 12) + 1, 1)
+
+    def resolve_report_month(raw_month: str | None) -> date:
+        'Return selected report month, defaulting invalid or future values to current month.'
+        today = datetime.now().date()
+        current_month = date(today.year, today.month, 1)
+        if not raw_month:
+            return current_month
+
+        if not re.fullmatch(r'\d{4}-\d{2}', raw_month.strip()):
+            return current_month
+
+        try:
+            year_text, month_text = raw_month.strip().split('-', 1)
+            selected_month = date(int(year_text), int(month_text), 1)
+        except ValueError:
+            return current_month
+
+        if selected_month > current_month:
+            return current_month
+        return selected_month
+
+    def get_report_month_period(month_start: date) -> tuple[datetime, datetime]:
+        'Return inclusive datetime bounds for a selected report month.'
+        period_start = datetime.combine(month_start, time.min)
+        next_month = add_months(month_start, 1)
+        period_end = datetime.combine(next_month, time.min) - timedelta(microseconds=1)
+        current_month = date(datetime.now().year, datetime.now().month, 1)
+        if month_start == current_month:
+            period_end = datetime.now()
+        return period_start, period_end
+
+    def build_invoice_period_context(available_months: list[date] | None = None) -> InvoicePeriodContext:
+        'Build reusable template/query context for month-selected reports.'
+        selected_month = resolve_report_month(request.args.get('month'))
+        current_month = date(datetime.now().year, datetime.now().month, 1)
+        previous_month = add_months(current_month, -1)
+        resolved_available_months = available_months if available_months is not None else db.get_plus_user_invoice_months()
+        month_options = sorted(
+            set(resolved_available_months + [current_month, previous_month, selected_month]),
+            reverse=True,
+        )
+        period_start, period_end = get_report_month_period(selected_month)
+        return {
+            'period_start': period_start,
+            'period_end': period_end,
+            'report_period_label': selected_month.strftime('%B %Y'),
+            'selected_month': selected_month,
+            'selected_month_value': selected_month.strftime('%Y-%m'),
+            'current_month_value': current_month.strftime('%Y-%m'),
+            'previous_month_value': previous_month.strftime('%Y-%m'),
+            'month_options': [
+                {
+                    'value': option.strftime('%Y-%m'),
+                    'label': option.strftime('%B %Y'),
+                    'selected': option == selected_month,
+                }
+                for option in month_options
+            ],
+        }
 
     def safe_file_stem(raw_value: str) -> str:
         'Return a filesystem-safe lowercase stem suitable for export filenames.'
         normalized = re.sub(r'[^a-zA-Z0-9._-]+', '-', raw_value.strip()).strip('-').lower()
         return normalized or 'unknown-user'
 
-    def build_plus_user_chart_context(summary: db.PlusUserInvoiceSummary) -> dict[str, object]:
+    def build_plus_user_chart_context(
+        summary: db.PlusUserInvoiceSummary,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
+    ) -> dict[str, object]:
         'Build daily-usage chart dataset for Plus-user invoice summary pages/exports.'
         month_daily_usage: list[DailyUsagePoint] = [
             {
@@ -145,7 +228,11 @@ def create_app() -> Flask:
             }
             for usage_day, total_mb, active_minutes in summary.daily_usage
         ]
-        stacked_day_labels, stacked_device_series = db.get_plus_user_daily_device_usage_current_month(summary.user_id)
+        stacked_day_labels, stacked_device_series = db.get_plus_user_daily_device_usage_current_month(
+            summary.user_id,
+            period_start=period_start,
+            period_end=period_end,
+        )
         month_usage_device_series = [
             {
                 'label': device_label,
@@ -164,6 +251,8 @@ def create_app() -> Flask:
         summary: db.PlusUserInvoiceSummary,
         report_period_label: str,
         generated_at: datetime,
+        period_start: datetime | None = None,
+        period_end: datetime | None = None,
     ) -> bytes:
         'Render one invoice-ready PDF summary for a Plus user.'
         from reportlab.graphics import renderPDF
@@ -173,11 +262,15 @@ def create_app() -> Flask:
         from reportlab.lib.pagesizes import letter
         from reportlab.pdfgen import canvas
 
-        chart_context = build_plus_user_chart_context(summary)
+        chart_context = build_plus_user_chart_context(summary, period_start, period_end)
         month_daily_usage = chart_context['month_daily_usage']
         day_labels = [str(point['day_of_month']) for point in month_daily_usage]
         usage_mb_series = [float(point['total_mb']) for point in month_daily_usage]
-        stacked_day_labels, stacked_device_series = db.get_plus_user_daily_device_usage_current_month(summary.user_id)
+        stacked_day_labels, stacked_device_series = db.get_plus_user_daily_device_usage_current_month(
+            summary.user_id,
+            period_start=period_start,
+            period_end=period_end,
+        )
 
         pdf_buffer = io.BytesIO()
         pdf = canvas.Canvas(pdf_buffer, pagesize=letter)
@@ -466,7 +559,7 @@ def create_app() -> Flask:
         if not visible_devices:
             pdf.setFillColor(text_muted)
             pdf.setFont("Helvetica", 9)
-            pdf.drawString(table_left + 6, row_top - 13, "No device activity found for this month.")
+            pdf.drawString(table_left + 6, row_top - 13, f"No device activity found for {report_period_label}.")
         elif omitted_count > 0:
             pdf.setFillColor(text_muted)
             pdf.setFont("Helvetica", 8.5)
@@ -785,13 +878,27 @@ def create_app() -> Flask:
 
     @flask_app.route("/insights")
     def insights():
-        'Render deeper month-to-date analytics panels.'
+        'Render deeper month analytics panels.'
         if not requester_is_plus_admin():
             abort(403)
 
+        period_context = build_invoice_period_context(db.get_usage_months())
+        current_month = date(datetime.now().year, datetime.now().month, 1)
+        insights_data = build_insights_data(
+            period_start=period_context['period_start'],
+            period_end=period_context['period_end'],
+            current_month_label=period_context['selected_month'].strftime('%b'),
+            report_period_label=str(period_context['report_period_label']),
+            include_live_organization_paid_clients=period_context['selected_month'] == current_month,
+        )
         return render_template(
             "insights.html",
-            **build_insights_data(),
+            selected_month=period_context['selected_month'],
+            selected_month_value=period_context['selected_month_value'],
+            current_month_value=period_context['current_month_value'],
+            previous_month_value=period_context['previous_month_value'],
+            month_options=period_context['month_options'],
+            **insights_data,
         )
 
     @flask_app.route("/radius/users")
@@ -967,13 +1074,16 @@ def create_app() -> Flask:
 
     @flask_app.route("/invoices/plus-users")
     def plus_user_invoices():
-        'Render month-to-date Plus-user invoice summaries for admins.'
+        'Render Plus-user invoice summaries for the selected report month.'
         if not requester_is_plus_admin():
             abort(403)
 
         generated_at = datetime.now()
+        period_context = build_invoice_period_context()
         summaries = db.get_plus_user_invoice_summaries_current_month(
             excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+            period_start=period_context['period_start'],
+            period_end=period_context['period_end'],
         )
         invoice_rows = [
             {
@@ -985,7 +1095,6 @@ def create_app() -> Flask:
         return render_template(
             "plus_user_invoices.html",
             generated_at=generated_at,
-            report_period_label=render_report_period_label(generated_at),
             summaries=summaries,
             invoice_rows=invoice_rows,
             organization_title=get_organization_title(),
@@ -994,17 +1103,21 @@ def create_app() -> Flask:
                 for user_id in cfg.ORGANIZATION_PAID_USER_IDS
                 if user_id.strip()
             ),
+            **period_context,
         )
 
     @flask_app.route("/invoices/plus-users/<user_id>")
     def plus_user_invoice_summary(user_id: str):
-        'Render month-to-date invoice detail for one Plus user.'
+        'Render invoice detail for one Plus user in the selected report month.'
         if not requester_is_plus_admin():
             abort(403)
 
+        period_context = build_invoice_period_context()
         summary = db.get_plus_user_invoice_summary_current_month(
             user_id,
             excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+            period_start=period_context['period_start'],
+            period_end=period_context['period_end'],
         )
         if summary is None:
             abort(404)
@@ -1013,31 +1126,44 @@ def create_app() -> Flask:
         return render_template(
             "plus_user_invoice_summary.html",
             generated_at=generated_at,
-            report_period_label=render_report_period_label(generated_at),
             month_cost_cents=calculate_month_cost_cents(summary.total_mb),
             organization_title=get_organization_title(),
             plus_report_label=get_plus_network_report_title(),
             summary=summary,
-            **build_plus_user_chart_context(summary),
+            **period_context,
+            **build_plus_user_chart_context(
+                summary,
+                period_start=period_context['period_start'],
+                period_end=period_context['period_end'],
+            ),
         )
 
     @flask_app.route("/invoices/plus-users/<user_id>/summary.pdf")
     def plus_user_invoice_pdf(user_id: str):
-        'Generate invoice-ready PDF for one Plus user.'
+        'Generate invoice-ready PDF for one Plus user in the selected report month.'
         if not requester_is_plus_admin():
             abort(403)
 
+        period_context = build_invoice_period_context()
         summary = db.get_plus_user_invoice_summary_current_month(
             user_id,
             excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+            period_start=period_context['period_start'],
+            period_end=period_context['period_end'],
         )
         if summary is None:
             abort(404)
 
         generated_at = datetime.now()
-        report_period_label = render_report_period_label(generated_at)
-        pdf_bytes = build_plus_user_invoice_pdf(summary, report_period_label, generated_at)
-        filename = f"plus-user-invoice-{safe_file_stem(summary.user_id)}-{generated_at:%Y-%m}.pdf"
+        report_period_label = str(period_context['report_period_label'])
+        pdf_bytes = build_plus_user_invoice_pdf(
+            summary,
+            report_period_label,
+            generated_at,
+            period_start=period_context['period_start'],
+            period_end=period_context['period_end'],
+        )
+        filename = f"plus-user-invoice-{safe_file_stem(summary.user_id)}-{period_context['selected_month_value']}.pdf"
         return send_file(
             io.BytesIO(pdf_bytes),
             mimetype="application/pdf",
@@ -1047,14 +1173,17 @@ def create_app() -> Flask:
 
     @flask_app.route("/invoices/plus-users/export.zip")
     def plus_user_invoice_export_zip():
-        'Generate one ZIP containing monthly PDF summary for each billable Plus user.'
+        'Generate one ZIP containing PDF summaries for each billable Plus user.'
         if not requester_is_plus_admin():
             abort(403)
 
         generated_at = datetime.now()
-        report_period_label = render_report_period_label(generated_at)
+        period_context = build_invoice_period_context()
+        report_period_label = str(period_context['report_period_label'])
         summaries = db.get_plus_user_invoice_summaries_current_month(
             excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
+            period_start=period_context['period_start'],
+            period_end=period_context['period_end'],
         )
 
         zip_buffer = io.BytesIO()
@@ -1073,10 +1202,16 @@ def create_app() -> Flask:
             ])
 
             for summary in summaries:
-                pdf_filename = f"plus-user-invoice-{safe_file_stem(summary.user_id)}-{generated_at:%Y-%m}.pdf"
+                pdf_filename = f"plus-user-invoice-{safe_file_stem(summary.user_id)}-{period_context['selected_month_value']}.pdf"
                 zip_file.writestr(
                     pdf_filename,
-                    build_plus_user_invoice_pdf(summary, report_period_label, generated_at),
+                    build_plus_user_invoice_pdf(
+                        summary,
+                        report_period_label,
+                        generated_at,
+                        period_start=period_context['period_start'],
+                        period_end=period_context['period_end'],
+                    ),
                 )
                 csv_writer.writerow([
                     summary.user_id,
@@ -1092,7 +1227,7 @@ def create_app() -> Flask:
             zip_file.writestr("plus-user-invoice-index.csv", index_csv_buffer.getvalue())
 
         zip_buffer.seek(0)
-        zip_name = f"plus-user-invoices-{generated_at:%Y-%m}.zip"
+        zip_name = f"plus-user-invoices-{period_context['selected_month_value']}.zip"
         return send_file(
             zip_buffer,
             mimetype="application/zip",

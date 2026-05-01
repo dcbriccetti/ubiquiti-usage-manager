@@ -9,7 +9,22 @@
         <div>
             <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
             <h1>Insights</h1>
-            <p>Month-to-date analytics for concurrency, usage trends, and throttling behavior.</p>
+            <p>{{ report_period_label }} analytics for concurrency, usage trends, and throttling behavior.</p>
+            <div class="report-toolbar">
+                <div class="report-quick-links">
+                    <a href="{{ url_for('insights', month=current_month_value) }}">Current Month</a>
+                    <a href="{{ url_for('insights', month=previous_month_value) }}">Previous Month</a>
+                </div>
+                <form class="report-month-form" method="get" action="{{ url_for('insights') }}">
+                    <label for="insights-month">Month</label>
+                    <select id="insights-month" name="month">
+                        {% for option in month_options %}
+                            <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit">Show</button>
+                </form>
+            </div>
         </div>
     </section>
 
@@ -32,14 +47,14 @@
                         <span class="value">{{ "{:,.0f}".format(active_users_daily_max) }}</span>
                     </div>
                     <div class="insight-kpi">
-                        <span class="label">Active Users Today</span>
+                        <span class="label">{{ active_users_terminal_label }}</span>
                         <span class="value">{{ "{:,.0f}".format(active_users_today) }}</span>
                     </div>
                 </section>
-                <p class="muted">Based on {{ active_users_days_in_period }} day{% if active_users_days_in_period != 1 %}s{% endif %} in the current month.</p>
+                <p class="muted">Based on {{ active_users_days_in_period }} day{% if active_users_days_in_period != 1 %}s{% endif %} in {{ report_period_label }}.</p>
                 <h3>Daily Active Clients</h3>
                 <div class="month-chart-wrap">
-                    <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients in current month"></canvas>
+                    <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients in selected month"></canvas>
                 </div>
             </div>
         </article>
@@ -66,7 +81,7 @@
                     <div id="global-concurrency-heatmap" class="concurrency-heatmap-grid" aria-label="Heatmap of total user-minutes by weekday and hour"></div>
                 </div>
                 <p class="muted">
-                    Cells show month-to-date total user-minutes by weekday/hour (sum of concurrent users each active minute).
+                    Cells show total user-minutes by weekday/hour for {{ report_period_label }} (sum of concurrent users each active minute).
                     Each cell shows its total directly; hover for sampled minutes and coverage.
                 </p>
             </div>
@@ -158,7 +173,7 @@
                                     </tr>
                                 {% else %}
                                     <tr>
-                                        <td colspan="3" class="muted">No access-point usage data this month yet.</td>
+                                        <td colspan="3" class="muted">No access-point usage data for {{ report_period_label }}.</td>
                                     </tr>
                                 {% endfor %}
                             </tbody>
@@ -205,7 +220,7 @@
                                     </tr>
                                 {% else %}
                                     <tr>
-                                        <td colspan="7" class="muted">No organization-paid client activity this month yet.</td>
+                                        <td colspan="7" class="muted">No organization-paid client activity for {{ report_period_label }}.</td>
                                     </tr>
                                 {% endfor %}
                             </tbody>
@@ -238,7 +253,7 @@
                                     </tr>
                                 {% else %}
                                     <tr>
-                                        <td colspan="4" class="muted">No usage data this month yet.</td>
+                                        <td colspan="4" class="muted">No usage data for {{ report_period_label }}.</td>
                                     </tr>
                                 {% endfor %}
                             </tbody>

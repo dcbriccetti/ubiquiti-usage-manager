@@ -10,7 +10,22 @@
                 <p class="muted">{{ organization_title }}</p>
             {% endif %}
             <p class="muted">Period: {{ report_period_label }}{% if generated_at %} · Generated {{ generated_at.strftime("%Y-%m-%d %H:%M:%S") }}{% endif %}</p>
-            <p><a href="{{ url_for('plus_user_invoice_export_zip') }}">Export all summaries (ZIP + PDFs)</a></p>
+            <div class="report-toolbar">
+                <div class="report-quick-links">
+                    <a href="{{ url_for('plus_user_invoices', month=current_month_value) }}">Current Month</a>
+                    <a href="{{ url_for('plus_user_invoices', month=previous_month_value) }}">Previous Month</a>
+                </div>
+                <form class="report-month-form" method="get" action="{{ url_for('plus_user_invoices') }}">
+                    <label for="invoice-month">Month</label>
+                    <select id="invoice-month" name="month">
+                        {% for option in month_options %}
+                            <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit">Show</button>
+                </form>
+                <a class="report-export-link" href="{{ url_for('plus_user_invoice_export_zip', month=selected_month_value) }}">Export ZIP</a>
+            </div>
             {% if excluded_user_ids %}
                 <p class="muted">Excluded User IDs: {{ excluded_user_ids|join(", ") }}</p>
             {% endif %}
@@ -36,7 +51,7 @@
                     {% for row in invoice_rows %}
                         {% set summary = row.summary %}
                         <tr>
-                            <td><a class="mac-link" href="{{ url_for('plus_user_invoice_summary', user_id=summary.user_id) }}" title="Usage details">{{ summary.user_id }}</a></td>
+                            <td><a class="mac-link" href="{{ url_for('plus_user_invoice_summary', user_id=summary.user_id, month=selected_month_value) }}" title="Usage details">{{ summary.user_id }}</a></td>
                             <td class="num">{{ "{:,.0f}".format(summary.total_mb) }}</td>
                             <td class="num">${{ "{:,.2f}".format(row.cost_usd) }}</td>
                             <td class="num">{{ "{:,.0f}".format(summary.active_minutes) }}</td>
@@ -46,7 +61,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="7" class="muted">No billable Plus-user data available for this month.</td>
+                            <td colspan="7" class="muted">No billable Plus-user data available for {{ report_period_label }}.</td>
                         </tr>
                     {% endfor %}
                 </tbody>

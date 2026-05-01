@@ -111,6 +111,72 @@
             text-decoration: underline;
         }
 
+        .report-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+            align-items: center;
+            margin-top: var(--space-4);
+        }
+
+        .report-quick-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+            align-items: center;
+        }
+
+        .report-toolbar a,
+        .report-month-form button {
+            min-height: 34px;
+            padding: 7px 11px;
+            border: 1px solid rgba(15, 118, 110, 0.32);
+            border-radius: 8px;
+            background: rgba(15, 118, 110, 0.08);
+            color: var(--accent);
+            font: inherit;
+            font-size: 0.9rem;
+            line-height: 1;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .report-toolbar a:hover,
+        .report-toolbar a:focus-visible,
+        .report-month-form button:hover,
+        .report-month-form button:focus-visible {
+            background: rgba(15, 118, 110, 0.14);
+            outline: none;
+        }
+
+        .report-month-form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-2);
+            align-items: center;
+        }
+
+        .report-month-form label {
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--muted);
+        }
+
+        .report-month-form select {
+            min-height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.62);
+            color: var(--ink);
+            font: inherit;
+            font-size: 0.92rem;
+            padding: 6px 30px 6px 10px;
+        }
+
+        .report-export-link {
+            font-weight: 700;
+        }
+
         .report-user-stat {
             border-color: rgba(15, 118, 110, 0.32);
             background:

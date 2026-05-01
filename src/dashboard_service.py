@@ -89,6 +89,8 @@ class TopCurrentConsumer(TypedDict):
 class InsightsData(TypedDict):
     'Insights-page data payload.'
     current_month_label: str
+    report_period_label: str
+    active_users_terminal_label: str
     isp_base_cost_usd: float
     isp_topoff_cost_usd: float
     active_users_daily_min: int
@@ -638,14 +640,25 @@ def build_live_dashboard_payload(
     }
 
 
-def build_insights_data() -> InsightsData:
+def build_insights_data(
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+    current_month_label: str | None = None,
+    report_period_label: str | None = None,
+    include_live_organization_paid_clients: bool = True,
+) -> InsightsData:
     'Assemble data payload for the /insights page.'
     organization_paid_vlan_criteria = list(cfg.ORGANIZATION_PAID_VLAN_NAMES)
     organization_paid_mac_criteria = list(cfg.ORGANIZATION_PAID_DEVICE_MACS)
     organization_paid_user_id_criteria = list(cfg.ORGANIZATION_PAID_USER_IDS)
+    selected_month_label = current_month_label or render_month_label(datetime.now())
+    selected_report_label = report_period_label or datetime.now().strftime('%B %Y')
 
     connected_snapshots: list[ClientSnapshot] = []
-    if organization_paid_vlan_criteria or organization_paid_mac_criteria or organization_paid_user_id_criteria:
+    if (
+        include_live_organization_paid_clients
+        and (organization_paid_vlan_criteria or organization_paid_mac_criteria or organization_paid_user_id_criteria)
+    ):
         connected_snapshots = get_connected_clients()
 
     def is_organization_paid_identity(mac: str, user_id: str | None, vlan_name: str | None) -> bool:
@@ -655,25 +668,38 @@ def build_insights_data() -> InsightsData:
             or (user_id or '') in organization_paid_user_id_criteria
         )
 
-    insights = db.get_global_month_insights(top_limit=6)
+    insights = db.get_global_month_insights(
+        top_limit=6,
+        period_start=period_start,
+        period_end=period_end,
+    )
     top_users_by_mac_this_month = db.get_global_top_users_current_month(
         limit=60,
         exclude_organization_paid_macs=organization_paid_mac_criteria,
         exclude_organization_paid_user_ids=organization_paid_user_id_criteria,
         exclude_organization_paid_vlan_names=organization_paid_vlan_criteria,
+        period_start=period_start,
+        period_end=period_end,
     )
     top_users_this_month = aggregate_top_users_by_identity(top_users_by_mac_this_month, limit=6)
-    daily_network_usage = db.get_global_daily_network_usage_current_month()
+    daily_network_usage = db.get_global_daily_network_usage_current_month(
+        period_start=period_start,
+        period_end=period_end,
+    )
     payer_split = db.get_global_payer_split_current_month(
         organization_paid_macs=organization_paid_mac_criteria,
         organization_paid_user_ids=organization_paid_user_id_criteria,
         organization_paid_vlan_names=organization_paid_vlan_criteria,
+        period_start=period_start,
+        period_end=period_end,
     )
     organization_paid_clients = db.get_global_organization_paid_clients_current_month(
         organization_paid_macs=organization_paid_mac_criteria,
         organization_paid_user_ids=organization_paid_user_id_criteria,
         organization_paid_vlan_names=organization_paid_vlan_criteria,
         limit=12,
+        period_start=period_start,
+        period_end=period_end,
     )
     organization_paid_clients_by_mac = {entry.mac.lower(): entry for entry in organization_paid_clients}
     for snapshot in connected_snapshots:
@@ -700,8 +726,14 @@ def build_insights_data() -> InsightsData:
         reverse=True,
     )[:12]
     speed_limits_by_name = {limit.name: limit for limit in api.get_speed_limits()}
-    concurrency_insights = db.get_global_concurrency_insights_current_month()
-    throttling_effectiveness = db.get_global_throttling_effectiveness_current_month()
+    concurrency_insights = db.get_global_concurrency_insights_current_month(
+        period_start=period_start,
+        period_end=period_end,
+    )
+    throttling_effectiveness = db.get_global_throttling_effectiveness_current_month(
+        period_start=period_start,
+        period_end=period_end,
+    )
     allowed_throttling_profiles = {level.profile_name for level in cfg.THROTTLING_LEVELS}
     throttling_profile_totals = sorted(
         (
@@ -714,7 +746,9 @@ def build_insights_data() -> InsightsData:
     )
 
     return {
-        'current_month_label': render_month_label(datetime.now()),
+        'current_month_label': selected_month_label,
+        'report_period_label': selected_report_label,
+        'active_users_terminal_label': 'Active Users Today' if include_live_organization_paid_clients else 'Active Users Final Day',
         'isp_base_cost_usd': float(cfg.ISP_BASE_COST_USD),
         'isp_topoff_cost_usd': float(cfg.ISP_TOPOFF_COST_USD),
         'active_users_daily_min': insights.active_users_min,

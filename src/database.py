@@ -36,6 +36,18 @@ def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, _connection_record: 
 
 SessionLocal = sessionmaker(bind=engine)
 
+
+def _month_period_bounds(
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+) -> tuple[datetime, datetime, date, date]:
+    'Return datetime/date bounds for current month or an explicit period.'
+    now = datetime.now()
+    start_dt = period_start or datetime.combine(date(now.year, now.month, 1), time.min)
+    end_dt = period_end or now
+    return start_dt, end_dt, start_dt.date(), end_dt.date()
+
+
 class Base(DeclarativeBase):
     'Base class for SQLAlchemy ORM models.'
     pass
@@ -801,13 +813,13 @@ def get_calendar_month_access_point_totals(mac: str) -> list[tuple[str, float, i
     )
 
 
-def get_global_month_insights(top_limit: int = 5) -> GlobalInsights:
-    'Return month-to-date global analytics for dashboard insights panels.'
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    today = now.date()
-    month_start_dt = datetime.combine(month_start, time.min)
-    month_end_dt = datetime.combine(today, time.max)
+def get_global_month_insights(
+    top_limit: int = 5,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+) -> GlobalInsights:
+    'Return global analytics for dashboard insights panels.'
+    month_start_dt, month_end_dt, month_start, month_end = _month_period_bounds(period_start, period_end)
 
     stmt = (
         select(
@@ -855,7 +867,7 @@ def get_global_month_insights(top_limit: int = 5) -> GlobalInsights:
 
     day = month_start
     daily_counts: list[int] = []
-    while day <= today:
+    while day <= month_end:
         daily_counts.append(len(daily_active_users.get(day, set())))
         day += timedelta(days=1)
 
@@ -904,21 +916,26 @@ def get_global_month_insights(top_limit: int = 5) -> GlobalInsights:
         active_users_max=active_users_max,
         active_users_today=active_users_today,
         days_in_period=len(daily_counts),
-        active_users_daily_x_labels=[day_number for day_number in range(1, len(daily_counts) + 1)],
-        active_users_daily_full_labels=[f'{month_start.strftime("%b")} {day_number}' for day_number in range(1, len(daily_counts) + 1)],
+        active_users_daily_x_labels=[
+            month_start.day + offset
+            for offset in range(len(daily_counts))
+        ],
+        active_users_daily_full_labels=[
+            f'{(month_start + timedelta(days=offset)).strftime("%b")} {(month_start + timedelta(days=offset)).day}'
+            for offset in range(len(daily_counts))
+        ],
         active_users_daily_counts=daily_counts,
         top_users=top_users,
         top_access_points=top_access_points,
     )
 
 
-def get_global_daily_network_usage_current_month() -> list[GlobalDailyNetworkUsage]:
-    'Return daily Basic/Plus usage totals (MB + active minutes) for current month.'
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    today = now.date()
-    month_start_dt = datetime.combine(month_start, time.min)
-    month_end_dt = datetime.combine(today, time.max)
+def get_global_daily_network_usage_current_month(
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+) -> list[GlobalDailyNetworkUsage]:
+    'Return daily Basic/Plus usage totals (MB + active minutes) for a month period.'
+    month_start_dt, month_end_dt, month_start, month_end = _month_period_bounds(period_start, period_end)
 
     stmt = (
         select(UsageRecord.timestamp, UsageRecord.vlan, UsageRecord.mb_used)
@@ -959,7 +976,7 @@ def get_global_daily_network_usage_current_month() -> list[GlobalDailyNetworkUsa
 
     day = month_start
     series: list[GlobalDailyNetworkUsage] = []
-    while day <= today:
+    while day <= month_end:
         bucket = totals_by_day.get(day, {})
         series.append(
             GlobalDailyNetworkUsage(
@@ -979,13 +996,11 @@ def get_global_payer_split_current_month(
     organization_paid_macs: set[str] | None = None,
     organization_paid_user_ids: set[str] | None = None,
     organization_paid_vlan_names: set[str] | None = None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ) -> GlobalPayerSplit:
-    'Return month-to-date totals split into organization-paid vs user-paid activity.'
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    today = now.date()
-    month_start_dt = datetime.combine(month_start, time.min)
-    month_end_dt = datetime.combine(today, time.max)
+    'Return period totals split into organization-paid vs user-paid activity.'
+    month_start_dt, month_end_dt, _, _ = _month_period_bounds(period_start, period_end)
 
     mac_allowlist = {mac.strip().lower() for mac in (organization_paid_macs or set()) if mac.strip()}
     user_allowlist = {user_id.strip().lower() for user_id in (organization_paid_user_ids or set()) if user_id.strip()}
@@ -1038,13 +1053,11 @@ def get_global_top_users_current_month(
     exclude_organization_paid_macs: set[str] | None = None,
     exclude_organization_paid_user_ids: set[str] | None = None,
     exclude_organization_paid_vlan_names: set[str] | None = None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ) -> list[GlobalTopUser]:
-    'Return top month-to-date users by MB, with optional organization-paid exclusion.'
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    today = now.date()
-    month_start_dt = datetime.combine(month_start, time.min)
-    month_end_dt = datetime.combine(today, time.max)
+    'Return top users by MB for a period, with optional organization-paid exclusion.'
+    month_start_dt, month_end_dt, _, _ = _month_period_bounds(period_start, period_end)
 
     mac_exclude = {mac.strip().lower() for mac in (exclude_organization_paid_macs or set()) if mac.strip()}
     user_exclude = {user_id.strip().lower() for user_id in (exclude_organization_paid_user_ids or set()) if user_id.strip()}
@@ -1111,13 +1124,11 @@ def get_global_organization_paid_clients_current_month(
     organization_paid_user_ids: set[str] | None = None,
     organization_paid_vlan_names: set[str] | None = None,
     limit: int = 12,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ) -> list[GlobalTopUser]:
-    'Return month-to-date organization-paid usage totals grouped by client.'
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    today = now.date()
-    month_start_dt = datetime.combine(month_start, time.min)
-    month_end_dt = datetime.combine(today, time.max)
+    'Return organization-paid usage totals grouped by client for a period.'
+    month_start_dt, month_end_dt, _, _ = _month_period_bounds(period_start, period_end)
 
     mac_allowlist = {mac.strip().lower() for mac in (organization_paid_macs or set()) if mac.strip()}
     user_allowlist = {user_id.strip().lower() for user_id in (organization_paid_user_ids or set()) if user_id.strip()}
@@ -1184,13 +1195,11 @@ def get_global_organization_paid_clients_current_month(
 
 def get_plus_user_invoice_summaries_current_month(
     excluded_user_ids: set[str] | None = None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ) -> list[PlusUserInvoiceSummary]:
-    'Return month-to-date invoice summaries for Plus users, one summary per user_id.'
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    today = now.date()
-    month_start_dt = datetime.combine(month_start, time.min)
-    month_end_dt = datetime.combine(today, time.max)
+    'Return invoice summaries for Plus users in a calendar-month period.'
+    month_start_dt, month_end_dt, month_start, month_end = _month_period_bounds(period_start, period_end)
 
     stmt = (
         select(
@@ -1316,7 +1325,7 @@ def get_plus_user_invoice_summaries_current_month(
         daily_totals = cast(dict[date, dict[str, object]], user_bucket['daily_totals'])
         day_cursor = month_start
         daily_usage: list[tuple[date, float, int]] = []
-        while day_cursor <= today:
+        while day_cursor <= month_end:
             bucket = daily_totals.get(day_cursor, {})
             daily_usage.append(
                 (
@@ -1347,12 +1356,18 @@ def get_plus_user_invoice_summaries_current_month(
 def get_plus_user_invoice_summary_current_month(
     user_id: str,
     excluded_user_ids: set[str] | None = None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ) -> PlusUserInvoiceSummary | None:
-    'Return month-to-date invoice summary for one Plus user_id.'
+    'Return invoice summary for one Plus user_id in a calendar-month period.'
     normalized_user_id = user_id.strip().lower()
     if not normalized_user_id:
         return None
-    for summary in get_plus_user_invoice_summaries_current_month(excluded_user_ids=excluded_user_ids):
+    for summary in get_plus_user_invoice_summaries_current_month(
+        excluded_user_ids=excluded_user_ids,
+        period_start=period_start,
+        period_end=period_end,
+    ):
         if summary.user_id.strip().lower() == normalized_user_id:
             return summary
     return None
@@ -1361,8 +1376,10 @@ def get_plus_user_invoice_summary_current_month(
 def get_plus_user_daily_device_usage_current_month(
     user_id: str,
     max_devices: int = 6,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ) -> tuple[list[date], list[tuple[str, list[float]]]]:
-    'Return per-day MB series by device for one Plus user in the current month.'
+    'Return per-day MB series by device for one Plus user in a calendar-month period.'
     def mac_tail(mac: str) -> str:
         parts = [part for part in mac.split(':') if part]
         if len(parts) >= 2:
@@ -1373,11 +1390,7 @@ def get_plus_user_daily_device_usage_current_month(
     if not normalized_user_id:
         return [], []
 
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    today = now.date()
-    month_start_dt = datetime.combine(month_start, time.min)
-    month_end_dt = datetime.combine(today, time.max)
+    month_start_dt, month_end_dt, month_start, month_end = _month_period_bounds(period_start, period_end)
 
     stmt = (
         select(
@@ -1398,7 +1411,7 @@ def get_plus_user_daily_device_usage_current_month(
 
     day_labels: list[date] = []
     day_cursor = month_start
-    while day_cursor <= today:
+    while day_cursor <= month_end:
         day_labels.append(day_cursor)
         day_cursor += timedelta(days=1)
     day_to_index = {usage_day: idx for idx, usage_day in enumerate(day_labels)}
@@ -1455,13 +1468,51 @@ def get_plus_user_daily_device_usage_current_month(
     return day_labels, series
 
 
-def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights:
-    'Return daily peak concurrency and day/hour heatmap totals for current month.'
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    today = now.date()
-    month_start_dt = datetime.combine(month_start, time.min)
-    month_end_dt = datetime.combine(today, time.max)
+def get_plus_user_invoice_months() -> list[date]:
+    'Return calendar months with billable Plus-user usage, newest first.'
+    stmt = select(
+        UsageRecord.timestamp,
+        UsageRecord.user_id,
+        UsageRecord.vlan,
+    ).order_by(UsageRecord.timestamp.desc())
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    month_starts: set[date] = set()
+    for row_timestamp, row_user_id, row_vlan in rows:
+        if not isinstance(row_timestamp, datetime):
+            continue
+        if not (isinstance(row_vlan, str) and row_vlan.strip().lower() == 'plus'):
+            continue
+        if not (isinstance(row_user_id, str) and row_user_id.strip()):
+            continue
+        month_starts.add(date(row_timestamp.year, row_timestamp.month, 1))
+
+    return sorted(month_starts, reverse=True)
+
+
+def get_usage_months() -> list[date]:
+    'Return calendar months with any usage records, newest first.'
+    stmt = select(UsageRecord.timestamp).order_by(UsageRecord.timestamp.desc())
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    month_starts: set[date] = set()
+    for (row_timestamp,) in rows:
+        if isinstance(row_timestamp, datetime):
+            month_starts.add(date(row_timestamp.year, row_timestamp.month, 1))
+
+    return sorted(month_starts, reverse=True)
+
+
+def get_global_concurrency_insights_current_month(
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+) -> GlobalConcurrencyInsights:
+    'Return daily peak concurrency and day/hour heatmap totals for a month period.'
+    month_start_dt, month_end_dt, month_start, month_end = _month_period_bounds(period_start, period_end)
 
     stmt = (
         select(UsageRecord.timestamp, UsageRecord.mac)
@@ -1502,7 +1553,7 @@ def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights
     daily_peak_counts: list[int] = []
     daily_peak_time_labels: list[str] = []
     day_cursor = month_start
-    while day_cursor <= today:
+    while day_cursor <= month_end:
         peak_count, peak_minute = daily_peak_map.get(day_cursor, (0, None))
         daily_x_labels.append(day_cursor.day)
         daily_full_labels.append(f'{day_cursor.strftime("%b")} {day_cursor.day}')
@@ -1541,13 +1592,14 @@ def get_global_concurrency_insights_current_month() -> GlobalConcurrencyInsights
 def get_global_throttling_effectiveness_current_month(
     before_after_days: int = 7,
     max_events: int = 8,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
 ) -> GlobalThrottlingEffectiveness:
     'Return throttling profile minutes and before/after impact around profile changes.'
-    now = datetime.now()
-    month_start = date(now.year, now.month, 1)
-    month_start_dt = datetime.combine(month_start, time.min)
+    month_start_dt, month_end_dt, _, _ = _month_period_bounds(period_start, period_end)
     window_days = max(1, before_after_days)
-    lookback_start = now - timedelta(days=(window_days * 3))
+    lookback_start = month_start_dt - timedelta(days=window_days)
+    lookback_end = month_end_dt + timedelta(days=window_days)
 
     stmt = (
         select(
@@ -1560,7 +1612,7 @@ def get_global_throttling_effectiveness_current_month(
         )
         .where(
             UsageRecord.timestamp >= lookback_start,
-            UsageRecord.timestamp <= now,
+            UsageRecord.timestamp <= lookback_end,
         )
         .order_by(UsageRecord.mac.asc(), UsageRecord.timestamp.asc())
     )
@@ -1587,7 +1639,7 @@ def get_global_throttling_effectiveness_current_month(
 
         per_mac_rows.setdefault(mac, []).append((row_timestamp, profile_key, mb_used))
 
-        if row_timestamp >= month_start_dt:
+        if month_start_dt <= row_timestamp <= month_end_dt:
             profile_minutes[profile_key] = int(profile_minutes.get(profile_key, 0)) + 1
             total_active_minutes += 1
             if profile_key:
@@ -1597,7 +1649,7 @@ def get_global_throttling_effectiveness_current_month(
         if (
             previous_profile is not None
             and previous_profile != profile_key
-            and row_timestamp >= month_start_dt
+            and month_start_dt <= row_timestamp <= month_end_dt
             and profile_key
         ):
             change_events_raw.append((row_timestamp, mac, user_id, name, previous_profile, profile_key))
