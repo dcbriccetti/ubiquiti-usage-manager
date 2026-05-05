@@ -169,7 +169,8 @@ class UsageMonitor:
         previous_total = self.last_totals_by_client_mac.get(client.mac, client.mb_used_since_connection)
         # Connection reset/device reconnect can roll counters backward.
         if client.mb_used_since_connection < previous_total:
-            previous_total = 0
+            self.last_totals_by_client_mac[client.mac] = client.mb_used_since_connection
+            return 0.0
 
         interval_mb = client.mb_used_since_connection - previous_total
         self.last_totals_by_client_mac[client.mac] = client.mb_used_since_connection
