@@ -16,6 +16,11 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
   - `/invoices/plus-users/<user_id>` per-user summary page,
   - `/invoices/plus-users/<user_id>/summary.pdf` per-user PDF export,
   - `/invoices/plus-users/export.zip` bulk ZIP export (all PDFs + CSV index).
+- Plus voucher workflow (admin-only):
+  - `/vouchers` generates paper vouchers at preset dollar values,
+  - each voucher stores a local user ID, password, and GB allocation,
+  - generated vouchers create matching UniFi local RADIUS users via `rest/account`,
+  - `/vouchers/batches/<batch_id>/print` renders print-ready voucher sheets.
 - Organization-paid analytics split:
   - payer split (organization-paid vs user-paid),
   - organization-paid client list.
@@ -75,6 +80,8 @@ Billing export behavior:
 
 - Users in `ORGANIZATION_PAID_USER_IDS` are excluded from Plus-user billing exports.
 - Costs are calculated from `COST_IN_CENTS_PER_GB`.
+- Voucher values are priced at `COST_IN_CENTS_PER_GB` and currently offered as $5, $10, $20, $50, and $100 batches.
+- Creating vouchers also creates UniFi local RADIUS accounts, so test with a single voucher before generating a batch.
 
 ## 3) Start The Monitor (required for live data)
 

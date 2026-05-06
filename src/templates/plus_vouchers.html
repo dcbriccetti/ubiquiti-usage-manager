@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Plus Vouchers | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero detail-hero">
+        <div>
+            <h1>Plus Vouchers</h1>
+            <p class="muted">
+                Paper login credentials with fixed data allocations · {{ unconsumed_voucher_count }} unconsumed
+            </p>
+            <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+        </div>
+    </section>
+
+    <div class="grid columns">
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Generate Vouchers</h2>
+                <form class="voucher-form" method="post" action="{{ url_for('plus_vouchers') }}">
+                    <label>
+                        Count
+                        <input type="number" name="count" min="1" max="100" step="1" value="{{ selected_count }}">
+                    </label>
+                    <label>
+                        Value
+                        <select name="value_dollars">
+                            {% for option in voucher_value_options %}
+                                <option value="{{ option.dollars }}" {% if selected_value_dollars|int == option.dollars %}selected{% endif %}>
+                                    ${{ option.dollars }} ({{ option.allocation_gb }} GB)
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <button type="submit">Generate</button>
+                </form>
+                <p class="muted">50 cents per GB</p>
+                {% if voucher_form_message %}
+                    <p class="muted">{{ voucher_form_message }}</p>
+                {% endif %}
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-body">
+                <h2>New Batch</h2>
+                {% if generated_vouchers %}
+                    <p>
+                        <a class="mac-link" href="{{ url_for('plus_voucher_batch_print', batch_id=generated_vouchers[0].batch_id) }}" target="_blank" rel="noopener">Print Batch</a>
+                    </p>
+                    <div class="table-wrap">
+                        <table class="fit-content-table">
+                            <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Password</th>
+                                <th class="num">GB</th>
+                                <th class="num">Price</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for voucher in generated_vouchers %}
+                                <tr>
+                                    <td class="mono">{{ voucher.user_id }}</td>
+                                    <td class="mono">{{ voucher.password }}</td>
+                                    <td class="num">{{ voucher.allocation_gb }}</td>
+                                    <td class="num">${{ "{:.2f}".format(voucher_cost_cents(voucher.allocation_gb) / 100.0) }}</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="muted">Generated vouchers will appear here.</p>
+                {% endif %}
+            </div>
+        </article>
+    </div>
+
+    <article class="panel" style="margin-top: var(--space-5);">
+        <div class="panel-body">
+            <h2>Recent Vouchers</h2>
+            <div class="table-wrap">
+                <table class="fit-content-table">
+                    <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Password</th>
+                        <th class="num">GB</th>
+                        <th class="num">Price</th>
+                        <th>Status</th>
+                        <th>Batch</th>
+                        <th>Generated</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for voucher in voucher_rows %}
+                        <tr>
+                            <td class="mono">{{ voucher.user_id }}</td>
+                            <td class="mono">{{ voucher.password }}</td>
+                            <td class="num">{{ voucher.allocation_gb }}</td>
+                            <td class="num">${{ "{:.2f}".format(voucher_cost_cents(voucher.allocation_gb) / 100.0) }}</td>
+                            <td>
+                                {% if voucher.consumed_at %}
+                                    <span class="pill warn">Consumed</span>
+                                {% else %}
+                                    <span class="pill">Unconsumed</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a class="mac-link" href="{{ url_for('plus_voucher_batch_print', batch_id=voucher.batch_id) }}" target="_blank" rel="noopener">
+                                    Print
+                                </a>
+                            </td>
+                            <td>{{ voucher.generated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="muted">No vouchers generated yet.</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </article>
+{% endblock %}

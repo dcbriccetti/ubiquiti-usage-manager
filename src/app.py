@@ -94,6 +94,7 @@ class ClientUsageContext(TypedDict):
 def create_app() -> Flask:
     'Create and configure the Flask web application.'
     configure_logging()
+    db.init_db()
     flask_app = Flask(__name__)
     live_update_seconds = 60
     live_update_boundary_offset_seconds = 3
@@ -122,6 +123,32 @@ def create_app() -> Flask:
         if value is None or value == '':
             return ''
         return str(value)
+
+    def calculate_voucher_cost_cents(allocation_gb: int) -> int:
+        'Return voucher price using the configured cents-per-GB rate.'
+        return int(round(allocation_gb * cfg.COST_IN_CENTS_PER_GB))
+
+    def get_voucher_wifi_ssid() -> str:
+        'Return Wi-Fi SSID display name for printed voucher instructions.'
+        return str(getattr(cfg, 'PLUS_REPORT_TITLE', '') or 'Plus').strip()
+
+    def build_voucher_radius_payload(voucher: db.PlusVoucherRecord) -> dict[str, Any]:
+        'Return the local RADIUS account payload for one voucher.'
+        return api.build_radius_account_payload(
+            username=str(voucher.user_id),
+            password=voucher.password,
+        )
+
+    def voucher_value_options() -> list[dict[str, int]]:
+        'Return supported voucher values and their GB allocations.'
+        return [
+            {'dollars': dollars, 'allocation_gb': int((dollars * 100) / cfg.COST_IN_CENTS_PER_GB)}
+            for dollars in (5, 10, 20, 50, 100)
+        ]
+
+    def pluralize(count: int, singular: str, plural: str | None = None) -> str:
+        'Return a count plus singular/plural label.'
+        return f'{count} {singular if count == 1 else (plural or singular + "s")}'
 
     def get_live_client_record_by_mac(mac: str) -> dict[str, Any] | None:
         'Return live UniFi station payload for one MAC, if currently connected.'
@@ -467,6 +494,83 @@ def create_app() -> Flask:
             "radius_users.html",
             generated_at=datetime.now(),
             radius_user_rows=radius_user_rows,
+        )
+
+    @flask_app.route("/vouchers", methods=["GET", "POST"])
+    def plus_vouchers():
+        'Generate and list home-grown Plus login vouchers.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        generated_vouchers: list[db.PlusVoucherRecord] = []
+        voucher_form_message = ''
+        selected_count = '10'
+        selected_value_dollars = '5'
+
+        if request.method == "POST":
+            selected_count = request.form.get("count", selected_count).strip()
+            selected_value_dollars = request.form.get("value_dollars", selected_value_dollars).strip()
+            try:
+                count = int(selected_count)
+                value_dollars = int(selected_value_dollars)
+                allowed_values = {option['dollars'] for option in voucher_value_options()}
+                if value_dollars not in allowed_values:
+                    raise ValueError('Please select a valid voucher value.')
+                allocation_gb = int((value_dollars * 100) / cfg.COST_IN_CENTS_PER_GB)
+                if count > 100:
+                    raise ValueError('Generate at most 100 vouchers at a time.')
+                generated_vouchers = db.create_plus_vouchers(count, allocation_gb)
+                radius_failures: list[str] = []
+                for voucher in generated_vouchers:
+                    payload = build_voucher_radius_payload(voucher)
+                    created, error_message = api.create_radius_account(payload)
+                    if not created:
+                        radius_failures.append(f'{voucher.user_id}: {error_message}')
+                if radius_failures:
+                    voucher_form_message = (
+                        f'Generated {pluralize(len(generated_vouchers), "voucher")}, but '
+                        f'{pluralize(len(radius_failures), "RADIUS account")} failed: '
+                        f'{", ".join(radius_failures)}'
+                    )
+                else:
+                    generated_count = len(generated_vouchers)
+                    voucher_form_message = (
+                        f'Generated {pluralize(generated_count, "voucher")} and '
+                        f'created {pluralize(generated_count, "UniFi RADIUS account")}.'
+                    )
+            except ValueError as exc:
+                voucher_form_message = str(exc)
+
+        voucher_rows = db.get_plus_vouchers()
+        return render_template(
+            "plus_vouchers.html",
+            generated_vouchers=generated_vouchers,
+            voucher_rows=voucher_rows,
+            voucher_form_message=voucher_form_message,
+            selected_count=selected_count,
+            selected_value_dollars=selected_value_dollars,
+            voucher_value_options=voucher_value_options(),
+            unconsumed_voucher_count=db.get_unconsumed_plus_voucher_count(),
+            voucher_cost_cents=calculate_voucher_cost_cents,
+        )
+
+    @flask_app.route("/vouchers/batches/<batch_id>/print")
+    def plus_voucher_batch_print(batch_id: str):
+        'Render a print-optimized sheet for one voucher batch.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        vouchers = db.get_plus_voucher_batch(batch_id)
+        if not vouchers:
+            abort(404)
+
+        return render_template(
+            "plus_voucher_print.html",
+            batch_id=batch_id,
+            vouchers=vouchers,
+            voucher_cost_cents=calculate_voucher_cost_cents,
+            voucher_wifi_ssid=get_voucher_wifi_ssid(),
+            generated_at=datetime.now(),
         )
 
     @flask_app.route("/api/dashboard-snapshot")

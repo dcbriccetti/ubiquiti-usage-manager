@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Print Plus Vouchers</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #f6f3ec;
+            color: #111827;
+            font-family: "Avenir Next", "Segoe UI", sans-serif;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: center;
+            padding: 18px 24px;
+            border-bottom: 1px solid #d7d0c4;
+            background: #fffaf2;
+        }
+
+        .toolbar h1 {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+
+        .toolbar p {
+            margin: 4px 0 0;
+            color: #52606d;
+            font-size: 0.92rem;
+        }
+
+        .toolbar button {
+            min-height: 38px;
+            border: 1px solid #0f766e;
+            border-radius: 8px;
+            background: #0f766e;
+            color: white;
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            padding: 8px 14px;
+        }
+
+        .sheet {
+            width: 7.6in;
+            margin: 0 auto;
+            padding: 0.12in 0;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.07in;
+            align-content: start;
+        }
+
+        .voucher-card {
+            height: 1.84in;
+            border: 2px solid #111827;
+            border-radius: 6px;
+            background: white;
+            padding: 0.1in;
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            grid-template-rows: auto 1fr;
+            gap: 0.05in;
+            break-inside: avoid;
+        }
+
+        .voucher-header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            gap: 0.16in;
+            align-items: start;
+        }
+
+        .voucher-card h2 {
+            margin: 0;
+            font-size: 0.24in;
+            font-weight: 650;
+            line-height: 1.05;
+            text-align: left;
+        }
+
+        .voucher-value {
+            flex: 0 0 auto;
+            margin-top: 0;
+            font-size: 0.24in;
+            color: #075e57;
+            font-weight: 650;
+            text-align: right;
+            white-space: nowrap;
+            line-height: 1;
+        }
+
+        .voucher-login {
+            display: grid;
+            gap: 0.08in;
+            align-content: center;
+            margin: 0;
+            grid-column: 1;
+        }
+
+        .credential-row {
+            display: grid;
+            gap: 0.015in;
+        }
+
+        .credential-label {
+            color: #111827;
+            font-size: 0.09in;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .credential-value {
+            font-family: "SFMono-Regular", "Menlo", monospace;
+            font-size: 0.27in;
+            font-weight: 650;
+            letter-spacing: 0;
+            line-height: 1;
+        }
+
+        .voucher-instructions {
+            margin: 0;
+            padding-left: 0.1in;
+            color: #111827;
+            font-size: 0.08in;
+            line-height: 1.22;
+            align-self: end;
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        @page {
+            size: letter;
+            margin: 0.35in;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            html,
+            body {
+                width: auto;
+                height: auto;
+                margin: 0;
+                overflow: visible;
+            }
+
+            .toolbar {
+                display: none;
+            }
+
+            .sheet {
+                width: 7.6in;
+                min-height: 0;
+                height: auto;
+                margin: 0;
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="toolbar">
+        <div>
+            <h1>Plus Vouchers</h1>
+            <p>
+                Batch {{ batch_id }} · {{ vouchers|length }} {% if vouchers|length == 1 %}voucher{% else %}vouchers{% endif %} ·
+                Generated {{ generated_at.strftime("%Y-%m-%d %H:%M") }}
+            </p>
+        </div>
+        <button type="button" onclick="window.print()">Print</button>
+    </header>
+
+    <main class="sheet">
+        {% for voucher in vouchers %}
+            <article class="voucher-card">
+                <div class="voucher-header">
+                    <h2>{{ voucher_wifi_ssid }}<br>Wi-Fi Voucher</h2>
+                    <div class="voucher-value">
+                        ${{ "{:.0f}".format(voucher_cost_cents(voucher.allocation_gb) / 100.0) }} · {{ voucher.allocation_gb }} GB
+                    </div>
+                </div>
+
+                <div class="voucher-login">
+                    <div class="credential-row">
+                        <span class="credential-label">User ID</span>
+                        <span class="credential-value">{{ voucher.user_id }}</span>
+                    </div>
+                    <div class="credential-row">
+                        <span class="credential-label">Password</span>
+                        <span class="credential-value">{{ voucher.password }}</span>
+                    </div>
+                </div>
+
+                <ul class="voucher-instructions">
+                    <li>iPhone/iPad: choose {{ voucher_wifi_ssid }}, then enter the User ID and Password.</li>
+                    <li>Android: choose {{ voucher_wifi_ssid }}. If extra fields appear, use PEAP, MSCHAPV2, and Do not validate for certificate.</li>
+                    <li>If your phone asks about a certificate, trust it for this network.</li>
+                </ul>
+            </article>
+        {% endfor %}
+    </main>
+</body>
+</html>

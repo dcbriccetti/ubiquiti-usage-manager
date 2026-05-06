@@ -63,6 +63,46 @@ def get_radius_accounts() -> list[dict[str, Any]]:
     'Return configured local RADIUS user accounts.'
     return get_api_data('rest/account')
 
+
+def build_radius_account_payload(
+    username: str,
+    password: str,
+    vlan: str = '',
+    tunnel_type: int | None = None,
+    tunnel_medium_type: int | None = None,
+) -> dict[str, Any]:
+    'Build a UniFi local RADIUS account payload without sending it.'
+    payload: dict[str, Any] = {
+        'name': username,
+        'password': password,
+    }
+    if vlan:
+        payload['vlan'] = vlan
+    if tunnel_type is not None:
+        payload['tunnel_type'] = tunnel_type
+    if tunnel_medium_type is not None:
+        payload['tunnel_medium_type'] = tunnel_medium_type
+    return payload
+
+
+def create_radius_account(payload: dict[str, Any]) -> tuple[bool, str]:
+    'Create one UniFi local RADIUS account from a prepared payload.'
+    url = f"{BASE_URL}/rest/account"
+    logger.info("UniFi POST endpoint=rest/account payload=%s", payload)
+    try:
+        response = requests.post(url, json=payload, headers=HEADERS, verify=False, timeout=10)
+        if response.status_code in {200, 201}:
+            return True, ''
+        logger.warning(
+            "UniFi API error endpoint=rest/account status=%s response=%s",
+            response.status_code,
+            response.text[:500],
+        )
+        return False, f"UniFi returned HTTP {response.status_code}"
+    except requests.RequestException as exc:
+        logger.warning("UniFi API error endpoint=rest/account error=%s", exc)
+        return False, str(exc)
+
 def get_ap_names_by_mac() -> dict[str, str]:
     'Return a mapping of AP MAC address to AP display name/model.'
     devices = get_api_data('stat/device')
@@ -101,7 +141,10 @@ def release_all_from_limits(throttling_group_ids: set[str]) -> None:
             if set_user_group(str(user_id), None):
                 count += 1
     if count > 0:
-        logger.info("Released %s user(s) from throttling speed limits", count)
+        logger.info(
+            "Released %s from throttling speed limits",
+            f"{count} {'user' if count == 1 else 'users'}",
+        )
 
 def get_group_id_by_name(group_name: str) -> str | None:
     'Look up the UniFi group ID for a group name.'

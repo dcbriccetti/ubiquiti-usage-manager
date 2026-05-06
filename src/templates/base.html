@@ -663,6 +663,61 @@
             margin-bottom: 4px;
         }
 
+        .voucher-form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+            align-items: end;
+        }
+
+        .voucher-form label {
+            display: grid;
+            gap: 6px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--muted);
+        }
+
+        .voucher-form input {
+            min-height: 38px;
+            min-width: 132px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--ink);
+            font: inherit;
+            padding: 7px 10px;
+        }
+
+        .voucher-form select {
+            min-height: 38px;
+            min-width: 154px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--ink);
+            font: inherit;
+            padding: 7px 10px;
+        }
+
+        .voucher-form button {
+            min-height: 38px;
+            border: 1px solid rgba(15, 118, 110, 0.32);
+            border-radius: 8px;
+            background: rgba(15, 118, 110, 0.12);
+            color: var(--accent);
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            padding: 8px 13px;
+        }
+
+        .voucher-form button:hover,
+        .voucher-form button:focus-visible {
+            background: rgba(15, 118, 110, 0.18);
+            outline: none;
+        }
+
         .usage-history-panel .panel-body {
             max-height: 500px;
             overflow: auto;
