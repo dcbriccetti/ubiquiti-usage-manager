@@ -141,26 +141,22 @@ def create_app() -> Flask:
         'Return decimal MB for network byte counters.'
         return byte_count / 1_000_000.0
 
-    def decorate_wan_rows(rows: list[db.WanClientUsageSummary]) -> list[dict[str, object]]:
-        'Attach latest-known UniFi identity metadata to WAN client rollups.'
-        identities_by_ip = db.get_latest_client_identities_by_ip([row.client_ip for row in rows])
-        decorated_rows: list[dict[str, object]] = []
-        for row in rows:
-            identity = identities_by_ip.get(row.client_ip)
-            decorated_rows.append(
-                {
-                    'client_ip': row.client_ip,
-                    'name': identity.name if identity else '',
-                    'user_id': identity.user_id if identity else '',
-                    'vlan': identity.vlan if identity else '',
-                    'mac': identity.mac if identity else '',
-                    'identity_observed_at': identity.observed_at if identity else None,
-                    'upload_bytes': row.upload_bytes,
-                    'download_bytes': row.download_bytes,
-                    'flow_count': row.flow_count,
-                }
-            )
-        return decorated_rows
+    def serialize_wan_identity_rows(rows: list[db.WanIdentityUsageSummary]) -> list[dict[str, object]]:
+        'Serialize timestamp-attributed WAN identity rollups for templates.'
+        return [
+            {
+                'client_ip': row.client_ip,
+                'name': row.name,
+                'user_id': row.user_id,
+                'vlan': row.vlan,
+                'mac': row.mac,
+                'identity_observed_at': None,
+                'upload_bytes': row.upload_bytes,
+                'download_bytes': row.download_bytes,
+                'flow_count': row.flow_count,
+            }
+            for row in rows
+        ]
 
     def summarize_wan_by_network(rows: list[dict[str, object]]) -> list[dict[str, object]]:
         'Aggregate decorated WAN rows by latest-known network/VLAN label.'
@@ -597,10 +593,10 @@ def create_app() -> Flask:
         now = datetime.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        today_rows = db.get_wan_usage_by_client(period_start=today_start, period_end=now, limit=50)
-        month_rows = db.get_wan_usage_by_client(period_start=month_start, period_end=now, limit=50)
-        decorated_today_rows = decorate_wan_rows(today_rows)
-        decorated_month_rows = decorate_wan_rows(month_rows)
+        today_rows = db.get_wan_usage_by_identity(period_start=today_start, period_end=now)
+        month_rows = db.get_wan_usage_by_identity(period_start=month_start, period_end=now)
+        decorated_today_rows = serialize_wan_identity_rows(today_rows)
+        decorated_month_rows = serialize_wan_identity_rows(month_rows)
         recent_imports = db.get_recent_flow_imports(limit=12)
         latest_import = recent_imports[0] if recent_imports else None
         latest_import_age_minutes = (

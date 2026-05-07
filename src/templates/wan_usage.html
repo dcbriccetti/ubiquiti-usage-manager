@@ -50,6 +50,7 @@
             {% endif %}
             <p class="muted">
                 Internal networks: {{ internal_networks|join(", ") if internal_networks else "none configured" }}.
+                Client and network rows use the identity observed nearest each flow time.
                 Top client table hides rows below {{ "{:,.2f}".format(client_display_threshold_mb) }} MB today.
                 {% if hidden_tiny_client_count %}
                     {{ hidden_tiny_client_count }} tiny client{% if hidden_tiny_client_count != 1 %}s{% endif %} hidden.
