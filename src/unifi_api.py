@@ -74,7 +74,7 @@ def build_radius_account_payload(
     'Build a UniFi local RADIUS account payload without sending it.'
     payload: dict[str, Any] = {
         'name': username,
-        'password': password,
+        'x_password': password,
     }
     if vlan:
         payload['vlan'] = vlan
@@ -85,22 +85,31 @@ def build_radius_account_payload(
     return payload
 
 
+def _redact_secret_fields(payload: dict[str, Any]) -> dict[str, Any]:
+    'Return a copy of a payload with write-only secrets hidden for logs.'
+    redacted = payload.copy()
+    for field_name in ('password', 'x_password'):
+        if field_name in redacted:
+            redacted[field_name] = '<redacted>'
+    return redacted
+
+
 def create_radius_account(payload: dict[str, Any]) -> tuple[bool, str]:
     'Create one UniFi local RADIUS account from a prepared payload.'
-    url = f"{BASE_URL}/rest/account"
-    logger.info("UniFi POST endpoint=rest/account payload=%s", payload)
+    url = f"{BASE_URL}/add/account"
+    logger.info("UniFi POST endpoint=add/account payload=%s", _redact_secret_fields(payload))
     try:
         response = requests.post(url, json=payload, headers=HEADERS, verify=False, timeout=10)
         if response.status_code in {200, 201}:
             return True, ''
         logger.warning(
-            "UniFi API error endpoint=rest/account status=%s response=%s",
+            "UniFi API error endpoint=add/account status=%s response=%s",
             response.status_code,
             response.text[:500],
         )
         return False, f"UniFi returned HTTP {response.status_code}"
     except requests.RequestException as exc:
-        logger.warning("UniFi API error endpoint=rest/account error=%s", exc)
+        logger.warning("UniFi API error endpoint=add/account error=%s", exc)
         return False, str(exc)
 
 def get_ap_names_by_mac() -> dict[str, str]:
