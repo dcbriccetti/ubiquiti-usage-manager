@@ -129,6 +129,10 @@ def create_app() -> Flask:
         'Return voucher price using the configured cents-per-GB rate.'
         return int(round(allocation_gb * cfg.COST_IN_CENTS_PER_GB))
 
+    def bytes_to_mb(byte_count: int) -> float:
+        'Return decimal MB for network byte counters.'
+        return byte_count / 1_000_000.0
+
     def get_voucher_wifi_ssid() -> str:
         'Return Wi-Fi SSID display name for printed voucher instructions.'
         return str(getattr(cfg, 'PLUS_REPORT_TITLE', '') or 'Plus').strip()
@@ -219,10 +223,6 @@ def create_app() -> Flask:
             "Try again in a moment after generating some network activity."
         )
 
-    def dev_force_plus_admin_enabled() -> bool:
-        'Return True when DEV_FORCE_PLUS_ADMIN requests admin-access bypass for testing.'
-        return os.getenv("DEV_FORCE_PLUS_ADMIN", "").strip().lower() in {"1", "true", "yes", "on"}
-
     def speed_limit_option_label(limit: SpeedLimit) -> str:
         'Build select-option label for one speed-limit profile.'
         rendered = str(limit)
@@ -275,9 +275,6 @@ def create_app() -> Flask:
 
     def requester_is_plus_admin() -> bool:
         'Resolve current requester and return whether they are a Plus admin.'
-        if dev_force_plus_admin_enabled():
-            return True
-
         if not (request_ip := resolve_request_ip()):
             return False
 
@@ -496,6 +493,37 @@ def create_app() -> Flask:
             previous_month_value=period_context['previous_month_value'],
             month_options=period_context['month_options'],
             **insights_data,
+        )
+
+    @flask_app.route("/wan")
+    def wan_usage():
+        'Render WAN flow usage imported from nfdump/IPFIX captures.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        today_rows = db.get_wan_usage_by_client(period_start=today_start, period_end=now, limit=50)
+        month_rows = db.get_wan_usage_by_client(period_start=month_start, period_end=now, limit=50)
+        recent_imports = db.get_recent_flow_imports(limit=12)
+
+        total_today_download_bytes = sum(row.download_bytes for row in today_rows)
+        total_today_upload_bytes = sum(row.upload_bytes for row in today_rows)
+        total_month_download_bytes = sum(row.download_bytes for row in month_rows)
+        total_month_upload_bytes = sum(row.upload_bytes for row in month_rows)
+
+        return render_template(
+            "wan_usage.html",
+            generated_at=now,
+            today_rows=today_rows,
+            month_rows=month_rows,
+            recent_imports=recent_imports,
+            bytes_to_mb=bytes_to_mb,
+            total_today_download_mb=bytes_to_mb(total_today_download_bytes),
+            total_today_upload_mb=bytes_to_mb(total_today_upload_bytes),
+            total_month_download_mb=bytes_to_mb(total_month_download_bytes),
+            total_month_upload_mb=bytes_to_mb(total_month_upload_bytes),
         )
 
     @flask_app.route("/radius/users")
@@ -886,4 +914,5 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1", port=5051)
+    flask_debug = os.getenv("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
+    app.run(debug=flask_debug, use_reloader=flask_debug, host="127.0.0.1", port=5051)

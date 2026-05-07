@@ -119,12 +119,11 @@ If your request is not recognized as an admin, `/` redirects to `/my-usage`.
 
 - `LOG_LEVEL=DEBUG` to increase log detail
 - `DEV_REQUEST_IP=<ip>` to force request IP resolution (testing)
-- `DEV_FORCE_PLUS_ADMIN=1` to bypass admin check (testing)
 
 Example:
 
 ```bash
-LOG_LEVEL=DEBUG DEV_FORCE_PLUS_ADMIN=1 python3 src/app.py
+LOG_LEVEL=DEBUG DEV_REQUEST_IP=<ip> python3 src/app.py
 ```
 
 ## WAN Flow Import

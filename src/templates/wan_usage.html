@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}WAN Usage | UniFi Usage{% endblock %}
+{% block page_class %} wide-page{% endblock %}
+
+{% block content %}
+    <section class="hero">
+        <div>
+            <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+            <h1>WAN Usage</h1>
+            <p>Flow-attributed internet usage from completed NetFlow/IPFIX captures.</p>
+        </div>
+    </section>
+
+    <section class="grid stats">
+        <article class="panel stat">
+            <span class="label">WAN Today</span>
+            <span class="value">{{ "{:,.1f}".format(total_today_download_mb + total_today_upload_mb) }} MB</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">Today Down / Up</span>
+            <span class="value">{{ "{:,.1f}".format(total_today_download_mb) }} / {{ "{:,.1f}".format(total_today_upload_mb) }}</span>
+        </article>
+        <article class="panel stat">
+            <span class="label">WAN Month</span>
+            <span class="value">{{ "{:,.1f}".format(total_month_download_mb + total_month_upload_mb) }} MB</span>
+        </article>
+    </section>
+
+    <section class="grid">
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Top WAN Clients Today</h2>
+                <div class="table-wrap">
+                    <table class="fit-content-table">
+                        <thead>
+                        <tr>
+                            <th>Client IP</th>
+                            <th class="num">Download MB</th>
+                            <th class="num">Upload MB</th>
+                            <th class="num">Total MB</th>
+                            <th class="num">Flows</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in today_rows %}
+                            {% set download_mb = bytes_to_mb(row.download_bytes) %}
+                            {% set upload_mb = bytes_to_mb(row.upload_bytes) %}
+                            <tr>
+                                <td class="mono">{{ row.client_ip }}</td>
+                                <td class="num">{{ "{:,.2f}".format(download_mb) }}</td>
+                                <td class="num">{{ "{:,.2f}".format(upload_mb) }}</td>
+                                <td class="num">{{ "{:,.2f}".format(download_mb + upload_mb) }}</td>
+                                <td class="num">{{ "{:,.0f}".format(row.flow_count) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="5" class="muted">No WAN flow usage imported for today yet.</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-body">
+                <h2>Recent Flow Imports</h2>
+                <div class="table-wrap">
+                    <table class="fit-content-table">
+                        <thead>
+                        <tr>
+                            <th>Capture File</th>
+                            <th>Imported</th>
+                            <th class="num">Rows</th>
+                            <th class="num">Skipped</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for import_row in recent_imports %}
+                            <tr>
+                                <td class="mono">{{ import_row.source_file }}</td>
+                                <td>{{ import_row.imported_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+                                <td class="num">{{ "{:,.0f}".format(import_row.record_count) }}</td>
+                                <td class="num">{{ "{:,.0f}".format(import_row.skipped_count) }}</td>
+                            </tr>
+                        {% else %}
+                            <tr>
+                                <td colspan="4" class="muted">No flow imports recorded yet.</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </article>
+    </section>
+{% endblock %}

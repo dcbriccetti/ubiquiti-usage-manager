@@ -248,6 +248,15 @@ class WanClientUsageSummary:
     download_bytes: int
     flow_count: int
 
+
+@dataclass(frozen=True, kw_only=True)
+class FlowImportRecord:
+    'Import bookkeeping view-model for one nfcapd capture file.'
+    source_file: str
+    imported_at: datetime
+    record_count: int
+    skipped_count: int
+
 # --- MODELS ---
 class UsageRecord(Base):
     'Ledger row storing one non-zero usage interval.'
@@ -407,6 +416,28 @@ def get_wan_usage_by_client(
             flow_count=int(flow_count or 0),
         )
         for client_ip, upload_bytes, download_bytes, flow_count in rows
+    ]
+
+
+def get_recent_flow_imports(limit: int = 20) -> list[FlowImportRecord]:
+    'Return recent nfdump capture imports, newest first.'
+    stmt = (
+        select(FlowImport)
+        .order_by(FlowImport.imported_at.desc(), FlowImport.id.desc())
+        .limit(max(1, limit))
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).scalars().all()
+
+    return [
+        FlowImportRecord(
+            source_file=row.source_file,
+            imported_at=row.imported_at,
+            record_count=row.record_count,
+            skipped_count=row.skipped_count,
+        )
+        for row in rows
     ]
 
 
