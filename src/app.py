@@ -162,6 +162,32 @@ def create_app() -> Flask:
             )
         return decorated_rows
 
+    def summarize_wan_by_network(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        'Aggregate decorated WAN rows by latest-known network/VLAN label.'
+        summary_by_network: dict[str, dict[str, object]] = {}
+        for row in rows:
+            network_name = str(row.get('vlan') or 'Unknown')
+            summary = summary_by_network.setdefault(
+                network_name,
+                {
+                    'network': network_name,
+                    'download_bytes': 0,
+                    'upload_bytes': 0,
+                    'flow_count': 0,
+                    'client_count': 0,
+                },
+            )
+            summary['download_bytes'] = int(summary['download_bytes']) + int(row.get('download_bytes') or 0)
+            summary['upload_bytes'] = int(summary['upload_bytes']) + int(row.get('upload_bytes') or 0)
+            summary['flow_count'] = int(summary['flow_count']) + int(row.get('flow_count') or 0)
+            summary['client_count'] = int(summary['client_count']) + 1
+
+        return sorted(
+            summary_by_network.values(),
+            key=lambda summary: int(summary['download_bytes']) + int(summary['upload_bytes']),
+            reverse=True,
+        )
+
     def get_voucher_wifi_ssid() -> str:
         'Return Wi-Fi SSID display name for printed voucher instructions.'
         return str(getattr(cfg, 'PLUS_REPORT_TITLE', '') or 'Plus').strip()
@@ -568,6 +594,8 @@ def create_app() -> Flask:
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         today_rows = db.get_wan_usage_by_client(period_start=today_start, period_end=now, limit=50)
         month_rows = db.get_wan_usage_by_client(period_start=month_start, period_end=now, limit=50)
+        decorated_today_rows = decorate_wan_rows(today_rows)
+        decorated_month_rows = decorate_wan_rows(month_rows)
         recent_imports = db.get_recent_flow_imports(limit=12)
 
         total_today_download_bytes = sum(row.download_bytes for row in today_rows)
@@ -578,8 +606,10 @@ def create_app() -> Flask:
         return render_template(
             "wan_usage.html",
             generated_at=now,
-            today_rows=decorate_wan_rows(today_rows),
-            month_rows=decorate_wan_rows(month_rows),
+            today_rows=decorated_today_rows,
+            month_rows=decorated_month_rows,
+            today_network_rows=summarize_wan_by_network(decorated_today_rows),
+            month_network_rows=summarize_wan_by_network(decorated_month_rows),
             recent_imports=recent_imports,
             bytes_to_mb=bytes_to_mb,
             total_today_download_mb=bytes_to_mb(total_today_download_bytes),
