@@ -40,6 +40,9 @@ PLUS_REPORT_TITLE = ''
 PLUS_ADMINS: set[str] = set()
 PLUS_ADMIN_IPS: set[str] = set()
 SELF_SERVICE_SPEED_LIMIT_ENABLED = False
+NFDUMP_DIR = '/var/cache/nfdump'
+NFDUMP_BIN = 'nfdump'
+INTERNAL_NETWORKS = {'192.168.0.0/16'}
 
 # Devices/users whose usage is paid by the organization (for global analytics split).
 # Use VLAN names only (not SSID names).

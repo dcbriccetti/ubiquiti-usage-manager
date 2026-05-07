@@ -26,6 +26,9 @@ PLUS_REPORT_TITLE = ''
 PLUS_ADMINS = {'replace_me_1', 'replace_me_2'}
 PLUS_ADMIN_IPS: set[str] = set()
 SELF_SERVICE_SPEED_LIMIT_ENABLED = False
+NFDUMP_DIR = '/var/cache/nfdump'
+NFDUMP_BIN = 'nfdump'
+INTERNAL_NETWORKS = {'192.168.0.0/16'}
 
 ORGANIZATION_PAID_DEVICE_MACS: set[str] = set()
 ORGANIZATION_PAID_USER_IDS: set[str] = set()

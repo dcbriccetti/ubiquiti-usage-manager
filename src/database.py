@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
 from pathlib import Path
 from typing import Optional, cast
-from sqlalchemy import create_engine, String, func, select, event
+from sqlalchemy import UniqueConstraint, case, create_engine, String, func, select, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from clientinfo import ClientInfo
@@ -221,6 +221,33 @@ class PlusVoucherRecord:
     generated_at: datetime
     consumed_at: datetime | None
 
+
+@dataclass(frozen=True, kw_only=True)
+class WanFlowUsageRecord:
+    'One WAN-classified flow row imported from nfdump.'
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: float
+    proto: str
+    src_ip: str
+    src_port: int | None
+    dst_ip: str
+    dst_port: int | None
+    packets: int
+    bytes: int
+    direction: str
+    client_ip: str
+    source_file: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class WanClientUsageSummary:
+    'WAN upload/download rollup for one internal client IP.'
+    client_ip: str
+    upload_bytes: int
+    download_bytes: int
+    flow_count: int
+
 # --- MODELS ---
 class UsageRecord(Base):
     'Ledger row storing one non-zero usage interval.'
@@ -251,10 +278,136 @@ class PlusVoucher(Base):
     consumed_at:   Mapped[Optional[datetime]] = mapped_column(index=True)
 
 
+class FlowImport(Base):
+    'Bookkeeping row for one completed nfcapd file imported into SQLite.'
+    __tablename__ = "flow_imports"
+
+    id:            Mapped[int]      = mapped_column(primary_key=True, autoincrement=True)
+    source_file:   Mapped[str]      = mapped_column(String(255), unique=True, index=True)
+    imported_at:   Mapped[datetime] = mapped_column(default=datetime.now, index=True)
+    record_count:  Mapped[int]      = mapped_column()
+    skipped_count: Mapped[int]      = mapped_column(default=0)
+
+
+class WanFlowUsage(Base):
+    'WAN-classified flow imported from nfdump/IPFIX captures.'
+    __tablename__ = "wan_flow_usage"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_file",
+            "started_at",
+            "proto",
+            "src_ip",
+            "src_port",
+            "dst_ip",
+            "dst_port",
+            "packets",
+            "bytes",
+            name="uq_wan_flow_usage_source_tuple",
+        ),
+    )
+
+    id:               Mapped[int]      = mapped_column(primary_key=True, autoincrement=True)
+    source_file:      Mapped[str]      = mapped_column(String(255), index=True)
+    started_at:       Mapped[datetime] = mapped_column(index=True)
+    ended_at:         Mapped[datetime] = mapped_column(index=True)
+    duration_seconds: Mapped[float]    = mapped_column()
+    proto:            Mapped[str]      = mapped_column(String(12), index=True)
+    src_ip:           Mapped[str]      = mapped_column(String(45), index=True)
+    src_port:         Mapped[Optional[int]] = mapped_column(index=True)
+    dst_ip:           Mapped[str]      = mapped_column(String(45), index=True)
+    dst_port:         Mapped[Optional[int]] = mapped_column(index=True)
+    packets:          Mapped[int]      = mapped_column()
+    bytes:            Mapped[int]      = mapped_column()
+    direction:        Mapped[str]      = mapped_column(String(8), index=True)
+    client_ip:        Mapped[str]      = mapped_column(String(45), index=True)
+
+
 # --- DATABASE API ---
 def init_db() -> None:
     'Create database tables if they do not already exist.'
     Base.metadata.create_all(bind=engine)
+
+
+def flow_import_exists(source_file: str) -> bool:
+    'Return True when an nfcapd source file has already been imported.'
+    stmt = select(func.count()).select_from(FlowImport).where(FlowImport.source_file == source_file)
+    with SessionLocal() as session:
+        return int(session.execute(stmt).scalar() or 0) > 0
+
+
+def record_flow_import(source_file: str, rows: list[WanFlowUsageRecord], skipped_count: int = 0) -> int:
+    'Persist imported WAN flow rows and mark the source file as imported.'
+    with SessionLocal() as session:
+        if session.execute(
+            select(func.count()).select_from(FlowImport).where(FlowImport.source_file == source_file)
+        ).scalar():
+            return 0
+
+        flow_rows = [
+            WanFlowUsage(
+                source_file=row.source_file,
+                started_at=row.started_at,
+                ended_at=row.ended_at,
+                duration_seconds=row.duration_seconds,
+                proto=row.proto,
+                src_ip=row.src_ip,
+                src_port=row.src_port,
+                dst_ip=row.dst_ip,
+                dst_port=row.dst_port,
+                packets=row.packets,
+                bytes=row.bytes,
+                direction=row.direction,
+                client_ip=row.client_ip,
+            )
+            for row in rows
+        ]
+        session.add_all(flow_rows)
+        session.add(
+            FlowImport(
+                source_file=source_file,
+                record_count=len(rows),
+                skipped_count=skipped_count,
+            )
+        )
+        session.commit()
+        return len(flow_rows)
+
+
+def get_wan_usage_by_client(
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+    limit: int = 100,
+) -> list[WanClientUsageSummary]:
+    'Return WAN upload/download totals grouped by internal client IP.'
+    stmt = (
+        select(
+            WanFlowUsage.client_ip,
+            func.sum(case((WanFlowUsage.direction == 'upload', WanFlowUsage.bytes), else_=0)),
+            func.sum(case((WanFlowUsage.direction == 'download', WanFlowUsage.bytes), else_=0)),
+            func.count(),
+        )
+        .group_by(WanFlowUsage.client_ip)
+        .order_by(func.sum(WanFlowUsage.bytes).desc())
+        .limit(max(1, limit))
+    )
+    if period_start is not None:
+        stmt = stmt.where(WanFlowUsage.started_at >= period_start)
+    if period_end is not None:
+        stmt = stmt.where(WanFlowUsage.started_at <= period_end)
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    return [
+        WanClientUsageSummary(
+            client_ip=str(client_ip),
+            upload_bytes=int(upload_bytes or 0),
+            download_bytes=int(download_bytes or 0),
+            flow_count=int(flow_count or 0),
+        )
+        for client_ip, upload_bytes, download_bytes, flow_count in rows
+    ]
 
 
 def _voucher_record(row: PlusVoucher) -> PlusVoucherRecord:

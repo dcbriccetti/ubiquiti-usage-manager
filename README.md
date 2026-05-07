@@ -73,6 +73,9 @@ Config values:
 - `ORGANIZATION_TITLE` (shown on report pages and PDF exports)
 - `PLUS_ADMINS`
 - `PLUS_ADMIN_IPS` (exact IPs or CIDR ranges that bypass UniFi client lookup for admin access, useful for VPN admin clients)
+- `NFDUMP_DIR` (directory containing completed `nfcapd.*` flow capture files)
+- `NFDUMP_BIN` (path/name for the `nfdump` command)
+- `INTERNAL_NETWORKS` (CIDR ranges treated as LAN clients for WAN flow attribution)
 - `ORGANIZATION_PAID_DEVICE_MACS`
 - `ORGANIZATION_PAID_USER_IDS`
 - `ORGANIZATION_PAID_VLAN_NAMES`
@@ -121,6 +124,16 @@ Example:
 ```bash
 LOG_LEVEL=DEBUG DEV_FORCE_PLUS_ADMIN=1 python3 src/app.py
 ```
+
+## WAN Flow Import
+
+If UniFi exports NetFlow/IPFIX to this host and `nfcapd` writes completed capture files, import WAN-attributed flow rows with:
+
+```bash
+python3 src/flow_import.py
+```
+
+By default, the importer reads completed `nfcapd.YYYYMMDDHHMM` files from `/var/cache/nfdump`, ignores `nfcapd.current.*`, skips files already recorded in SQLite, and stores only flows crossing between `INTERNAL_NETWORKS` and external addresses.
 
 ## First-Time Tryout Checklist
 
