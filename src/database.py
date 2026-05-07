@@ -559,6 +559,32 @@ def get_latest_client_identities_by_ip(ip_addresses: list[str]) -> dict[str, Cli
     return identities_by_ip
 
 
+def get_latest_client_identity_by_mac(mac: str) -> ClientIpIdentityRecord | None:
+    'Return the latest-known IP identity observation for one MAC address.'
+    normalized_mac = mac.lower()
+    stmt = (
+        select(ClientIpIdentity)
+        .where(ClientIpIdentity.mac == normalized_mac)
+        .order_by(ClientIpIdentity.observed_at.desc(), ClientIpIdentity.id.desc())
+        .limit(1)
+    )
+
+    with SessionLocal() as session:
+        row = session.execute(stmt).scalar_one_or_none()
+
+    if row is None:
+        return None
+
+    return ClientIpIdentityRecord(
+        observed_at=row.observed_at,
+        ip_address=row.ip_address,
+        mac=row.mac,
+        name=row.name,
+        user_id=row.user_id,
+        vlan=row.vlan,
+    )
+
+
 def _voucher_record(row: PlusVoucher) -> PlusVoucherRecord:
     'Return an immutable voucher view-model from an ORM row.'
     return PlusVoucherRecord(

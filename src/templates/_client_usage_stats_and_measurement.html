@@ -17,6 +17,38 @@
     </article>
 </section>
 
+{% if wan_client_ip %}
+    <article class="panel">
+        <div class="panel-body">
+            <h2>WAN Usage by Latest IP</h2>
+            <p class="muted">
+                IP {{ wan_client_ip }}
+                {% if wan_identity_observed_at %}
+                    · observed {{ wan_identity_observed_at.strftime("%Y-%m-%d %H:%M") }}
+                {% endif %}
+            </p>
+            <section class="grid stats">
+                <article class="panel stat">
+                    <span class="label">WAN Today</span>
+                    <span class="value">{{ "{:,.1f}".format(wan_today_total_mb) }} MB</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Today Down / Up</span>
+                    <span class="value">{{ "{:,.1f}".format(wan_today_download_mb) }} / {{ "{:,.1f}".format(wan_today_upload_mb) }}</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">WAN {{ current_month_label }}</span>
+                    <span class="value">{{ "{:,.1f}".format(wan_month_total_mb) }} MB</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">{{ current_month_label }} Down / Up</span>
+                    <span class="value">{{ "{:,.1f}".format(wan_month_download_mb) }} / {{ "{:,.1f}".format(wan_month_upload_mb) }}</span>
+                </article>
+            </section>
+        </div>
+    </article>
+{% endif %}
+
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 
 {% for usage_scale in usage_scales %}

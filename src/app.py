@@ -87,6 +87,14 @@ class ClientUsageContext(TypedDict):
     last_7_days_total_mb: float
     calendar_month_total_mb: float
     month_cost_cents: float
+    wan_client_ip: str
+    wan_identity_observed_at: datetime | None
+    wan_today_download_mb: float
+    wan_today_upload_mb: float
+    wan_today_total_mb: float
+    wan_month_download_mb: float
+    wan_month_upload_mb: float
+    wan_month_total_mb: float
     usage_scales: list[UsageScaleContext]
     current_month_label: str
     speed_limits_by_name: SpeedLimitsByName
@@ -391,6 +399,31 @@ def create_app() -> Flask:
         now = datetime.now()
         current_month_label = render_month_label(now)
         calendar_month_total_mb = db.get_calendar_month_total(mac)
+        latest_ip_identity = db.get_latest_client_identity_by_mac(mac)
+        wan_client_ip = latest_ip_identity.ip_address if latest_ip_identity else ''
+        wan_today_download_mb = 0.0
+        wan_today_upload_mb = 0.0
+        wan_month_download_mb = 0.0
+        wan_month_upload_mb = 0.0
+        if wan_client_ip:
+            today_start = datetime.combine(now.date(), time.min)
+            month_start = datetime.combine(now.date().replace(day=1), time.min)
+            today_wan_usage = db.get_wan_usage_by_client_ips(
+                [wan_client_ip],
+                period_start=today_start,
+                period_end=now,
+            ).get(wan_client_ip)
+            month_wan_usage = db.get_wan_usage_by_client_ips(
+                [wan_client_ip],
+                period_start=month_start,
+                period_end=now,
+            ).get(wan_client_ip)
+            if today_wan_usage:
+                wan_today_download_mb = bytes_to_mb(today_wan_usage.download_bytes)
+                wan_today_upload_mb = bytes_to_mb(today_wan_usage.upload_bytes)
+            if month_wan_usage:
+                wan_month_download_mb = bytes_to_mb(month_wan_usage.download_bytes)
+                wan_month_upload_mb = bytes_to_mb(month_wan_usage.upload_bytes)
         month_daily_usage: list[UsageScalePoint] = [
             {
                 'bucket_label': f'{usage_day.strftime("%b")} {usage_day.day}',
@@ -472,6 +505,14 @@ def create_app() -> Flask:
             'last_7_days_total_mb': db.get_last_7_days_total(mac),
             'calendar_month_total_mb': calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
+            'wan_client_ip': wan_client_ip,
+            'wan_identity_observed_at': latest_ip_identity.observed_at if latest_ip_identity else None,
+            'wan_today_download_mb': wan_today_download_mb,
+            'wan_today_upload_mb': wan_today_upload_mb,
+            'wan_today_total_mb': wan_today_download_mb + wan_today_upload_mb,
+            'wan_month_download_mb': wan_month_download_mb,
+            'wan_month_upload_mb': wan_month_upload_mb,
+            'wan_month_total_mb': wan_month_download_mb + wan_month_upload_mb,
             'usage_scales': usage_scales,
             'current_month_label': current_month_label,
             'speed_limits_by_name': speed_limits_by_name,
