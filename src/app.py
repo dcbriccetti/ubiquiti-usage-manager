@@ -188,6 +188,11 @@ def create_app() -> Flask:
             reverse=True,
         )
 
+    def total_wan_mb(row: dict[str, object]) -> float:
+        'Return total decimal MB for one decorated WAN row.'
+        total_bytes = int(row.get('download_bytes') or 0) + int(row.get('upload_bytes') or 0)
+        return bytes_to_mb(total_bytes)
+
     def get_voucher_wifi_ssid() -> str:
         'Return Wi-Fi SSID display name for printed voucher instructions.'
         return str(getattr(cfg, 'PLUS_REPORT_TITLE', '') or 'Plus').strip()
@@ -597,6 +602,19 @@ def create_app() -> Flask:
         decorated_today_rows = decorate_wan_rows(today_rows)
         decorated_month_rows = decorate_wan_rows(month_rows)
         recent_imports = db.get_recent_flow_imports(limit=12)
+        latest_import = recent_imports[0] if recent_imports else None
+        latest_import_age_minutes = (
+            int((now - latest_import.imported_at).total_seconds() // 60)
+            if latest_import
+            else None
+        )
+        client_display_threshold_mb = 0.01
+        visible_today_rows = [
+            row
+            for row in decorated_today_rows
+            if total_wan_mb(row) >= client_display_threshold_mb
+        ]
+        hidden_tiny_client_count = len(decorated_today_rows) - len(visible_today_rows)
 
         total_today_download_bytes = sum(row.download_bytes for row in today_rows)
         total_today_upload_bytes = sum(row.upload_bytes for row in today_rows)
@@ -606,11 +624,16 @@ def create_app() -> Flask:
         return render_template(
             "wan_usage.html",
             generated_at=now,
-            today_rows=decorated_today_rows,
+            today_rows=visible_today_rows,
             month_rows=decorated_month_rows,
             today_network_rows=summarize_wan_by_network(decorated_today_rows),
             month_network_rows=summarize_wan_by_network(decorated_month_rows),
             recent_imports=recent_imports,
+            latest_import=latest_import,
+            latest_import_age_minutes=latest_import_age_minutes,
+            internal_networks=sorted(str(network) for network in getattr(cfg, 'INTERNAL_NETWORKS', set())),
+            client_display_threshold_mb=client_display_threshold_mb,
+            hidden_tiny_client_count=hidden_tiny_client_count,
             bytes_to_mb=bytes_to_mb,
             total_today_download_mb=bytes_to_mb(total_today_download_bytes),
             total_today_upload_mb=bytes_to_mb(total_today_upload_bytes),

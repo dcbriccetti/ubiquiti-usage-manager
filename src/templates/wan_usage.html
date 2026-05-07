@@ -25,7 +25,38 @@
             <span class="label">WAN Month</span>
             <span class="value">{{ "{:,.1f}".format(total_month_download_mb + total_month_upload_mb) }} MB</span>
         </article>
+        <article class="panel stat">
+            <span class="label">Latest Import</span>
+            <span class="value">
+                {% if latest_import %}
+                    {{ latest_import_age_minutes }}m ago
+                {% else %}
+                    None
+                {% endif %}
+            </span>
+        </article>
     </section>
+
+    <article class="panel">
+        <div class="panel-body">
+            <h2>Flow Import Status</h2>
+            {% if latest_import %}
+                <p class="muted">
+                    Latest file {{ latest_import.source_file }} · imported {{ latest_import.imported_at.strftime("%Y-%m-%d %H:%M:%S") }} ·
+                    {{ latest_import.record_count }} rows · {{ latest_import.skipped_count }} skipped
+                </p>
+            {% else %}
+                <p class="muted">No completed flow captures have been imported yet.</p>
+            {% endif %}
+            <p class="muted">
+                Internal networks: {{ internal_networks|join(", ") if internal_networks else "none configured" }}.
+                Top client table hides rows below {{ "{:,.2f}".format(client_display_threshold_mb) }} MB today.
+                {% if hidden_tiny_client_count %}
+                    {{ hidden_tiny_client_count }} tiny client{% if hidden_tiny_client_count != 1 %}s{% endif %} hidden.
+                {% endif %}
+            </p>
+        </div>
+    </article>
 
     <section class="grid">
         <article class="panel">
