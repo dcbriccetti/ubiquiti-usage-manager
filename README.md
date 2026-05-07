@@ -72,6 +72,7 @@ Config values:
 - `PLUS_REPORT_TITLE` (prepended to "Network Usage Report" in Plus-user reports)
 - `ORGANIZATION_TITLE` (shown on report pages and PDF exports)
 - `PLUS_ADMINS`
+- `PLUS_ADMIN_IPS` (exact IPs or CIDR ranges that bypass UniFi client lookup for admin access, useful for VPN admin clients)
 - `ORGANIZATION_PAID_DEVICE_MACS`
 - `ORGANIZATION_PAID_USER_IDS`
 - `ORGANIZATION_PAID_VLAN_NAMES`

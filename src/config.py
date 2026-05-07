@@ -38,6 +38,7 @@ EXPECTED_DOWNLOAD_MBPS = 150.0
 API_KEY = ''
 PLUS_REPORT_TITLE = ''
 PLUS_ADMINS: set[str] = set()
+PLUS_ADMIN_IPS: set[str] = set()
 SELF_SERVICE_SPEED_LIMIT_ENABLED = False
 
 # Devices/users whose usage is paid by the organization (for global analytics split).

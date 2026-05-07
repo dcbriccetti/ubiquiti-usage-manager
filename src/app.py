@@ -10,6 +10,7 @@ Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
 from datetime import date, datetime
+import ipaddress
 import io
 import os
 import re
@@ -169,6 +170,29 @@ def create_app() -> Flask:
             return False
         return user_id.strip().lower() in cfg.PLUS_ADMINS
 
+    def request_ip_is_plus_admin(request_ip: str) -> bool:
+        'Return True when request IP matches configured admin IP/CIDR allowlist.'
+        try:
+            requester_ip = ipaddress.ip_address(request_ip)
+        except ValueError:
+            flask_app.logger.warning('Ignoring invalid requester IP for admin allowlist: %s', request_ip)
+            return False
+
+        for admin_ip_entry in getattr(cfg, 'PLUS_ADMIN_IPS', set()):
+            admin_ip_text = str(admin_ip_entry).strip()
+            if not admin_ip_text:
+                continue
+            try:
+                if '/' in admin_ip_text:
+                    if requester_ip in ipaddress.ip_network(admin_ip_text, strict=False):
+                        return True
+                elif requester_ip == ipaddress.ip_address(admin_ip_text):
+                    return True
+            except ValueError:
+                flask_app.logger.warning('Ignoring invalid PLUS_ADMIN_IPS entry: %s', admin_ip_text)
+
+        return False
+
     def resolve_request_ip() -> str | None:
         'Return request IP, allowing DEV_REQUEST_IP override for local/remote testing.'
         if dev_request_ip := os.getenv("DEV_REQUEST_IP", "").strip():
@@ -256,6 +280,9 @@ def create_app() -> Flask:
 
         if not (request_ip := resolve_request_ip()):
             return False
+
+        if request_ip_is_plus_admin(request_ip):
+            return True
 
         detected_mac = find_client_mac_for_ip(request_ip)
         if not detected_mac:
