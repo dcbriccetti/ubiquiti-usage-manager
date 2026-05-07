@@ -30,6 +30,7 @@
     const topCurrentConsumersLegend = document.getElementById('top-current-consumers-legend');
     const topCurrentConsumersEmpty = document.getElementById('top-current-consumers-empty');
     const ipPrefixHeader = document.getElementById('ip-prefix-header');
+    const wanImportStatus = document.getElementById('wan-import-status');
 
     if (
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
@@ -37,7 +38,7 @@
         !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader || !usageCostHeader ||
         !costGroupHeader || !topConsumersTitle ||
         !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty ||
-        !ipPrefixHeader
+        !ipPrefixHeader || !wanImportStatus
     ) {
         return;
     }
@@ -452,6 +453,8 @@
         updateActivityScale(data.clients);
         applyWindowColumnVisibility();
         topConsumersTitle.textContent = String(data.top_consumers_title || 'Usage Share');
+        wanImportStatus.textContent = String(data.wan_import_status || 'WAN import: unknown');
+        wanImportStatus.classList.toggle('warn-text', Boolean(data.wan_import_stale));
         renderTopCurrentConsumers(data.top_current_consumers);
         renderConnectedClients(data.clients);
     };

@@ -18,6 +18,12 @@
                     <a href="{{ url_for('plus_user_invoices') }}">Open Plus invoices</a>.
                     <a href="{{ url_for('radius_users') }}">Open RADIUS users</a>.
                 </p>
+                <p
+                    id="wan-import-status"
+                    class="muted{% if payload.wan_import_stale %} warn-text{% endif %}"
+                >
+                    {{ payload.wan_import_status }}
+                </p>
             </div>
             <section class="grid stats dashboard-stats">
                 <article class="panel stat">

@@ -145,6 +145,8 @@ class DashboardPayload(TypedDict):
     total_today_mb: float
     total_last_7_days_mb: float
     total_calendar_month_mb: float
+    wan_import_status: str
+    wan_import_stale: bool
     top_consumers_title: str
     top_current_consumers: list[TopCurrentConsumer]
     clients: list[DashboardRow]
@@ -650,6 +652,14 @@ def build_live_dashboard_payload(
     current_month_label = render_month_label(now)
     connected_snapshots = get_connected_clients()
     rows = _build_live_dashboard_rows(window_name, activity_span, connected_snapshots)
+    recent_imports = db.get_recent_flow_imports(limit=1)
+    latest_import = recent_imports[0] if recent_imports else None
+    wan_import_status = 'WAN import: none'
+    wan_import_stale = True
+    if latest_import:
+        age_minutes = int((now - latest_import.imported_at).total_seconds() // 60)
+        wan_import_status = f'WAN import: {age_minutes}m ago ({latest_import.source_file})'
+        wan_import_stale = age_minutes > 15
     return {
         'selected_window': window_name,
         'selected_activity_span': activity_span,
@@ -657,6 +667,8 @@ def build_live_dashboard_payload(
         'total_today_mb': db.get_total_today_usage(),
         'total_last_7_days_mb': db.get_total_last_7_days_usage(),
         'total_calendar_month_mb': db.get_total_calendar_month_usage(),
+        'wan_import_status': wan_import_status,
+        'wan_import_stale': wan_import_stale,
         'top_consumers_title': f"Usage Share ({render_dashboard_window_label(window_name, current_month_label)})",
         'top_current_consumers': build_top_consumers_for_window(rows, window_name, now),
         'clients': rows,
