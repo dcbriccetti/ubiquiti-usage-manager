@@ -36,6 +36,10 @@
                         <thead>
                         <tr>
                             <th>Client IP</th>
+                            <th>Name</th>
+                            <th>User ID</th>
+                            <th>Network</th>
+                            <th>MAC</th>
                             <th class="num">Download MB</th>
                             <th class="num">Upload MB</th>
                             <th class="num">Total MB</th>
@@ -48,6 +52,14 @@
                             {% set upload_mb = bytes_to_mb(row.upload_bytes) %}
                             <tr>
                                 <td class="mono">{{ row.client_ip }}</td>
+                                <td>{{ row.name or "" }}</td>
+                                <td class="mono">{{ row.user_id or "" }}</td>
+                                <td>{{ row.vlan or "" }}</td>
+                                <td class="mono">
+                                    {% if row.mac %}
+                                        <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.mac[-5:] }}</a>
+                                    {% endif %}
+                                </td>
                                 <td class="num">{{ "{:,.2f}".format(download_mb) }}</td>
                                 <td class="num">{{ "{:,.2f}".format(upload_mb) }}</td>
                                 <td class="num">{{ "{:,.2f}".format(download_mb + upload_mb) }}</td>
@@ -55,7 +67,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="5" class="muted">No WAN flow usage imported for today yet.</td>
+                                <td colspan="9" class="muted">No WAN flow usage imported for today yet.</td>
                             </tr>
                         {% endfor %}
                         </tbody>

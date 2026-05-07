@@ -105,10 +105,12 @@ class UsageMonitor:
     def process_connected_clients(self) -> list[ClientSnapshot]:
         'Process all connected clients for one cycle and return current snapshots.'
         snapshots: list[ClientSnapshot] = []
+        observed_clients: list[ClientInfo] = []
         ap_names_by_mac = api.get_ap_names_by_mac()
 
         for raw_client in api.get_api_data("stat/sta"):
             client = ClientInfo.create(raw_client, self.speed_limits_by_id, ap_names_by_mac)
+            observed_clients.append(client)
             interval_mb = self._update_client_usage(client)
             interval_kb = interval_mb * 1000
 
@@ -131,6 +133,7 @@ class UsageMonitor:
                 )
             )
 
+        db.record_client_ip_identities(observed_clients)
         return snapshots
 
     def run_forever(self, poll_interval_seconds: int = 60, on_cycle: Callable[[list[ClientSnapshot]], None] | None = None) -> None:

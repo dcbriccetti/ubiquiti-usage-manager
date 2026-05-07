@@ -257,6 +257,17 @@ class FlowImportRecord:
     record_count: int
     skipped_count: int
 
+
+@dataclass(frozen=True, kw_only=True)
+class ClientIpIdentityRecord:
+    'Latest-known UniFi identity observed for one client IP address.'
+    observed_at: datetime
+    ip_address: str
+    mac: str
+    name: str
+    user_id: str
+    vlan: str
+
 # --- MODELS ---
 class UsageRecord(Base):
     'Ledger row storing one non-zero usage interval.'
@@ -330,6 +341,19 @@ class WanFlowUsage(Base):
     bytes:            Mapped[int]      = mapped_column()
     direction:        Mapped[str]      = mapped_column(String(8), index=True)
     client_ip:        Mapped[str]      = mapped_column(String(45), index=True)
+
+
+class ClientIpIdentity(Base):
+    'Observed mapping from client IP address to UniFi identity metadata.'
+    __tablename__ = "client_ip_identities"
+
+    id:          Mapped[int]      = mapped_column(primary_key=True, autoincrement=True)
+    observed_at: Mapped[datetime] = mapped_column(default=datetime.now, index=True)
+    ip_address:  Mapped[str]      = mapped_column(String(45), index=True)
+    mac:         Mapped[str]      = mapped_column(String(17), index=True)
+    name:        Mapped[str]      = mapped_column(String(80))
+    user_id:     Mapped[str]      = mapped_column(String(80))
+    vlan:        Mapped[str]      = mapped_column(String(40), index=True)
 
 
 # --- DATABASE API ---
@@ -439,6 +463,61 @@ def get_recent_flow_imports(limit: int = 20) -> list[FlowImportRecord]:
         )
         for row in rows
     ]
+
+
+def record_client_ip_identities(clients: list[ClientInfo]) -> int:
+    'Persist current UniFi IP-to-client identity observations.'
+    identity_rows = [
+        ClientIpIdentity(
+            ip_address=client.ip_address,
+            mac=client.mac.lower(),
+            name=client.name or client.mac,
+            user_id=client.user_id or '',
+            vlan=client.vlan_name or '',
+        )
+        for client in clients
+        if client.ip_address and client.mac
+    ]
+    if not identity_rows:
+        return 0
+
+    with SessionLocal() as session:
+        session.add_all(identity_rows)
+        session.commit()
+
+    return len(identity_rows)
+
+
+def get_latest_client_identities_by_ip(ip_addresses: list[str]) -> dict[str, ClientIpIdentityRecord]:
+    'Return latest-known client identity for each requested IP address.'
+    requested_ips = sorted({ip_address for ip_address in ip_addresses if ip_address})
+    if not requested_ips:
+        return {}
+
+    stmt = (
+        select(ClientIpIdentity)
+        .where(ClientIpIdentity.ip_address.in_(requested_ips))
+        .order_by(ClientIpIdentity.observed_at.desc(), ClientIpIdentity.id.desc())
+    )
+
+    identities_by_ip: dict[str, ClientIpIdentityRecord] = {}
+    with SessionLocal() as session:
+        rows = session.execute(stmt).scalars()
+        for row in rows:
+            if row.ip_address in identities_by_ip:
+                continue
+            identities_by_ip[row.ip_address] = ClientIpIdentityRecord(
+                observed_at=row.observed_at,
+                ip_address=row.ip_address,
+                mac=row.mac,
+                name=row.name,
+                user_id=row.user_id,
+                vlan=row.vlan,
+            )
+            if len(identities_by_ip) == len(requested_ips):
+                break
+
+    return identities_by_ip
 
 
 def _voucher_record(row: PlusVoucher) -> PlusVoucherRecord:

@@ -133,6 +133,27 @@ def create_app() -> Flask:
         'Return decimal MB for network byte counters.'
         return byte_count / 1_000_000.0
 
+    def decorate_wan_rows(rows: list[db.WanClientUsageSummary]) -> list[dict[str, object]]:
+        'Attach latest-known UniFi identity metadata to WAN client rollups.'
+        identities_by_ip = db.get_latest_client_identities_by_ip([row.client_ip for row in rows])
+        decorated_rows: list[dict[str, object]] = []
+        for row in rows:
+            identity = identities_by_ip.get(row.client_ip)
+            decorated_rows.append(
+                {
+                    'client_ip': row.client_ip,
+                    'name': identity.name if identity else '',
+                    'user_id': identity.user_id if identity else '',
+                    'vlan': identity.vlan if identity else '',
+                    'mac': identity.mac if identity else '',
+                    'identity_observed_at': identity.observed_at if identity else None,
+                    'upload_bytes': row.upload_bytes,
+                    'download_bytes': row.download_bytes,
+                    'flow_count': row.flow_count,
+                }
+            )
+        return decorated_rows
+
     def get_voucher_wifi_ssid() -> str:
         'Return Wi-Fi SSID display name for printed voucher instructions.'
         return str(getattr(cfg, 'PLUS_REPORT_TITLE', '') or 'Plus').strip()
@@ -516,8 +537,8 @@ def create_app() -> Flask:
         return render_template(
             "wan_usage.html",
             generated_at=now,
-            today_rows=today_rows,
-            month_rows=month_rows,
+            today_rows=decorate_wan_rows(today_rows),
+            month_rows=decorate_wan_rows(month_rows),
             recent_imports=recent_imports,
             bytes_to_mb=bytes_to_mb,
             total_today_download_mb=bytes_to_mb(total_today_download_bytes),
