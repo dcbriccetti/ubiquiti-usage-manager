@@ -443,6 +443,45 @@ def get_wan_usage_by_client(
     ]
 
 
+def get_wan_usage_by_client_ips(
+    ip_addresses: list[str],
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+) -> dict[str, WanClientUsageSummary]:
+    'Return WAN upload/download totals for requested internal client IPs.'
+    requested_ips = sorted({ip_address for ip_address in ip_addresses if ip_address})
+    if not requested_ips:
+        return {}
+
+    stmt = (
+        select(
+            WanFlowUsage.client_ip,
+            func.sum(case((WanFlowUsage.direction == 'upload', WanFlowUsage.bytes), else_=0)),
+            func.sum(case((WanFlowUsage.direction == 'download', WanFlowUsage.bytes), else_=0)),
+            func.count(),
+        )
+        .where(WanFlowUsage.client_ip.in_(requested_ips))
+        .group_by(WanFlowUsage.client_ip)
+    )
+    if period_start is not None:
+        stmt = stmt.where(WanFlowUsage.started_at >= period_start)
+    if period_end is not None:
+        stmt = stmt.where(WanFlowUsage.started_at <= period_end)
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    return {
+        str(client_ip): WanClientUsageSummary(
+            client_ip=str(client_ip),
+            upload_bytes=int(upload_bytes or 0),
+            download_bytes=int(download_bytes or 0),
+            flow_count=int(flow_count or 0),
+        )
+        for client_ip, upload_bytes, download_bytes, flow_count in rows
+    }
+
+
 def get_recent_flow_imports(limit: int = 20) -> list[FlowImportRecord]:
     'Return recent nfdump capture imports, newest first.'
     stmt = (

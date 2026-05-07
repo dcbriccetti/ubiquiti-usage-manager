@@ -119,6 +119,18 @@
         const rounded = Math.round(value);
         return rounded > 0 ? rounded.toLocaleString() : '';
     };
+    const formatWanDetail = (value) => {
+        const numeric = Number(value) || 0;
+        return numeric.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    };
+    const wanTodayTitle = (client) => {
+        const total = Number(client.wan_today_total_mb) || 0;
+        if (total <= 0) return '';
+        return `WAN today: ${formatWanDetail(total)} MB; Down: ${formatWanDetail(client.wan_today_download_mb)} MB; Up: ${formatWanDetail(client.wan_today_upload_mb)} MB`;
+    };
     const formatCost = (costCents) => {
         if (!costCents || costCents < 0.5) return '';
         const dollars = Number(costCents) / 100;
@@ -252,7 +264,7 @@
         ipPrefixHeader.textContent = ipPrefixes.size === 1 ? `${[...ipPrefixes][0]}.` : defaultIpHeader;
 
         if (!clients.length) {
-            connectedBody.innerHTML = `<tr><td colspan="20" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+            connectedBody.innerHTML = `<tr><td colspan="21" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
             return;
         }
 
@@ -278,6 +290,7 @@
                     <td class="num usage-col today-col">${formatWhole(client.day_total_mb)}</td>
                     <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
                     <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
+                    <td class="num wan-col" title="${escapeHtml(wanTodayTitle(client))}">${formatWhole(client.wan_today_total_mb)}</td>
                     <td class="num usage-col usage-last">${formatCost(costCentsForSelectedWindow(client))}</td>
                     <td class="nowrap-col speed-col speed-first">${escapeHtml(client.speed_limit_name || '')}</td>
                     <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_up_kbps) ? Math.round(client.speed_limit_up_kbps).toLocaleString() : ''}</td>

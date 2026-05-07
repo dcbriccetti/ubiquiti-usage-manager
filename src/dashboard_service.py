@@ -73,6 +73,9 @@ class DashboardRow(TypedDict):
     last_7_days_cost_cents: float
     calendar_month_total_mb: float
     month_cost_cents: float
+    wan_today_download_mb: float | None
+    wan_today_upload_mb: float | None
+    wan_today_total_mb: float | None
     speed_limit_name: str
     speed_limit_up_kbps: int | None
     speed_limit_down_kbps: int | None
@@ -271,8 +274,23 @@ def build_rows_for_online_clients(
 
     rows: list[DashboardRow] = []
     source_snapshots = snapshots if snapshots is not None else get_connected_clients()
+    now = datetime.now()
+    today_start = datetime.combine(now.date(), time.min)
+    wan_usage_by_ip = db.get_wan_usage_by_client_ips(
+        [snapshot.client.ip_address for snapshot in source_snapshots],
+        period_start=today_start,
+        period_end=now,
+    )
     for snapshot in source_snapshots:
         speed_limit = snapshot.effective_speed_limit
+        wan_usage = wan_usage_by_ip.get(snapshot.client.ip_address)
+        wan_today_download_mb = (wan_usage.download_bytes / 1_000_000.0) if wan_usage else None
+        wan_today_upload_mb = (wan_usage.upload_bytes / 1_000_000.0) if wan_usage else None
+        wan_today_total_mb = (
+            (wan_today_download_mb or 0.0) + (wan_today_upload_mb or 0.0)
+            if wan_usage
+            else None
+        )
         direction_total_mb = snapshot.client.tx_mb_since_connection + snapshot.client.rx_mb_since_connection
         minute_tx_mb: float | None = None
         minute_rx_mb: float | None = None
@@ -305,6 +323,9 @@ def build_rows_for_online_clients(
             'last_7_days_cost_cents': calculate_month_cost_cents(snapshot.last_7_days_total_mb),
             'calendar_month_total_mb': snapshot.calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(snapshot.calendar_month_total_mb),
+            'wan_today_download_mb': wan_today_download_mb,
+            'wan_today_upload_mb': wan_today_upload_mb,
+            'wan_today_total_mb': wan_today_total_mb,
             'speed_limit_name': speed_limit.name if speed_limit else '',
             'speed_limit_up_kbps': speed_limit.up_kbps if speed_limit else None,
             'speed_limit_down_kbps': speed_limit.down_kbps if speed_limit else None,
@@ -382,6 +403,9 @@ def build_rows_for_historical_window(
             'last_7_days_cost_cents': calculate_month_cost_cents(summary.last_7_days_total_mb),
             'calendar_month_total_mb': summary.calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(summary.calendar_month_total_mb),
+            'wan_today_download_mb': None,
+            'wan_today_upload_mb': None,
+            'wan_today_total_mb': None,
             'speed_limit_name': speed_limit_name,
             'speed_limit_up_kbps': speed_limit_up_kbps,
             'speed_limit_down_kbps': speed_limit_down_kbps,
