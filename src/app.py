@@ -143,20 +143,25 @@ def create_app() -> Flask:
 
     def serialize_wan_identity_rows(rows: list[db.WanIdentityUsageSummary]) -> list[dict[str, object]]:
         'Serialize timestamp-attributed WAN identity rollups for templates.'
-        return [
-            {
-                'client_ip': row.client_ip,
-                'name': row.name,
-                'user_id': row.user_id,
-                'vlan': row.vlan,
-                'mac': row.mac,
-                'identity_observed_at': None,
-                'upload_bytes': row.upload_bytes,
-                'download_bytes': row.download_bytes,
-                'flow_count': row.flow_count,
-            }
-            for row in rows
-        ]
+        latest_identities_by_ip = db.get_latest_client_identities_by_ip([row.client_ip for row in rows])
+        serialized_rows: list[dict[str, object]] = []
+        for row in rows:
+            fallback_identity = latest_identities_by_ip.get(row.client_ip) if not row.mac else None
+            serialized_rows.append(
+                {
+                    'client_ip': row.client_ip,
+                    'name': row.name or (fallback_identity.name if fallback_identity else ''),
+                    'user_id': row.user_id or (fallback_identity.user_id if fallback_identity else ''),
+                    'vlan': row.vlan if row.vlan != 'Unknown' else (fallback_identity.vlan if fallback_identity else row.vlan),
+                    'mac': row.mac or (fallback_identity.mac if fallback_identity else ''),
+                    'identity_observed_at': fallback_identity.observed_at if fallback_identity else None,
+                    'identity_is_fallback': fallback_identity is not None,
+                    'upload_bytes': row.upload_bytes,
+                    'download_bytes': row.download_bytes,
+                    'flow_count': row.flow_count,
+                }
+            )
+        return serialized_rows
 
     def summarize_wan_by_network(rows: list[dict[str, object]]) -> list[dict[str, object]]:
         'Aggregate decorated WAN rows by latest-known network/VLAN label.'
