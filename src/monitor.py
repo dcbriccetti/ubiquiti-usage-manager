@@ -3,11 +3,13 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 import config as cfg
 import database as db
 import unifi_api as api
 from clientinfo import ClientInfo
+from flow_import import import_completed_captures, parse_internal_networks
 from logging_config import configure_logging
 from speedlimit import SpeedLimit
 from throttling_policy import target_profile_name_for_usage
@@ -77,6 +79,7 @@ class UsageMonitor:
         self.throttling_levels: list[tuple[int, SpeedLimit]] = []
         self.throttling_limit_ids: set[str] = set()
         self.throttleable_vlan_ids: list[str] = []
+        self.last_flow_import_monotonic = 0.0
         self.refresh_runtime_state()
 
         startup_release_limit_ids = self.throttling_limit_ids
@@ -141,6 +144,7 @@ class UsageMonitor:
             try:
                 self._handle_day_transition()
                 snapshots = self.process_connected_clients()
+                self._import_flows_if_due()
                 if on_cycle:
                     on_cycle(snapshots)
             except Exception as exc:
@@ -164,6 +168,41 @@ class UsageMonitor:
             if cfg.THROTTLING_ENABLED:
                 release_configured_limits(self.throttling_limit_ids, "midnight")
             self.current_day = now_date
+
+    def _import_flows_if_due(self) -> None:
+        'Periodically import completed nfdump captures without interrupting monitoring.'
+        if not getattr(cfg, 'FLOW_IMPORT_ENABLED', True):
+            return
+
+        interval_seconds = int(getattr(cfg, 'FLOW_IMPORT_INTERVAL_SECONDS', 300) or 0)
+        if interval_seconds <= 0:
+            return
+
+        now_monotonic = time.monotonic()
+        if self.last_flow_import_monotonic and now_monotonic - self.last_flow_import_monotonic < interval_seconds:
+            return
+        self.last_flow_import_monotonic = now_monotonic
+
+        try:
+            internal_networks = parse_internal_networks(getattr(cfg, 'INTERNAL_NETWORKS', set()))
+            if not internal_networks:
+                logger.warning('Flow import skipped: no valid INTERNAL_NETWORKS configured')
+                return
+
+            files, rows, skipped = import_completed_captures(
+                capture_dir=Path(str(getattr(cfg, 'NFDUMP_DIR', '/var/cache/nfdump'))),
+                internal_networks=internal_networks,
+                nfdump_bin=str(getattr(cfg, 'NFDUMP_BIN', 'nfdump')),
+            )
+            if files or rows or skipped:
+                logger.info(
+                    'Flow import complete: files=%s imported_rows=%s skipped_rows=%s',
+                    files,
+                    rows,
+                    skipped,
+                )
+        except Exception as exc:
+            logger.exception('Flow import failed: %s', exc)
 
     def _update_client_usage(self, client: ClientInfo) -> float:
         previous_total = self.last_totals_by_client_mac.get(client.mac, client.mb_used_since_connection)

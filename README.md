@@ -76,6 +76,8 @@ Config values:
 - `NFDUMP_DIR` (directory containing completed `nfcapd.*` flow capture files)
 - `NFDUMP_BIN` (path/name for the `nfdump` command)
 - `INTERNAL_NETWORKS` (CIDR ranges treated as LAN clients for WAN flow attribution)
+- `FLOW_IMPORT_ENABLED`
+- `FLOW_IMPORT_INTERVAL_SECONDS`
 - `ORGANIZATION_PAID_DEVICE_MACS`
 - `ORGANIZATION_PAID_USER_IDS`
 - `ORGANIZATION_PAID_VLAN_NAMES`
@@ -127,7 +129,7 @@ LOG_LEVEL=DEBUG DEV_FORCE_PLUS_ADMIN=1 python3 src/app.py
 
 ## WAN Flow Import
 
-If UniFi exports NetFlow/IPFIX to this host and `nfcapd` writes completed capture files, import WAN-attributed flow rows with:
+If UniFi exports NetFlow/IPFIX to this host and `nfcapd` writes completed capture files, the monitor imports completed captures every `FLOW_IMPORT_INTERVAL_SECONDS`. You can also import manually with:
 
 ```bash
 python3 src/flow_import.py
