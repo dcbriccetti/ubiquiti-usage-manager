@@ -77,8 +77,22 @@ def parse_datetime(value: str) -> datetime:
 
 
 def parse_int(value: str) -> int:
-    'Parse an integer field that may include nfdump thousands separators.'
-    return int(value.strip().replace(',', ''))
+    'Parse an integer field that may include separators or K/M/G/T suffixes.'
+    normalized = value.strip().replace(',', '')
+    if not normalized:
+        return 0
+
+    parts = normalized.split()
+    if len(parts) == 2 and parts[1].upper() in {'K', 'M', 'G', 'T'}:
+        multiplier_by_suffix = {
+            'K': 1_000,
+            'M': 1_000_000,
+            'G': 1_000_000_000,
+            'T': 1_000_000_000_000,
+        }
+        return int(float(parts[0]) * multiplier_by_suffix[parts[1].upper()])
+
+    return int(normalized)
 
 
 def parse_duration_seconds(value: str) -> float:
