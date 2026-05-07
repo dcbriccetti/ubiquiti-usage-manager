@@ -81,6 +81,20 @@ def parse_int(value: str) -> int:
     return int(value.strip().replace(',', ''))
 
 
+def parse_duration_seconds(value: str) -> float:
+    'Parse nfdump duration as seconds or HH:MM:SS.fraction.'
+    value = value.strip()
+    if ':' not in value:
+        return float(value)
+
+    parts = value.split(':')
+    if len(parts) != 3:
+        raise ValueError(f'Unsupported nfdump duration: {value}')
+
+    hours, minutes, seconds = parts
+    return (int(hours) * 3600) + (int(minutes) * 60) + float(seconds)
+
+
 def parse_optional_port(value: str) -> int | None:
     'Parse a transport port, returning None for non-port protocols.'
     value = value.strip()
@@ -105,7 +119,7 @@ def parse_nfdump_line(line: str) -> ParsedFlow | None:
     started_at, duration, proto, src_ip, src_port, dst_ip, dst_port, packets, bytes_used = cells
     return ParsedFlow(
         started_at=parse_datetime(started_at),
-        duration_seconds=float(duration.strip()),
+        duration_seconds=parse_duration_seconds(duration),
         proto=proto.strip().upper(),
         src_ip=src_ip.strip(),
         src_port=parse_optional_port(src_port),
