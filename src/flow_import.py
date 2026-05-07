@@ -5,8 +5,6 @@ WAN-classified flow. The application can roll those rows up later without
 discarding the original client/service detail.
 '''
 
-from __future__ import annotations
-
 import argparse
 import csv
 import ipaddress
