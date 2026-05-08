@@ -172,6 +172,21 @@ def classify_wan_flow(
     )
 
 
+def flow_identity_key(row: WanFlowUsageRecord) -> tuple[object, ...]:
+    'Return the uniqueness key enforced by wan_flow_usage.'
+    return (
+        row.source_file,
+        row.started_at,
+        row.proto,
+        row.src_ip,
+        row.src_port,
+        row.dst_ip,
+        row.dst_port,
+        row.packets,
+        row.bytes,
+    )
+
+
 def completed_capture_files(capture_dir: Path) -> list[Path]:
     'Return completed nfcapd files in chronological filename order.'
     if not capture_dir.exists():
@@ -209,6 +224,7 @@ def import_capture_file(
         return 0, 0
 
     rows: list[WanFlowUsageRecord] = []
+    seen_flow_keys: set[tuple[object, ...]] = set()
     skipped_count = 0
     for line in read_nfdump_file(path, nfdump_bin).splitlines():
         try:
@@ -220,6 +236,11 @@ def import_capture_file(
         if parsed_flow is None:
             continue
         if wan_row := classify_wan_flow(parsed_flow, source_file, internal_networks):
+            flow_key = flow_identity_key(wan_row)
+            if flow_key in seen_flow_keys:
+                skipped_count += 1
+                continue
+            seen_flow_keys.add(flow_key)
             rows.append(wan_row)
         else:
             skipped_count += 1

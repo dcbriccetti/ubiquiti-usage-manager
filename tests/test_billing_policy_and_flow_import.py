@@ -208,6 +208,35 @@ class FlowImportParsingTests(unittest.TestCase):
         self.assertIsNone(flow_import.classify_wan_flow(lan_to_lan, "source", internal_networks))
         self.assertIsNone(flow_import.classify_wan_flow(external_to_external, "source", internal_networks))
 
+    def test_import_capture_file_skips_duplicate_wan_rows(self) -> None:
+        internal_networks = [ipaddress.ip_network("192.168.0.0/16")]
+        duplicate_row = (
+            "2026-05-07 20:27:33.892,0.0,TCP,"
+            "192.168.6.169,57158,17.57.144.26,5223,1,92"
+        )
+        captured_rows = []
+
+        def fake_record_flow_import(source_file, rows, skipped_count):
+            captured_rows.extend(rows)
+            self.assertEqual(source_file, "nfcapd.202605072025")
+            self.assertEqual(skipped_count, 1)
+            return len(rows)
+
+        with (
+            patch.object(flow_import, "read_nfdump_file", return_value=f"{duplicate_row}\n{duplicate_row}\n"),
+            patch.object(flow_import.db, "flow_import_exists", return_value=False, create=True),
+            patch.object(flow_import.db, "record_flow_import", side_effect=fake_record_flow_import, create=True),
+        ):
+            imported_rows, skipped_rows = flow_import.import_capture_file(
+                Path("nfcapd.202605072025"),
+                internal_networks,
+                "nfdump",
+            )
+
+        self.assertEqual(imported_rows, 1)
+        self.assertEqual(skipped_rows, 1)
+        self.assertEqual(len(captured_rows), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
