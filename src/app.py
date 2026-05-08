@@ -13,7 +13,7 @@ from datetime import date, datetime
 import ipaddress
 import os
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, stream_with_context, url_for
 
@@ -45,6 +45,15 @@ from wan_service import (
     summarize_wan_by_network,
     total_wan_mb,
 )
+
+
+class InventoryVoucherSummary(TypedDict):
+    'Grouped unactivated voucher inventory for admin display.'
+    allocation_gb: int
+    count: int
+    total_allocation_gb: int
+    oldest_generated_at: datetime
+    newest_generated_at: datetime
 
 
 def create_app() -> Flask:
@@ -90,6 +99,36 @@ def create_app() -> Flask:
             {'dollars': dollars, 'allocation_gb': int((dollars * 100) / cfg.COST_IN_CENTS_PER_GB)}
             for dollars in (5, 10, 20, 50, 100)
         ]
+
+    def summarize_inventory_vouchers(
+        voucher_summaries: list[db.PlusVoucherUsageSummary],
+    ) -> list[InventoryVoucherSummary]:
+        'Group unactivated voucher inventory by allocation size.'
+        inventory_by_allocation: dict[int, InventoryVoucherSummary] = {}
+        for summary in voucher_summaries:
+            if summary.activated_at is not None:
+                continue
+            voucher = summary.voucher
+            row = inventory_by_allocation.setdefault(
+                voucher.allocation_gb,
+                {
+                    'allocation_gb': voucher.allocation_gb,
+                    'count': 0,
+                    'total_allocation_gb': 0,
+                    'oldest_generated_at': voucher.generated_at,
+                    'newest_generated_at': voucher.generated_at,
+                },
+            )
+            row['count'] += 1
+            row['total_allocation_gb'] += voucher.allocation_gb
+            row['oldest_generated_at'] = min(row['oldest_generated_at'], voucher.generated_at)
+            row['newest_generated_at'] = max(row['newest_generated_at'], voucher.generated_at)
+
+        return sorted(
+            inventory_by_allocation.values(),
+            key=lambda row: (row['allocation_gb'], row['count']),
+            reverse=True,
+        )
 
     def pluralize(count: int, singular: str, plural: str | None = None) -> str:
         'Return a count plus singular/plural label.'
@@ -390,6 +429,7 @@ def create_app() -> Flask:
                 voucher_form_message = str(exc)
 
         voucher_rows = db.get_plus_vouchers()
+        active_voucher_summaries = db.get_active_plus_voucher_summaries()
         return render_template(
             "plus_vouchers.html",
             generated_vouchers=generated_vouchers,
@@ -399,7 +439,10 @@ def create_app() -> Flask:
             selected_value_dollars=selected_value_dollars,
             voucher_value_options=voucher_value_options(),
             unconsumed_voucher_count=db.get_unconsumed_plus_voucher_count(),
-            active_voucher_summaries=db.get_active_plus_voucher_summaries(),
+            active_voucher_summaries=[
+                summary for summary in active_voucher_summaries if summary.activated_at is not None
+            ],
+            inventory_voucher_summaries=summarize_inventory_vouchers(active_voucher_summaries),
             voucher_cost_cents=calculate_voucher_cost_cents,
         )
 
