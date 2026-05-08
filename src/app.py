@@ -327,6 +327,30 @@ def create_app() -> Flask:
         total_today_upload_bytes = sum(row.upload_bytes for row in today_rows)
         total_month_download_bytes = sum(row.download_bytes for row in month_rows)
         total_month_upload_bytes = sum(row.upload_bytes for row in month_rows)
+        total_today_wan_mb = bytes_to_mb(total_today_download_bytes + total_today_upload_bytes)
+        total_month_wan_mb = bytes_to_mb(total_month_download_bytes + total_month_upload_bytes)
+        total_today_unifi_mb = db.get_total_today_usage()
+        total_month_unifi_mb = db.get_total_calendar_month_usage()
+        reconciliation_rows = [
+            {
+                'label': 'Today',
+                'unifi_mb': total_today_unifi_mb,
+                'wan_mb': total_today_wan_mb,
+                'difference_mb': total_today_wan_mb - total_today_unifi_mb,
+                'wan_pct_of_unifi': (total_today_wan_mb / total_today_unifi_mb * 100.0)
+                if total_today_unifi_mb
+                else 0.0,
+            },
+            {
+                'label': now.strftime('%b'),
+                'unifi_mb': total_month_unifi_mb,
+                'wan_mb': total_month_wan_mb,
+                'difference_mb': total_month_wan_mb - total_month_unifi_mb,
+                'wan_pct_of_unifi': (total_month_wan_mb / total_month_unifi_mb * 100.0)
+                if total_month_unifi_mb
+                else 0.0,
+            },
+        ]
         today_attribution_diagnostics = build_wan_attribution_diagnostics(decorated_today_rows)
         month_attribution_diagnostics = build_wan_attribution_diagnostics(decorated_month_rows)
 
@@ -354,6 +378,7 @@ def create_app() -> Flask:
             internal_networks=sorted(str(network) for network in getattr(cfg, 'INTERNAL_NETWORKS', set())),
             client_display_threshold_mb=client_display_threshold_mb,
             hidden_tiny_client_count=hidden_tiny_client_count,
+            reconciliation_rows=reconciliation_rows,
             bytes_to_mb=bytes_to_mb,
             total_today_download_mb=bytes_to_mb(total_today_download_bytes),
             total_today_upload_mb=bytes_to_mb(total_today_upload_bytes),

@@ -61,6 +61,39 @@
 
     <article class="panel">
         <div class="panel-body">
+            <h2>WAN / UniFi Reconciliation</h2>
+            <p class="muted">
+                UniFi MB is the existing client station counter. WAN MB is imported internet flow usage.
+            </p>
+            <div class="table-wrap">
+                <table class="fit-content-table">
+                    <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th class="num">UniFi MB</th>
+                        <th class="num">WAN MB</th>
+                        <th class="num">WAN / UniFi</th>
+                        <th class="num">WAN - UniFi</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in reconciliation_rows %}
+                        <tr>
+                            <td>{{ row.label }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.unifi_mb) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.wan_mb) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.wan_pct_of_unifi) }}%</td>
+                            <td class="num">{{ "{:+,.1f}".format(row.difference_mb) }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </article>
+
+    <article class="panel">
+        <div class="panel-body">
             <h2>WAN Attribution Diagnostics</h2>
             <p class="muted">
                 Month-to-date identity coverage for deciding when WAN can become the primary billing source.

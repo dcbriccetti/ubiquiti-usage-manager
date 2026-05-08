@@ -130,7 +130,7 @@
     const wanTodayTitle = (client) => {
         const total = Number(client.wan_today_total_mb) || 0;
         if (total <= 0) return '';
-        return `WAN today: ${formatWanDetail(total)} MB; Down: ${formatWanDetail(client.wan_today_download_mb)} MB; Up: ${formatWanDetail(client.wan_today_upload_mb)} MB`;
+        return `WAN current IP today: ${formatWanDetail(total)} MB; Down: ${formatWanDetail(client.wan_today_download_mb)} MB; Up: ${formatWanDetail(client.wan_today_upload_mb)} MB`;
     };
     const formatCost = (costCents) => {
         if (!costCents || costCents < 0.5) return '';
@@ -238,7 +238,7 @@
             const height = numeric > 0 ? Math.min(100, (numeric / sharedScale) * 100) : 14;
             const klass = numeric > 0 ? `bar${isCapped ? ' capped' : ''}` : 'bar zero';
             const tip = `${numeric.toFixed(3)} ${bucketLabel}${isCapped ? ` (capped at ${sharedScale.toFixed(3)})` : ''}`;
-            return `<span class="${klass}" style="height:${height.toFixed(1)}%" title="${tip}"></span>`;
+            return `<span class="${klass}" data-bar-height="${height.toFixed(1)}" title="${escapeHtml(tip)}"></span>`;
         }).join('');
         return `<div class="sparkline" title="Recent activity (${bucketLabel}, shared scale ${sharedScale.toFixed(3)})">${bars}</div>`;
     };
@@ -254,6 +254,14 @@
             return 'No clients are actively using data right now.';
         }
         return 'No clients found for this view yet.';
+    };
+
+    const applySparklineBarHeights = () => {
+        connectedBody.querySelectorAll('.sparkline .bar[data-bar-height]').forEach((bar) => {
+            const height = Number(bar.dataset.barHeight);
+            const clampedHeight = Number.isFinite(height) ? Math.max(0, Math.min(100, height)) : 0;
+            bar.style.height = `${clampedHeight}%`;
+        });
     };
 
     const renderConnectedClients = (clients) => {
@@ -299,6 +307,7 @@
                 </tr>
             `;
         }).join('');
+        applySparklineBarHeights();
     };
 
     const topConsumerColors = [
