@@ -164,11 +164,17 @@
                             <tbody>
                             {% for row in month_attribution_diagnostics.top_fallback_rows %}
                                 <tr>
-                                    <td>{{ row.name or "" }}</td>
+                                    <td>
+                                        {% if row.mac %}
+                                            <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.name or "Unknown" }}</a>
+                                        {% else %}
+                                            {{ row.name or "" }}
+                                        {% endif %}
+                                    </td>
                                     <td class="mono">{{ row.client_ip }}</td>
                                     <td class="mono">
                                         {% if row.mac %}
-                                            <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.mac[-5:] }}</a>
+                                            {{ row.mac[-5:] }}
                                         {% endif %}
                                     </td>
                                     <td class="num">{{ "{:,.2f}".format(row.total_mb) }}</td>
@@ -212,7 +218,11 @@
                     {% for row in month_usage_comparison_rows %}
                         <tr>
                             <td>
-                                {{ row.name or "" }}
+                                {% if row.mac %}
+                                    <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.name or "Unknown" }}</a>
+                                {% else %}
+                                    {{ row.name or "" }}
+                                {% endif %}
                                 {% if row.identity_is_fallback %}
                                     <span class="muted" title="Latest identity fallback; not observed at flow time">*</span>
                                 {% endif %}
@@ -221,7 +231,7 @@
                             <td>{{ row.vlan or "" }}</td>
                             <td class="mono">
                                 {% if row.mac %}
-                                    <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.mac[-5:] }}</a>
+                                    {{ row.mac[-5:] }}
                                 {% endif %}
                             </td>
                             <td class="mono">{{ row.client_ip or "" }}</td>
@@ -305,7 +315,11 @@
                             <tr>
                                 <td class="mono">{{ row.client_ip }}</td>
                                 <td>
-                                    {{ row.name or "" }}
+                                    {% if row.mac %}
+                                        <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.name or "Unknown" }}</a>
+                                    {% else %}
+                                        {{ row.name or "" }}
+                                    {% endif %}
                                     {% if row.identity_is_fallback %}
                                         <span class="muted" title="Latest identity fallback; not observed at flow time">*</span>
                                     {% endif %}
@@ -314,7 +328,7 @@
                                 <td>{{ row.vlan or "" }}</td>
                                 <td class="mono">
                                     {% if row.mac %}
-                                        <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.mac[-5:] }}</a>
+                                        {{ row.mac[-5:] }}
                                     {% endif %}
                                 </td>
                                 <td class="num">{{ "{:,.2f}".format(download_mb) }}</td>
