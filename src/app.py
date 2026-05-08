@@ -399,6 +399,7 @@ def create_app() -> Flask:
             selected_value_dollars=selected_value_dollars,
             voucher_value_options=voucher_value_options(),
             unconsumed_voucher_count=db.get_unconsumed_plus_voucher_count(),
+            active_voucher_summaries=db.get_active_plus_voucher_summaries(),
             voucher_cost_cents=calculate_voucher_cost_cents,
         )
 

@@ -134,3 +134,32 @@ def get_plus_voucher_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datet
             db.UsageRecord.timestamp >= first_usage_at,
         )
         return first_usage_at, float(session.execute(total_usage_stmt).scalar() or 0.0)
+
+
+def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:
+    'Return active voucher balances for admin review.'
+    stmt = (
+        select(db.PlusVoucher)
+        .where(db.PlusVoucher.consumed_at.is_(None))
+        .order_by(db.PlusVoucher.generated_at.desc(), db.PlusVoucher.id.desc())
+    )
+    with db.SessionLocal() as session:
+        vouchers = [_voucher_record(row) for row in session.execute(stmt).scalars().all()]
+
+    summaries: list[db.PlusVoucherUsageSummary] = []
+    for voucher in vouchers:
+        activated_at, used_mb = get_plus_voucher_usage_summary(voucher)
+        allocation_mb = float(voucher.allocation_gb * 1000)
+        remaining_mb = max(0.0, allocation_mb - used_mb)
+        used_pct = (used_mb / allocation_mb * 100.0) if allocation_mb else 0.0
+        summaries.append(
+            db.PlusVoucherUsageSummary(
+                voucher=voucher,
+                activated_at=activated_at,
+                used_mb=used_mb,
+                remaining_mb=remaining_mb,
+                used_pct=used_pct,
+            )
+        )
+
+    return summaries

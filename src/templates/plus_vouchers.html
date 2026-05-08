@@ -79,6 +79,65 @@
 
     <article class="panel" style="margin-top: var(--space-5);">
         <div class="panel-body">
+            <h2>Active Voucher Summary</h2>
+            <div class="table-wrap">
+                <table class="fit-content-table">
+                    <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Status</th>
+                        <th class="num">Allocation</th>
+                        <th class="num">Used</th>
+                        <th class="num">Remaining</th>
+                        <th class="num">Used</th>
+                        <th>Created</th>
+                        <th>Activated</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for summary in active_voucher_summaries %}
+                        {% set voucher = summary.voucher %}
+                        <tr>
+                            <td class="mono">{{ voucher.user_id }}</td>
+                            <td>
+                                {% if summary.activated_at %}
+                                    {% if summary.used_mb >= voucher.allocation_gb * 1000 %}
+                                        <span class="pill warn">Over allocation</span>
+                                    {% else %}
+                                        <span class="pill">Active</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="pill">Inventory</span>
+                                {% endif %}
+                            </td>
+                            <td class="num">{{ "{:,.0f}".format(voucher.allocation_gb) }} GB</td>
+                            <td class="num">{{ "{:,.1f}".format(summary.used_mb / 1000.0) }} GB</td>
+                            <td class="num">{{ "{:,.1f}".format(summary.remaining_mb / 1000.0) }} GB</td>
+                            <td class="num{% if summary.used_mb >= voucher.allocation_gb * 1000 %} warn-text{% endif %}">
+                                {{ "{:,.0f}".format(summary.used_pct) }}%
+                            </td>
+                            <td>{{ voucher.generated_at.strftime("%Y-%m-%d") }}</td>
+                            <td>
+                                {% if summary.activated_at %}
+                                    {{ summary.activated_at.strftime("%Y-%m-%d") }}
+                                {% else %}
+                                    <span class="muted">Not activated</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="muted">No active vouchers.</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </article>
+
+    <article class="panel" style="margin-top: var(--space-5);">
+        <div class="panel-body">
             <h2>Recent Vouchers</h2>
             <div class="table-wrap">
                 <table class="fit-content-table">

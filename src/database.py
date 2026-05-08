@@ -190,6 +190,16 @@ class PlusVoucherRecord:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PlusVoucherUsageSummary:
+    'Admin-facing active voucher balance summary.'
+    voucher: PlusVoucherRecord
+    activated_at: datetime | None
+    used_mb: float
+    remaining_mb: float
+    used_pct: float
+
+
+@dataclass(frozen=True, kw_only=True)
 class WanFlowUsageRecord:
     'One WAN-classified flow row imported from nfdump.'
     started_at: datetime
@@ -718,6 +728,13 @@ def get_plus_voucher_usage_summary(voucher: PlusVoucherRecord) -> tuple[datetime
     from voucher_repository import get_plus_voucher_usage_summary as _get_plus_voucher_usage_summary
 
     return _get_plus_voucher_usage_summary(voucher)
+
+
+def get_active_plus_voucher_summaries() -> list[PlusVoucherUsageSummary]:
+    'Return active voucher balances for admin review.'
+    from voucher_repository import get_active_plus_voucher_summaries as _get_active_plus_voucher_summaries
+
+    return _get_active_plus_voucher_summaries()
 
 
 def log_usage(c: ClientInfo, interval_mb: float) -> None:
