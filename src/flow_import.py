@@ -23,7 +23,7 @@ from logging_config import configure_logging
 logger = logging.getLogger(__name__)
 
 CAPTURE_FILE_PATTERN = re.compile(r'^nfcapd\.\d{12}$')
-NFDUMP_FORMAT = 'fmt:%ts,%td,%pr,%sa,%sp,%da,%dp,%pkt,%byt'
+NFDUMP_FORMAT = 'fmt:%ts,%td,%pr,%sa,%sp,%da,%dp,%ipkt,%ibyt,%opkt,%obyt'
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,6 +38,8 @@ class ParsedFlow:
     dst_port: int | None
     packets: int
     bytes: int
+    reverse_packets: int = 0
+    reverse_bytes: int = 0
 
 
 def parse_internal_networks(raw_networks: object) -> list[ipaddress._BaseNetwork]:
@@ -124,11 +126,28 @@ def parse_nfdump_line(line: str) -> ParsedFlow | None:
         return None
 
     cells = next(csv.reader([line]))
-    if len(cells) != 9:
+    if len(cells) not in {9, 11}:
         logger.debug('Skipping unexpected nfdump row with %s fields: %s', len(cells), line)
         return None
 
-    started_at, duration, proto, src_ip, src_port, dst_ip, dst_port, packets, bytes_used = cells
+    if len(cells) == 9:
+        started_at, duration, proto, src_ip, src_port, dst_ip, dst_port, packets, bytes_used = cells
+        reverse_packets = '0'
+        reverse_bytes = '0'
+    else:
+        (
+            started_at,
+            duration,
+            proto,
+            src_ip,
+            src_port,
+            dst_ip,
+            dst_port,
+            packets,
+            bytes_used,
+            reverse_packets,
+            reverse_bytes,
+        ) = cells
     return ParsedFlow(
         started_at=parse_datetime(started_at),
         duration_seconds=parse_duration_seconds(duration),
@@ -139,7 +158,86 @@ def parse_nfdump_line(line: str) -> ParsedFlow | None:
         dst_port=parse_optional_port(dst_port),
         packets=parse_int(packets),
         bytes=parse_int(bytes_used),
+        reverse_packets=parse_int(reverse_packets),
+        reverse_bytes=parse_int(reverse_bytes),
     )
+
+
+def build_wan_flow_usage_record(
+    flow: ParsedFlow,
+    source_file: str,
+    direction: str,
+    client_ip: str,
+    src_ip: str,
+    src_port: int | None,
+    dst_ip: str,
+    dst_port: int | None,
+    packets: int,
+    bytes_used: int,
+) -> WanFlowUsageRecord | None:
+    'Return one persisted WAN row for a single flow direction.'
+    if bytes_used <= 0:
+        return None
+    return WanFlowUsageRecord(
+        source_file=source_file,
+        started_at=flow.started_at,
+        ended_at=flow.started_at + timedelta(seconds=flow.duration_seconds),
+        duration_seconds=flow.duration_seconds,
+        proto=flow.proto,
+        src_ip=src_ip,
+        src_port=src_port,
+        dst_ip=dst_ip,
+        dst_port=dst_port,
+        packets=packets,
+        bytes=bytes_used,
+        direction=direction,
+        client_ip=client_ip,
+    )
+
+
+def classify_wan_flow_rows(
+    flow: ParsedFlow,
+    source_file: str,
+    internal_networks: list[ipaddress._BaseNetwork],
+) -> list[WanFlowUsageRecord]:
+    'Return one or two WAN usage rows for internal-external flow directions.'
+    src_internal = ip_is_internal(flow.src_ip, internal_networks)
+    dst_internal = ip_is_internal(flow.dst_ip, internal_networks)
+    if src_internal == dst_internal:
+        return []
+
+    client_ip = flow.src_ip if src_internal else flow.dst_ip
+    rows = [
+        build_wan_flow_usage_record(
+            flow=flow,
+            source_file=source_file,
+            direction='upload' if src_internal else 'download',
+            client_ip=client_ip,
+            src_ip=flow.src_ip,
+            src_port=flow.src_port,
+            dst_ip=flow.dst_ip,
+            dst_port=flow.dst_port,
+            packets=flow.packets,
+            bytes_used=flow.bytes,
+        )
+    ]
+    if flow.reverse_bytes > 0:
+        rows.append(
+            build_wan_flow_usage_record(
+                flow=flow,
+                source_file=source_file,
+                direction='download' if src_internal else 'upload',
+                client_ip=client_ip,
+                src_ip=flow.dst_ip,
+                src_port=flow.dst_port,
+                dst_ip=flow.src_ip,
+                dst_port=flow.src_port,
+                packets=flow.reverse_packets,
+                bytes_used=flow.reverse_bytes,
+            )
+        )
+
+    return [row for row in rows if row is not None]
 
 
 def classify_wan_flow(
@@ -147,29 +245,9 @@ def classify_wan_flow(
     source_file: str,
     internal_networks: list[ipaddress._BaseNetwork],
 ) -> WanFlowUsageRecord | None:
-    'Return a WAN usage row for internal-external flows, otherwise None.'
-    src_internal = ip_is_internal(flow.src_ip, internal_networks)
-    dst_internal = ip_is_internal(flow.dst_ip, internal_networks)
-    if src_internal == dst_internal:
-        return None
-
-    direction = 'upload' if src_internal else 'download'
-    client_ip = flow.src_ip if src_internal else flow.dst_ip
-    return WanFlowUsageRecord(
-        source_file=source_file,
-        started_at=flow.started_at,
-        ended_at=flow.started_at + timedelta(seconds=flow.duration_seconds),
-        duration_seconds=flow.duration_seconds,
-        proto=flow.proto,
-        src_ip=flow.src_ip,
-        src_port=flow.src_port,
-        dst_ip=flow.dst_ip,
-        dst_port=flow.dst_port,
-        packets=flow.packets,
-        bytes=flow.bytes,
-        direction=direction,
-        client_ip=client_ip,
-    )
+    'Return the primary WAN usage row for compatibility with focused tests.'
+    rows = classify_wan_flow_rows(flow, source_file, internal_networks)
+    return rows[0] if rows else None
 
 
 def flow_identity_key(row: WanFlowUsageRecord) -> tuple[object, ...]:
@@ -203,6 +281,7 @@ def read_nfdump_file(path: Path, nfdump_bin: str) -> str:
     command = [
         nfdump_bin,
         '-q',
+        '-b',
         '-r',
         str(path),
         '-o',
@@ -235,15 +314,17 @@ def import_capture_file(
             continue
         if parsed_flow is None:
             continue
-        if wan_row := classify_wan_flow(parsed_flow, source_file, internal_networks):
+        wan_rows = classify_wan_flow_rows(parsed_flow, source_file, internal_networks)
+        if not wan_rows:
+            skipped_count += 1
+            continue
+        for wan_row in wan_rows:
             flow_key = flow_identity_key(wan_row)
             if flow_key in seen_flow_keys:
                 skipped_count += 1
                 continue
             seen_flow_keys.add(flow_key)
             rows.append(wan_row)
-        else:
-            skipped_count += 1
 
     if dry_run:
         return len(rows), skipped_count

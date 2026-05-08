@@ -31,12 +31,9 @@ class StubWanFlowUsageRecord:
     client_ip: str
 
 
-sys.modules.setdefault(
-    "database",
-    types.SimpleNamespace(
-        WanFlowUsageRecord=StubWanFlowUsageRecord,
-    ),
-)
+database_stub = types.ModuleType("database")
+database_stub.WanFlowUsageRecord = StubWanFlowUsageRecord
+sys.modules.setdefault("database", database_stub)
 
 import config
 import billing
@@ -134,6 +131,20 @@ class FlowImportParsingTests(unittest.TestCase):
         self.assertEqual(flow.dst_port, 443)
         self.assertEqual(flow.packets, 1500)
         self.assertEqual(flow.bytes, 2_000_000)
+        self.assertEqual(flow.reverse_packets, 0)
+        self.assertEqual(flow.reverse_bytes, 0)
+
+    def test_parse_nfdump_line_reads_bidirectional_counters(self) -> None:
+        flow = flow_import.parse_nfdump_line(
+            "2026-05-07 12:34:56.789,00:01:02.5,TCP,192.168.1.10,54321,8.8.8.8,443,10,900,20,2 M"
+        )
+
+        self.assertIsNotNone(flow)
+        assert flow is not None
+        self.assertEqual(flow.packets, 10)
+        self.assertEqual(flow.bytes, 900)
+        self.assertEqual(flow.reverse_packets, 20)
+        self.assertEqual(flow.reverse_bytes, 2_000_000)
 
     def test_parse_nfdump_line_skips_headers_and_malformed_rows(self) -> None:
         self.assertIsNone(flow_import.parse_nfdump_line("Summary: total flows"))
@@ -181,6 +192,34 @@ class FlowImportParsingTests(unittest.TestCase):
         assert row is not None
         self.assertEqual(row.direction, "download")
         self.assertEqual(row.client_ip, "192.168.1.10")
+
+    def test_classify_wan_flow_rows_splits_bidirectional_record(self) -> None:
+        internal_networks = [ipaddress.ip_network("192.168.0.0/16")]
+        flow = flow_import.ParsedFlow(
+            started_at=datetime(2026, 5, 7, 12, 0),
+            duration_seconds=10.0,
+            proto="TCP",
+            src_ip="192.168.1.10",
+            src_port=12345,
+            dst_ip="8.8.8.8",
+            dst_port=443,
+            packets=5,
+            bytes=900,
+            reverse_packets=8,
+            reverse_bytes=2_000_000,
+        )
+
+        rows = flow_import.classify_wan_flow_rows(flow, "nfcapd.202605071200", internal_networks)
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].direction, "upload")
+        self.assertEqual(rows[0].client_ip, "192.168.1.10")
+        self.assertEqual(rows[0].bytes, 900)
+        self.assertEqual(rows[1].direction, "download")
+        self.assertEqual(rows[1].client_ip, "192.168.1.10")
+        self.assertEqual(rows[1].src_ip, "8.8.8.8")
+        self.assertEqual(rows[1].dst_ip, "192.168.1.10")
+        self.assertEqual(rows[1].bytes, 2_000_000)
 
     def test_classify_wan_flow_ignores_lan_to_lan_and_external_to_external(self) -> None:
         internal_networks = [ipaddress.ip_network("192.168.0.0/16")]
