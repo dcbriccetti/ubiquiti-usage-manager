@@ -117,8 +117,8 @@ def get_active_plus_voucher_for_user_id(user_id: str | int | None) -> db.PlusVou
         return _voucher_record(row) if row else None
 
 
-def get_plus_voucher_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datetime | None, float]:
-    'Return first usage time and lifetime usage for one voucher.'
+def get_plus_voucher_legacy_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datetime | None, float]:
+    'Return first sampled UniFi usage time and lifetime usage for one voucher.'
     user_id = str(voucher.user_id)
     first_usage_stmt = select(func.min(db.UsageRecord.timestamp)).where(
         db.UsageRecord.user_id == user_id,
@@ -134,6 +134,27 @@ def get_plus_voucher_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datet
             db.UsageRecord.timestamp >= first_usage_at,
         )
         return first_usage_at, float(session.execute(total_usage_stmt).scalar() or 0.0)
+
+
+def get_plus_voucher_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datetime | None, float]:
+    'Return first usage time and lifetime usage for one voucher, preferring WAN flow usage.'
+    legacy_activated_at, legacy_used_mb = get_plus_voucher_legacy_usage_summary(voucher)
+    wan_activated_at, wan_used_mb = db.get_wan_usage_summary_for_user_id(
+        voucher.user_id,
+        period_start=voucher.generated_at,
+    )
+    first_wan_flow_at = db.get_first_wan_flow_time()
+    if (
+        wan_activated_at is not None
+        and (
+            legacy_activated_at is None
+            or first_wan_flow_at is None
+            or legacy_activated_at >= first_wan_flow_at
+        )
+    ):
+        return wan_activated_at, wan_used_mb
+
+    return legacy_activated_at, legacy_used_mb
 
 
 def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:

@@ -10,7 +10,7 @@ from bisect import bisect_right
 from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
 from pathlib import Path
-from typing import Optional, cast
+from typing import Any, Optional, cast
 from sqlalchemy import UniqueConstraint, case, create_engine, String, func, select, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
@@ -126,6 +126,15 @@ class GlobalDailyNetworkUsage:
     plus_mb: float
     basic_minutes: int
     plus_minutes: int
+
+
+@dataclass
+class DailyNetworkUsageBucket:
+    'Mutable accumulator for one day of Basic/Plus usage.'
+    basic_mb: float = 0.0
+    plus_mb: float = 0.0
+    basic_minutes: int = 0
+    plus_minutes: int = 0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -528,7 +537,7 @@ def get_wan_usage_by_identity(
         for client_ip, identities in identities_by_ip.items()
     }
 
-    summary_by_key: dict[tuple[str, str, str, str, str], dict[str, object]] = {}
+    summary_by_key: dict[tuple[str, str, str, str, str], dict[str, Any]] = {}
     for started_at, client_ip, direction, byte_count in flow_rows:
         ip_text = str(client_ip)
         identities = identities_by_ip.get(ip_text, [])
@@ -583,6 +592,98 @@ def get_wan_usage_by_identity(
         key=lambda summary: summary.upload_bytes + summary.download_bytes,
         reverse=True,
     )
+
+
+def get_wan_usage_summary_for_user_id(
+    user_id: str | int,
+    period_start: datetime,
+    period_end: datetime | None = None,
+    identity_after_tolerance: timedelta = timedelta(minutes=10),
+) -> tuple[datetime | None, float]:
+    'Return first WAN flow time and MB attributed to one RADIUS user ID.'
+    target_user_id = str(user_id).strip()
+    if not target_user_id:
+        return None, 0.0
+
+    resolved_period_end = period_end or datetime.now()
+    flow_stmt = (
+        select(
+            WanFlowUsage.started_at,
+            WanFlowUsage.client_ip,
+            WanFlowUsage.bytes,
+        )
+        .where(
+            WanFlowUsage.started_at >= period_start,
+            WanFlowUsage.started_at <= resolved_period_end,
+        )
+        .order_by(WanFlowUsage.started_at.asc(), WanFlowUsage.id.asc())
+    )
+
+    with SessionLocal() as session:
+        flow_rows = session.execute(flow_stmt).all()
+
+    client_ips = sorted({str(client_ip) for _, client_ip, _ in flow_rows if client_ip})
+    if not client_ips:
+        return None, 0.0
+
+    identity_stmt = (
+        select(ClientIpIdentity)
+        .where(
+            ClientIpIdentity.ip_address.in_(client_ips),
+            ClientIpIdentity.observed_at >= period_start - timedelta(days=1),
+            ClientIpIdentity.observed_at <= resolved_period_end + identity_after_tolerance,
+        )
+        .order_by(ClientIpIdentity.ip_address.asc(), ClientIpIdentity.observed_at.asc(), ClientIpIdentity.id.asc())
+    )
+
+    identities_by_ip: dict[str, list[ClientIpIdentityRecord]] = {client_ip: [] for client_ip in client_ips}
+    with SessionLocal() as session:
+        for row in session.execute(identity_stmt).scalars():
+            identities_by_ip.setdefault(row.ip_address, []).append(
+                ClientIpIdentityRecord(
+                    observed_at=row.observed_at,
+                    ip_address=row.ip_address,
+                    mac=row.mac,
+                    name=row.name,
+                    user_id=row.user_id,
+                    vlan=row.vlan,
+                )
+            )
+
+    observed_times_by_ip = {
+        client_ip: [identity.observed_at for identity in identities]
+        for client_ip, identities in identities_by_ip.items()
+    }
+
+    first_usage_at: datetime | None = None
+    total_bytes = 0
+    for started_at, client_ip, byte_count in flow_rows:
+        ip_text = str(client_ip)
+        identities = identities_by_ip.get(ip_text, [])
+        observed_times = observed_times_by_ip.get(ip_text, [])
+        identity: ClientIpIdentityRecord | None = None
+        if identities and observed_times:
+            prior_index = bisect_right(observed_times, started_at) - 1
+            if prior_index >= 0:
+                identity = identities[prior_index]
+            elif observed_times[0] <= started_at + identity_after_tolerance:
+                identity = identities[0]
+
+        if identity is None or identity.user_id.strip() != target_user_id:
+            continue
+
+        if first_usage_at is None:
+            first_usage_at = started_at
+        total_bytes += int(byte_count or 0)
+
+    return first_usage_at, total_bytes / 1_000_000.0
+
+
+def get_first_wan_flow_time() -> datetime | None:
+    'Return the earliest imported WAN flow timestamp.'
+    stmt = select(func.min(WanFlowUsage.started_at))
+    with SessionLocal() as session:
+        return session.execute(stmt).scalar()
 
 
 def get_recent_flow_imports(limit: int = 20) -> list[FlowImportRecord]:
@@ -1456,42 +1557,34 @@ def get_global_daily_network_usage_current_month(
     with SessionLocal() as session:
         rows = session.execute(stmt).all()
 
-    totals_by_day: dict[date, dict[str, float | int]] = {}
+    totals_by_day: dict[date, DailyNetworkUsageBucket] = {}
     for row_timestamp, row_vlan, row_mb_used in rows:
         if not isinstance(row_timestamp, datetime):
             continue
 
         usage_day = row_timestamp.date()
-        bucket = totals_by_day.setdefault(
-            usage_day,
-            {
-                'basic_mb': 0.0,
-                'plus_mb': 0.0,
-                'basic_minutes': 0,
-                'plus_minutes': 0,
-            },
-        )
+        bucket = totals_by_day.setdefault(usage_day, DailyNetworkUsageBucket())
 
         vlan_label = row_vlan.strip().lower() if isinstance(row_vlan, str) and row_vlan.strip() else ''
         mb_used = float(row_mb_used or 0.0)
         if vlan_label == 'plus':
-            bucket['plus_mb'] = float(bucket['plus_mb']) + mb_used
-            bucket['plus_minutes'] = int(bucket['plus_minutes']) + 1
+            bucket.plus_mb += mb_used
+            bucket.plus_minutes += 1
         else:
-            bucket['basic_mb'] = float(bucket['basic_mb']) + mb_used
-            bucket['basic_minutes'] = int(bucket['basic_minutes']) + 1
+            bucket.basic_mb += mb_used
+            bucket.basic_minutes += 1
 
     day = month_start
     series: list[GlobalDailyNetworkUsage] = []
     while day <= month_end:
-        bucket = totals_by_day.get(day, {})
+        bucket = totals_by_day.get(day, DailyNetworkUsageBucket())
         series.append(
             GlobalDailyNetworkUsage(
                 usage_day=day,
-                basic_mb=float(bucket.get('basic_mb', 0.0)),
-                plus_mb=float(bucket.get('plus_mb', 0.0)),
-                basic_minutes=int(bucket.get('basic_minutes', 0)),
-                plus_minutes=int(bucket.get('plus_minutes', 0)),
+                basic_mb=bucket.basic_mb,
+                plus_mb=bucket.plus_mb,
+                basic_minutes=bucket.basic_minutes,
+                plus_minutes=bucket.plus_minutes,
             )
         )
         day += timedelta(days=1)
@@ -1860,7 +1953,8 @@ def get_global_throttling_effectiveness_current_month(
             and month_start_dt <= row_timestamp <= month_end_dt
             and profile_key
         ):
-            change_events_raw.append((row_timestamp, mac, user_id, name, previous_profile, profile_key))
+            previous_profile_key = str(previous_profile)
+            change_events_raw.append((row_timestamp, mac, user_id, name, previous_profile_key, profile_key))
         previous_profile_by_mac[mac] = profile_key
 
     def calculate_window_metrics(
