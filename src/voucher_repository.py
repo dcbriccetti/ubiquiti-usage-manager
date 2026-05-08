@@ -162,4 +162,13 @@ def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:
             )
         )
 
-    return summaries
+    return sorted(
+        summaries,
+        key=lambda summary: (
+            summary.activated_at is not None,
+            summary.activated_at or summary.voucher.generated_at,
+            summary.voucher.generated_at,
+            summary.voucher.id,
+        ),
+        reverse=True,
+    )
