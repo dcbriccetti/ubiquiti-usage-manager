@@ -1,5 +1,8 @@
 '''WAN usage view-model helpers for dashboard and client-detail pages.'''
 
+from datetime import datetime
+from typing import TypedDict
+
 import database as db
 
 
@@ -8,10 +11,24 @@ def bytes_to_mb(byte_count: int) -> float:
     return byte_count / 1_000_000.0
 
 
-def serialize_wan_identity_rows(rows: list[db.WanIdentityUsageSummary]) -> list[dict[str, object]]:
+class WanIdentityRow(TypedDict):
+    'Serialized WAN usage row attributed to an identity or client IP.'
+    client_ip: str
+    name: str
+    user_id: str
+    vlan: str
+    mac: str
+    identity_observed_at: datetime | None
+    identity_is_fallback: bool
+    upload_bytes: int
+    download_bytes: int
+    flow_count: int
+
+
+def serialize_wan_identity_rows(rows: list[db.WanIdentityUsageSummary]) -> list[WanIdentityRow]:
     'Serialize timestamp-attributed WAN identity rollups for templates.'
     latest_identities_by_ip = db.get_latest_client_identities_by_ip([row.client_ip for row in rows])
-    serialized_rows: list[dict[str, object]] = []
+    serialized_rows: list[WanIdentityRow] = []
     for row in rows:
         fallback_identity = latest_identities_by_ip.get(row.client_ip) if not row.mac else None
         serialized_rows.append(
@@ -31,11 +48,65 @@ def serialize_wan_identity_rows(rows: list[db.WanIdentityUsageSummary]) -> list[
     return serialized_rows
 
 
-def summarize_wan_by_network(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+class NetworkSummary(TypedDict):
+    'WAN totals grouped by network/VLAN name.'
+    network: str
+    download_bytes: int
+    upload_bytes: int
+    flow_count: int
+    client_count: int
+
+
+class WanDiagnosticRow(TypedDict):
+    'Decorated WAN row with MB total for diagnostic sorting.'
+    client_ip: str
+    name: str
+    user_id: str
+    vlan: str
+    mac: str
+    identity_observed_at: datetime | None
+    identity_is_fallback: bool
+    upload_bytes: int
+    download_bytes: int
+    flow_count: int
+    total_mb: float
+
+
+class WanAttributionDiagnostics(TypedDict):
+    'WAN identity attribution summary for one reporting period.'
+    total_mb: float
+    attributed_mb: float
+    fallback_mb: float
+    unattributed_mb: float
+    attributed_pct: float
+    fallback_pct: float
+    unattributed_pct: float
+    attributed_client_count: int
+    fallback_client_count: int
+    unattributed_client_count: int
+    top_unattributed_rows: list[WanDiagnosticRow]
+    top_fallback_rows: list[WanDiagnosticRow]
+
+
+class UsageComparisonRow(TypedDict):
+    'Comparison row for sampled UniFi usage and WAN flow usage.'
+    client_ip: str
+    name: str
+    user_id: str
+    vlan: str
+    mac: str
+    identity_is_fallback: bool
+    unifi_period_mb: float
+    wan_period_mb: float
+    wan_flow_count: int
+    difference_mb: float
+
+
+def summarize_wan_by_network(rows: list[WanIdentityRow]) -> list[NetworkSummary]:
     'Aggregate decorated WAN rows by latest-known network/VLAN label.'
-    summary_by_network: dict[str, dict[str, object]] = {}
+    summary_by_network: dict[str, NetworkSummary] = {}
     for row in rows:
-        network_name = str(row.get('vlan') or 'Unknown')
+        network_name = row['vlan'] or 'Unknown'
         summary = summary_by_network.setdefault(
             network_name,
             {
@@ -46,44 +117,56 @@ def summarize_wan_by_network(rows: list[dict[str, object]]) -> list[dict[str, ob
                 'client_count': 0,
             },
         )
-        summary['download_bytes'] = int(summary['download_bytes']) + int(row.get('download_bytes') or 0)
-        summary['upload_bytes'] = int(summary['upload_bytes']) + int(row.get('upload_bytes') or 0)
-        summary['flow_count'] = int(summary['flow_count']) + int(row.get('flow_count') or 0)
-        summary['client_count'] = int(summary['client_count']) + 1
+        summary['download_bytes'] += row['download_bytes']
+        summary['upload_bytes'] += row['upload_bytes']
+        summary['flow_count'] += row['flow_count']
+        summary['client_count'] += 1
 
     return sorted(
         summary_by_network.values(),
-        key=lambda summary: int(summary['download_bytes']) + int(summary['upload_bytes']),
+        key=lambda summary: summary['download_bytes'] + summary['upload_bytes'],
         reverse=True,
     )
 
 
-def total_wan_mb(row: dict[str, object]) -> float:
+def total_wan_mb(row: WanIdentityRow) -> float:
     'Return total decimal MB for one decorated WAN row.'
-    total_bytes = int(row.get('download_bytes') or 0) + int(row.get('upload_bytes') or 0)
+    download_bytes = row['download_bytes']
+    upload_bytes = row['upload_bytes']
+    total_bytes = download_bytes + upload_bytes
     return bytes_to_mb(total_bytes)
 
 
-def build_wan_attribution_diagnostics(rows: list[dict[str, object]]) -> dict[str, object]:
+def build_wan_attribution_diagnostics(rows: list[WanIdentityRow]) -> WanAttributionDiagnostics:
     'Summarize how much WAN usage has confident, fallback, or missing identity attribution.'
-    diagnostic_rows = [
-        {
-            **row,
-            'total_mb': total_wan_mb(row),
-        }
-        for row in rows
-    ]
-    total_mb = sum(float(row['total_mb']) for row in diagnostic_rows)
-    fallback_rows = [row for row in diagnostic_rows if row.get('identity_is_fallback')]
-    unattributed_rows = [row for row in diagnostic_rows if not row.get('mac')]
+    diagnostic_rows: list[WanDiagnosticRow] = []
+    for row in rows:
+        diagnostic_rows.append(
+            {
+                'client_ip': row['client_ip'],
+                'name': row['name'],
+                'user_id': row['user_id'],
+                'vlan': row['vlan'],
+                'mac': row['mac'],
+                'identity_observed_at': row['identity_observed_at'],
+                'identity_is_fallback': row['identity_is_fallback'],
+                'upload_bytes': row['upload_bytes'],
+                'download_bytes': row['download_bytes'],
+                'flow_count': row['flow_count'],
+                'total_mb': total_wan_mb(row),
+            }
+        )
+    total_mb = sum(row['total_mb'] for row in diagnostic_rows)
+    fallback_rows = [row for row in diagnostic_rows if row['identity_is_fallback']]
+    unattributed_rows = [row for row in diagnostic_rows if not row['mac']]
     attributed_rows = [
         row
         for row in diagnostic_rows
-        if row.get('mac') and not row.get('identity_is_fallback')
+        if row['mac'] and not row['identity_is_fallback']
     ]
-    fallback_mb = sum(float(row['total_mb']) for row in fallback_rows)
-    unattributed_mb = sum(float(row['total_mb']) for row in unattributed_rows)
-    attributed_mb = sum(float(row['total_mb']) for row in attributed_rows)
+    fallback_mb = sum(row['total_mb'] for row in fallback_rows)
+    unattributed_mb = sum(row['total_mb'] for row in unattributed_rows)
+    attributed_mb = sum(row['total_mb'] for row in attributed_rows)
 
     def pct(part_mb: float) -> float:
         return (part_mb / total_mb * 100.0) if total_mb else 0.0
@@ -101,20 +184,20 @@ def build_wan_attribution_diagnostics(rows: list[dict[str, object]]) -> dict[str
         'unattributed_client_count': len(unattributed_rows),
         'top_unattributed_rows': sorted(
             unattributed_rows,
-            key=lambda row: float(row['total_mb']),
+            key=lambda row: row['total_mb'],
             reverse=True,
         )[:10],
         'top_fallback_rows': sorted(
             fallback_rows,
-            key=lambda row: float(row['total_mb']),
+            key=lambda row: row['total_mb'],
             reverse=True,
         )[:10],
     }
 
 
 def build_wan_attribution_period_rows(
-    today_diagnostics: dict[str, object],
-    month_diagnostics: dict[str, object],
+    today_diagnostics: WanAttributionDiagnostics,
+    month_diagnostics: WanAttributionDiagnostics,
 ) -> list[dict[str, object]]:
     'Return compact today/month attribution coverage rows.'
     return [
@@ -124,13 +207,13 @@ def build_wan_attribution_period_rows(
 
 
 def build_wan_billing_readiness(
-    attribution_diagnostics: dict[str, object],
+    attribution_diagnostics: WanAttributionDiagnostics,
     latest_import_age_minutes: int | None,
 ) -> dict[str, str]:
     'Return a concise status for deciding whether WAN usage is ready to drive billing.'
-    total_mb = float(attribution_diagnostics['total_mb'])
-    unattributed_pct = float(attribution_diagnostics['unattributed_pct'])
-    fallback_pct = float(attribution_diagnostics['fallback_pct'])
+    total_mb = attribution_diagnostics['total_mb']
+    unattributed_pct = attribution_diagnostics['unattributed_pct']
+    fallback_pct = attribution_diagnostics['fallback_pct']
     if latest_import_age_minutes is None:
         return {
             'label': 'No imports',
@@ -168,11 +251,20 @@ def build_wan_billing_readiness(
     }
 
 
-def build_month_usage_comparison_rows(month_wan_rows: list[dict[str, object]]) -> list[dict[str, object]]:
-    'Compare legacy UniFi month usage with WAN flow-attributed month usage.'
-    comparison_by_key: dict[str, dict[str, object]] = {}
+def build_month_usage_comparison_rows(
+    month_wan_rows: list[WanIdentityRow],
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+) -> list[UsageComparisonRow]:
+    'Compare sampled UniFi usage with WAN flow-attributed usage for the same period.'
+    comparison_by_key: dict[str, UsageComparisonRow] = {}
 
-    for row in db.get_usage_window_summary('this_month'):
+    if period_start is not None and period_end is not None:
+        unifi_rows = db.get_usage_summary_for_period(period_start, period_end)
+    else:
+        unifi_rows = db.get_usage_window_summary('this_month')
+
+    for row in unifi_rows:
         key = row.mac.lower()
         comparison_by_key[key] = {
             'client_ip': '',
@@ -181,14 +273,15 @@ def build_month_usage_comparison_rows(month_wan_rows: list[dict[str, object]]) -
             'vlan': row.vlan or '',
             'mac': row.mac,
             'identity_is_fallback': False,
-            'unifi_month_mb': row.calendar_month_total_mb,
-            'wan_month_mb': 0.0,
+            'unifi_period_mb': row.calendar_month_total_mb,
+            'wan_period_mb': 0.0,
             'wan_flow_count': 0,
+            'difference_mb': 0.0,
         }
 
     for row in month_wan_rows:
-        mac = str(row.get('mac') or '')
-        client_ip = str(row.get('client_ip') or '')
+        mac = row['mac']
+        client_ip = row['client_ip']
         key = mac.lower() if mac else f'ip:{client_ip}'
         comparison = comparison_by_key.setdefault(
             key,
@@ -199,29 +292,28 @@ def build_month_usage_comparison_rows(month_wan_rows: list[dict[str, object]]) -
                 'vlan': '',
                 'mac': mac,
                 'identity_is_fallback': False,
-                'unifi_month_mb': 0.0,
-                'wan_month_mb': 0.0,
+                'unifi_period_mb': 0.0,
+                'wan_period_mb': 0.0,
                 'wan_flow_count': 0,
+                'difference_mb': 0.0,
             },
         )
-        comparison['client_ip'] = comparison.get('client_ip') or client_ip
-        comparison['name'] = comparison.get('name') or str(row.get('name') or '')
-        comparison['user_id'] = comparison.get('user_id') or str(row.get('user_id') or '')
-        comparison['vlan'] = comparison.get('vlan') or str(row.get('vlan') or '')
-        comparison['mac'] = comparison.get('mac') or mac
-        comparison['identity_is_fallback'] = bool(comparison.get('identity_is_fallback')) or bool(
-            row.get('identity_is_fallback')
-        )
-        comparison['wan_month_mb'] = float(comparison['wan_month_mb']) + total_wan_mb(row)
-        comparison['wan_flow_count'] = int(comparison['wan_flow_count']) + int(row.get('flow_count') or 0)
+        comparison['client_ip'] = comparison['client_ip'] or client_ip
+        comparison['name'] = comparison['name'] or row['name']
+        comparison['user_id'] = comparison['user_id'] or row['user_id']
+        comparison['vlan'] = comparison['vlan'] or row['vlan']
+        comparison['mac'] = comparison['mac'] or mac
+        comparison['identity_is_fallback'] = comparison['identity_is_fallback'] or row['identity_is_fallback']
+        comparison['wan_period_mb'] += total_wan_mb(row)
+        comparison['wan_flow_count'] += row['flow_count']
 
     comparison_rows = list(comparison_by_key.values())
     for row in comparison_rows:
-        row['difference_mb'] = float(row['wan_month_mb']) - float(row['unifi_month_mb'])
+        row['difference_mb'] = row['wan_period_mb'] - row['unifi_period_mb']
 
     return sorted(
         comparison_rows,
-        key=lambda row: max(float(row['unifi_month_mb']), float(row['wan_month_mb'])),
+        key=lambda row: max(row['unifi_period_mb'], row['wan_period_mb']),
         reverse=True,
     )
 

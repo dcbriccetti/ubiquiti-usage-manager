@@ -231,6 +231,7 @@
             <h2>Month Usage Comparison</h2>
             <p class="muted">
                 UniFi MB is the existing client counter. WAN MB is internet-only flow usage attributed by client identity.
+                This table compares the overlapping WAN-covered period beginning {{ month_comparison_start.strftime("%Y-%m-%d %H:%M") }}.
             </p>
             <div class="table-wrap">
                 <table class="fit-content-table">
@@ -268,8 +269,8 @@
                                 {% endif %}
                             </td>
                             <td class="mono">{{ row.client_ip or "" }}</td>
-                            <td class="num">{{ "{:,.1f}".format(row.unifi_month_mb) }}</td>
-                            <td class="num">{{ "{:,.1f}".format(row.wan_month_mb) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.unifi_period_mb) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.wan_period_mb) }}</td>
                             <td class="num">{{ "{:+,.1f}".format(row.difference_mb) }}</td>
                             <td class="num">{{ "{:,.0f}".format(row.wan_flow_count) }}</td>
                         </tr>

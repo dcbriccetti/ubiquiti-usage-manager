@@ -1154,6 +1154,57 @@ def get_usage_window_summary(window: str) -> list[UsageWindowSummary]:
     )
 
 
+def get_usage_summary_for_period(period_start: datetime, period_end: datetime) -> list[UsageWindowSummary]:
+    'Return sampled UniFi usage rollups for an explicit comparison period.'
+    stmt = (
+        select(UsageRecord)
+        .where(
+            UsageRecord.timestamp >= period_start,
+            UsageRecord.timestamp <= period_end,
+        )
+        .order_by(UsageRecord.timestamp.desc())
+    )
+    with SessionLocal() as session:
+        records = session.execute(stmt).scalars().all()
+
+    summary_by_mac: dict[str, UsageWindowSummary] = {}
+    for record in records:
+        existing = summary_by_mac.get(record.mac)
+        if existing:
+            summary_by_mac[record.mac] = UsageWindowSummary(
+                mac=existing.mac,
+                user_id=existing.user_id,
+                name=existing.name,
+                vlan=existing.vlan,
+                profile=existing.profile,
+                ap_name=existing.ap_name,
+                day_total_mb=existing.day_total_mb + record.mb_used,
+                last_7_days_total_mb=existing.last_7_days_total_mb + record.mb_used,
+                calendar_month_total_mb=existing.calendar_month_total_mb + record.mb_used,
+                last_seen=existing.last_seen,
+            )
+            continue
+
+        summary_by_mac[record.mac] = UsageWindowSummary(
+            mac=record.mac,
+            user_id=record.user_id,
+            name=record.name,
+            vlan=record.vlan,
+            profile=record.profile,
+            ap_name=record.ap_name,
+            day_total_mb=record.mb_used,
+            last_7_days_total_mb=record.mb_used,
+            calendar_month_total_mb=record.mb_used,
+            last_seen=record.timestamp,
+        )
+
+    return sorted(
+        summary_by_mac.values(),
+        key=lambda row: row.calendar_month_total_mb,
+        reverse=True,
+    )
+
+
 def get_usage_window_access_point_minutes(window: str) -> dict[str, list[tuple[str, int]]]:
     'Return per-client AP minute counts for the requested dashboard window.'
     now = datetime.now()

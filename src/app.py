@@ -308,6 +308,8 @@ def create_app() -> Flask:
         month_rows = db.get_wan_usage_by_identity(period_start=month_start, period_end=now)
         decorated_today_rows = serialize_wan_identity_rows(today_rows)
         decorated_month_rows = serialize_wan_identity_rows(month_rows)
+        first_wan_flow_at = db.get_first_wan_flow_time()
+        month_comparison_start = max(month_start, first_wan_flow_at) if first_wan_flow_at else month_start
         recent_imports = db.get_recent_flow_imports(limit=12)
         latest_import = recent_imports[0] if recent_imports else None
         latest_import_age_minutes = (
@@ -359,7 +361,13 @@ def create_app() -> Flask:
             generated_at=now,
             today_rows=visible_today_rows,
             month_rows=decorated_month_rows,
-            month_usage_comparison_rows=build_month_usage_comparison_rows(decorated_month_rows),
+            month_usage_comparison_rows=build_month_usage_comparison_rows(
+                decorated_month_rows,
+                period_start=month_comparison_start,
+                period_end=now,
+            ),
+            month_comparison_start=month_comparison_start,
+            month_comparison_end=now,
             today_attribution_diagnostics=today_attribution_diagnostics,
             month_attribution_diagnostics=month_attribution_diagnostics,
             attribution_period_rows=build_wan_attribution_period_rows(
