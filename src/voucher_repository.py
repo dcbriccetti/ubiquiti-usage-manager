@@ -90,3 +90,37 @@ def get_unconsumed_plus_voucher_count() -> int:
     stmt = select(func.count()).select_from(db.PlusVoucher).where(db.PlusVoucher.consumed_at.is_(None))
     with db.SessionLocal() as session:
         return int(session.execute(stmt).scalar() or 0)
+
+
+def get_active_plus_voucher_for_user_id(user_id: str | int | None) -> db.PlusVoucherRecord | None:
+    'Return the unconsumed voucher matching one RADIUS user ID.'
+    if user_id is None:
+        return None
+
+    try:
+        voucher_user_id = int(str(user_id).strip())
+    except ValueError:
+        return None
+
+    stmt = (
+        select(db.PlusVoucher)
+        .where(
+            db.PlusVoucher.user_id == voucher_user_id,
+            db.PlusVoucher.consumed_at.is_(None),
+        )
+        .order_by(db.PlusVoucher.generated_at.desc(), db.PlusVoucher.id.desc())
+        .limit(1)
+    )
+    with db.SessionLocal() as session:
+        row = session.execute(stmt).scalar_one_or_none()
+        return _voucher_record(row) if row else None
+
+
+def get_plus_voucher_usage_total_mb(voucher: db.PlusVoucherRecord) -> float:
+    'Return all usage recorded against a voucher user since it was generated.'
+    stmt = select(func.sum(db.UsageRecord.mb_used)).where(
+        db.UsageRecord.user_id == str(voucher.user_id),
+        db.UsageRecord.timestamp >= voucher.generated_at,
+    )
+    with db.SessionLocal() as session:
+        return float(session.execute(stmt).scalar() or 0.0)

@@ -17,6 +17,38 @@
     </article>
 </section>
 
+{% if voucher_usage %}
+    <article class="panel">
+        <div class="panel-body">
+            <h2>Voucher Balance</h2>
+            <p class="muted">
+                Voucher {{ voucher_usage.user_id }}
+                · issued {{ voucher_usage.generated_at.strftime("%Y-%m-%d") }}
+            </p>
+            <section class="grid stats">
+                <article class="panel stat">
+                    <span class="label">Remaining</span>
+                    <span class="value">{{ "{:,.1f}".format(voucher_usage.remaining_mb / 1000.0) }} GB</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Used</span>
+                    <span class="value">{{ "{:,.1f}".format(voucher_usage.used_mb / 1000.0) }} GB</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Allocation</span>
+                    <span class="value">{{ "{:,.0f}".format(voucher_usage.allocation_gb) }} GB</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Used</span>
+                    <span class="value{% if voucher_usage.is_over_allocation %} warn-text{% endif %}">
+                        {{ "{:,.0f}".format(voucher_usage.used_pct) }}%
+                    </span>
+                </article>
+            </section>
+        </div>
+    </article>
+{% endif %}
+
 {% if wan_usage_available %}
     <article class="panel">
         <div class="panel-body">

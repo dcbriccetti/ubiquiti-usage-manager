@@ -46,6 +46,18 @@ class UsageScaleContext(TypedDict):
     throttle_datasets: list[ThrottleChartDataset]
 
 
+class VoucherUsageContext(TypedDict):
+    'Lifetime usage against one active Plus voucher.'
+    user_id: int
+    allocation_gb: int
+    allocation_mb: float
+    used_mb: float
+    remaining_mb: float
+    used_pct: float
+    generated_at: datetime
+    is_over_allocation: bool
+
+
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
     mac: str
@@ -64,6 +76,7 @@ class ClientUsageContext(TypedDict):
     wan_month_upload_mb: float
     wan_month_total_mb: float
     wan_usage_available: bool
+    voucher_usage: VoucherUsageContext | None
     usage_scales: list[UsageScaleContext]
     current_month_label: str
     speed_limits_by_name: SpeedLimitsByName
@@ -144,6 +157,28 @@ def build_throttle_datasets(
         }
         for profile_key in sorted_profile_keys
     ]
+
+
+def build_voucher_usage_context(user_id: str | None) -> VoucherUsageContext | None:
+    'Return remaining lifetime voucher allocation for one RADIUS user ID.'
+    voucher = db.get_active_plus_voucher_for_user_id(user_id)
+    if voucher is None:
+        return None
+
+    allocation_mb = float(voucher.allocation_gb * 1000)
+    used_mb = db.get_plus_voucher_usage_total_mb(voucher)
+    remaining_mb = max(0.0, allocation_mb - used_mb)
+    used_pct = (used_mb / allocation_mb * 100.0) if allocation_mb else 0.0
+    return {
+        'user_id': voucher.user_id,
+        'allocation_gb': voucher.allocation_gb,
+        'allocation_mb': allocation_mb,
+        'used_mb': used_mb,
+        'remaining_mb': remaining_mb,
+        'used_pct': used_pct,
+        'generated_at': voucher.generated_at,
+        'is_over_allocation': used_mb >= allocation_mb,
+    }
 
 
 def get_client_usage_context(mac: str) -> ClientUsageContext:
@@ -289,6 +324,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'wan_month_download_mb': wan_month_download_mb,
         'wan_month_upload_mb': wan_month_upload_mb,
         'wan_month_total_mb': wan_month_download_mb + wan_month_upload_mb,
+        'voucher_usage': build_voucher_usage_context(latest_record.user_id),
         'usage_scales': usage_scales,
         'current_month_label': current_month_label,
         'speed_limits_by_name': speed_limits_by_name,

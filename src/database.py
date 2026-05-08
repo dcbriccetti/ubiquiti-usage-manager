@@ -706,6 +706,20 @@ def get_unconsumed_plus_voucher_count() -> int:
     return _get_unconsumed_plus_voucher_count()
 
 
+def get_active_plus_voucher_for_user_id(user_id: str | int | None) -> PlusVoucherRecord | None:
+    'Return the unconsumed voucher matching one RADIUS user ID.'
+    from voucher_repository import get_active_plus_voucher_for_user_id as _get_active_plus_voucher_for_user_id
+
+    return _get_active_plus_voucher_for_user_id(user_id)
+
+
+def get_plus_voucher_usage_total_mb(voucher: PlusVoucherRecord) -> float:
+    'Return all usage recorded against a voucher user since it was generated.'
+    from voucher_repository import get_plus_voucher_usage_total_mb as _get_plus_voucher_usage_total_mb
+
+    return _get_plus_voucher_usage_total_mb(voucher)
+
+
 def log_usage(c: ClientInfo, interval_mb: float) -> None:
     'Persist one usage interval for a client.'
     with SessionLocal() as session:
