@@ -9,7 +9,7 @@ This module keeps the web entrypoint intentionally small:
 Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
-from datetime import date, datetime
+from datetime import date, datetime, time
 import ipaddress
 import io
 import os
@@ -95,6 +95,7 @@ class ClientUsageContext(TypedDict):
     wan_month_download_mb: float
     wan_month_upload_mb: float
     wan_month_total_mb: float
+    wan_usage_available: bool
     usage_scales: list[UsageScaleContext]
     current_month_label: str
     speed_limits_by_name: SpeedLimitsByName
@@ -193,6 +194,16 @@ def create_app() -> Flask:
         'Return total decimal MB for one decorated WAN row.'
         total_bytes = int(row.get('download_bytes') or 0) + int(row.get('upload_bytes') or 0)
         return bytes_to_mb(total_bytes)
+
+    def summarize_wan_identity_rows_for_mac(
+        rows: list[db.WanIdentityUsageSummary],
+        mac: str,
+    ) -> tuple[float, float]:
+        'Return download/upload MB from timestamp-attributed WAN rows for one MAC.'
+        target_mac = mac.lower()
+        download_bytes = sum(row.download_bytes for row in rows if row.mac.lower() == target_mac)
+        upload_bytes = sum(row.upload_bytes for row in rows if row.mac.lower() == target_mac)
+        return bytes_to_mb(download_bytes), bytes_to_mb(upload_bytes)
 
     def get_voucher_wifi_ssid() -> str:
         'Return Wi-Fi SSID display name for printed voucher instructions.'
@@ -437,25 +448,23 @@ def create_app() -> Flask:
         wan_today_upload_mb = 0.0
         wan_month_download_mb = 0.0
         wan_month_upload_mb = 0.0
-        if wan_client_ip:
-            today_start = datetime.combine(now.date(), time.min)
-            month_start = datetime.combine(now.date().replace(day=1), time.min)
-            today_wan_usage = db.get_wan_usage_by_client_ips(
-                [wan_client_ip],
-                period_start=today_start,
-                period_end=now,
-            ).get(wan_client_ip)
-            month_wan_usage = db.get_wan_usage_by_client_ips(
-                [wan_client_ip],
-                period_start=month_start,
-                period_end=now,
-            ).get(wan_client_ip)
-            if today_wan_usage:
-                wan_today_download_mb = bytes_to_mb(today_wan_usage.download_bytes)
-                wan_today_upload_mb = bytes_to_mb(today_wan_usage.upload_bytes)
-            if month_wan_usage:
-                wan_month_download_mb = bytes_to_mb(month_wan_usage.download_bytes)
-                wan_month_upload_mb = bytes_to_mb(month_wan_usage.upload_bytes)
+        today_start = datetime.combine(now.date(), time.min)
+        month_start = datetime.combine(now.date().replace(day=1), time.min)
+        wan_today_download_mb, wan_today_upload_mb = summarize_wan_identity_rows_for_mac(
+            db.get_wan_usage_by_identity(period_start=today_start, period_end=now),
+            mac,
+        )
+        wan_month_download_mb, wan_month_upload_mb = summarize_wan_identity_rows_for_mac(
+            db.get_wan_usage_by_identity(period_start=month_start, period_end=now),
+            mac,
+        )
+        wan_usage_available = bool(
+            wan_client_ip
+            or wan_today_download_mb
+            or wan_today_upload_mb
+            or wan_month_download_mb
+            or wan_month_upload_mb
+        )
         month_daily_usage: list[UsageScalePoint] = [
             {
                 'bucket_label': f'{usage_day.strftime("%b")} {usage_day.day}',
@@ -538,6 +547,7 @@ def create_app() -> Flask:
             'calendar_month_total_mb': calendar_month_total_mb,
             'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
             'wan_client_ip': wan_client_ip,
+            'wan_usage_available': wan_usage_available,
             'wan_identity_observed_at': latest_ip_identity.observed_at if latest_ip_identity else None,
             'wan_today_download_mb': wan_today_download_mb,
             'wan_today_upload_mb': wan_today_upload_mb,

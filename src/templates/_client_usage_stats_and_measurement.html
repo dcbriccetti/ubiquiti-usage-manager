@@ -17,14 +17,18 @@
     </article>
 </section>
 
-{% if wan_client_ip %}
+{% if wan_usage_available %}
     <article class="panel">
         <div class="panel-body">
-            <h2>WAN Usage by Latest IP</h2>
+            <h2>WAN Usage by Client Identity</h2>
             <p class="muted">
-                IP {{ wan_client_ip }}
-                {% if wan_identity_observed_at %}
-                    · observed {{ wan_identity_observed_at.strftime("%Y-%m-%d %H:%M") }}
+                {% if wan_client_ip %}
+                    Latest IP {{ wan_client_ip }}
+                    {% if wan_identity_observed_at %}
+                        · observed {{ wan_identity_observed_at.strftime("%Y-%m-%d %H:%M") }}
+                    {% endif %}
+                {% else %}
+                    No latest IP observed
                 {% endif %}
             </p>
             <section class="grid stats">
