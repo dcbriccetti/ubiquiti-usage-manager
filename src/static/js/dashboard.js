@@ -130,7 +130,7 @@
     const wanTodayTitle = (client) => {
         const total = Number(client.wan_today_total_mb) || 0;
         if (total <= 0) return '';
-        return `WAN current IP today: ${formatWanDetail(total)} MB; Down: ${formatWanDetail(client.wan_today_download_mb)} MB; Up: ${formatWanDetail(client.wan_today_upload_mb)} MB`;
+        return `WAN identity today: ${formatWanDetail(total)} MB; Down: ${formatWanDetail(client.wan_today_download_mb)} MB; Up: ${formatWanDetail(client.wan_today_upload_mb)} MB`;
     };
     const formatCost = (costCents) => {
         if (!costCents || costCents < 0.5) return '';

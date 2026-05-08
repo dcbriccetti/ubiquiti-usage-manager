@@ -26,6 +26,7 @@ import unifi_api as api
 from monitor import ClientSnapshot, get_connected_clients
 from speedlimit import SpeedLimit
 from unifi_time import normalize_epoch_seconds, normalize_online_seconds
+from wan_service import summarize_wan_identity_rows_for_mac
 
 WindowName = Literal['active_now', 'online_now', 'today', 'last_7_days', 'this_month']
 ActivitySpan = Literal['12m', '12h', '12d']
@@ -278,19 +279,16 @@ def build_rows_for_online_clients(
     source_snapshots = snapshots if snapshots is not None else get_connected_clients()
     now = datetime.now()
     today_start = datetime.combine(now.date(), time.min)
-    wan_usage_by_ip = db.get_wan_usage_by_client_ips(
-        [snapshot.client.ip_address for snapshot in source_snapshots],
-        period_start=today_start,
-        period_end=now,
-    )
+    today_wan_identity_rows = db.get_wan_usage_by_identity(period_start=today_start, period_end=now)
     for snapshot in source_snapshots:
         speed_limit = snapshot.effective_speed_limit
-        wan_usage = wan_usage_by_ip.get(snapshot.client.ip_address)
-        wan_today_download_mb = (wan_usage.download_bytes / 1_000_000.0) if wan_usage else None
-        wan_today_upload_mb = (wan_usage.upload_bytes / 1_000_000.0) if wan_usage else None
+        wan_today_download_mb, wan_today_upload_mb = summarize_wan_identity_rows_for_mac(
+            today_wan_identity_rows,
+            snapshot.client.mac,
+        )
         wan_today_total_mb = (
-            (wan_today_download_mb or 0.0) + (wan_today_upload_mb or 0.0)
-            if wan_usage
+            wan_today_download_mb + wan_today_upload_mb
+            if wan_today_download_mb or wan_today_upload_mb
             else None
         )
         direction_total_mb = snapshot.client.tx_mb_since_connection + snapshot.client.rx_mb_since_connection
@@ -684,9 +682,9 @@ def build_insights_data(
     include_live_organization_paid_clients: bool = True,
 ) -> InsightsData:
     'Assemble data payload for the /insights page.'
-    organization_paid_vlan_criteria = list(cfg.ORGANIZATION_PAID_VLAN_NAMES)
-    organization_paid_mac_criteria = list(cfg.ORGANIZATION_PAID_DEVICE_MACS)
-    organization_paid_user_id_criteria = list(cfg.ORGANIZATION_PAID_USER_IDS)
+    organization_paid_vlan_criteria = set(cfg.ORGANIZATION_PAID_VLAN_NAMES)
+    organization_paid_mac_criteria = set(cfg.ORGANIZATION_PAID_DEVICE_MACS)
+    organization_paid_user_id_criteria = set(cfg.ORGANIZATION_PAID_USER_IDS)
     selected_month_label = current_month_label or render_month_label(datetime.now())
     selected_report_label = report_period_label or datetime.now().strftime('%B %Y')
 
@@ -813,9 +811,9 @@ def build_insights_data(
             _serialize_usage_actor_row(org_row, include_vlan_name=True)
             for org_row in organization_paid_clients
         ],
-        'organization_paid_vlan_criteria': organization_paid_vlan_criteria,
-        'organization_paid_mac_criteria': organization_paid_mac_criteria,
-        'organization_paid_user_id_criteria': organization_paid_user_id_criteria,
+        'organization_paid_vlan_criteria': sorted(organization_paid_vlan_criteria),
+        'organization_paid_mac_criteria': sorted(organization_paid_mac_criteria),
+        'organization_paid_user_id_criteria': sorted(organization_paid_user_id_criteria),
         'peak_concurrency_x_labels': concurrency_insights.daily_x_labels,
         'peak_concurrency_full_labels': concurrency_insights.daily_full_labels,
         'peak_concurrency_counts': concurrency_insights.daily_peak_counts,
