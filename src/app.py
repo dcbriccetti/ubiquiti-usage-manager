@@ -151,7 +151,41 @@ def create_app() -> Flask:
         'Return True when requester is a Plus user whose RADIUS username is in admin allowlist.'
         if not is_plus_network(vlan_name) or not user_id:
             return False
-        return user_id.strip().lower() in cfg.PLUS_ADMINS
+        plus_admins = {
+            str(admin_user_id).strip().lower()
+            for admin_user_id in getattr(cfg, 'PLUS_ADMINS', set())
+            if str(admin_user_id).strip()
+        }
+        return user_id.strip().lower() in plus_admins
+
+    def get_live_client_admin_status(detected_mac: str) -> bool | None:
+        'Return live admin status for a connected client, or None when identity is incomplete.'
+        live_client = get_live_client_record_by_mac(detected_mac)
+        if live_client is None:
+            return None
+
+        live_vlan_name = live_client.get('network')
+        if not isinstance(live_vlan_name, str):
+            return None
+
+        if not is_plus_network(live_vlan_name):
+            return False
+
+        live_user_id = (
+            live_client.get('1x_identity')
+            or live_client.get('identity')
+            or live_client.get('last_1x_identity')
+        )
+        if not live_user_id:
+            last_identities = live_client.get('last_1x_identities')
+            if isinstance(last_identities, list) and last_identities:
+                first_identity = last_identities[0]
+                live_user_id = first_identity if isinstance(first_identity, str) else None
+
+        if not isinstance(live_user_id, str) or not live_user_id.strip():
+            return None
+
+        return is_plus_admin_user(live_user_id, live_vlan_name)
 
     def request_ip_is_plus_admin(request_ip: str) -> bool:
         'Return True when request IP matches configured admin IP/CIDR allowlist.'
@@ -230,27 +264,14 @@ def create_app() -> Flask:
         if not detected_mac:
             return False
 
+        if (live_admin_status := get_live_client_admin_status(detected_mac)) is not None:
+            return live_admin_status
+
         usage_history = db.get_usage_history(detected_mac, limit=1)
         if usage_history:
             latest_record = usage_history[0]
             warn_missing_radius_identity(latest_record, request_ip, detected_mac)
             return is_plus_admin_user(latest_record.user_id, latest_record.vlan)
-
-        if live_client := get_live_client_record_by_mac(detected_mac):
-            live_user_id = (
-                live_client.get('1x_identity')
-                or live_client.get('identity')
-                or live_client.get('last_1x_identity')
-            )
-            if not live_user_id:
-                last_identities = live_client.get('last_1x_identities')
-                if isinstance(last_identities, list) and last_identities:
-                    first_identity = last_identities[0]
-                    live_user_id = first_identity if isinstance(first_identity, str) else None
-            live_vlan_name = live_client.get('network')
-            if not isinstance(live_vlan_name, str):
-                live_vlan_name = None
-            return is_plus_admin_user(live_user_id, live_vlan_name)
 
         return False
     @flask_app.route("/")
