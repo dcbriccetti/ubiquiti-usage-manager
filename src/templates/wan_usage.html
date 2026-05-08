@@ -59,6 +59,60 @@
         </div>
     </article>
 
+    <article class="panel">
+        <div class="panel-body">
+            <h2>Month Usage Comparison</h2>
+            <p class="muted">
+                UniFi MB is the existing client counter. WAN MB is internet-only flow usage attributed by client identity.
+            </p>
+            <div class="table-wrap">
+                <table class="fit-content-table">
+                    <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>User ID</th>
+                        <th>Network</th>
+                        <th>MAC</th>
+                        <th>Client IP</th>
+                        <th class="num">UniFi MB</th>
+                        <th class="num">WAN MB</th>
+                        <th class="num">WAN - UniFi</th>
+                        <th class="num">Flows</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in month_usage_comparison_rows %}
+                        <tr>
+                            <td>
+                                {{ row.name or "" }}
+                                {% if row.identity_is_fallback %}
+                                    <span class="muted" title="Latest identity fallback; not observed at flow time">*</span>
+                                {% endif %}
+                            </td>
+                            <td class="mono">{{ row.user_id or "" }}</td>
+                            <td>{{ row.vlan or "" }}</td>
+                            <td class="mono">
+                                {% if row.mac %}
+                                    <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.mac[-5:] }}</a>
+                                {% endif %}
+                            </td>
+                            <td class="mono">{{ row.client_ip or "" }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.unifi_month_mb) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.wan_month_mb) }}</td>
+                            <td class="num">{{ "{:+,.1f}".format(row.difference_mb) }}</td>
+                            <td class="num">{{ "{:,.0f}".format(row.wan_flow_count) }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="9" class="muted">No monthly usage data available yet.</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </article>
+
     <section class="grid">
         <article class="panel">
             <div class="panel-body">

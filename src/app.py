@@ -195,6 +195,63 @@ def create_app() -> Flask:
         total_bytes = int(row.get('download_bytes') or 0) + int(row.get('upload_bytes') or 0)
         return bytes_to_mb(total_bytes)
 
+    def build_month_usage_comparison_rows(month_wan_rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        'Compare legacy UniFi month usage with WAN flow-attributed month usage.'
+        comparison_by_key: dict[str, dict[str, object]] = {}
+
+        for row in db.get_usage_window_summary('this_month'):
+            key = row.mac.lower()
+            comparison_by_key[key] = {
+                'client_ip': '',
+                'name': row.name or '',
+                'user_id': row.user_id or '',
+                'vlan': row.vlan or '',
+                'mac': row.mac,
+                'identity_is_fallback': False,
+                'unifi_month_mb': row.calendar_month_total_mb,
+                'wan_month_mb': 0.0,
+                'wan_flow_count': 0,
+            }
+
+        for row in month_wan_rows:
+            mac = str(row.get('mac') or '')
+            client_ip = str(row.get('client_ip') or '')
+            key = mac.lower() if mac else f'ip:{client_ip}'
+            comparison = comparison_by_key.setdefault(
+                key,
+                {
+                    'client_ip': client_ip,
+                    'name': '',
+                    'user_id': '',
+                    'vlan': '',
+                    'mac': mac,
+                    'identity_is_fallback': False,
+                    'unifi_month_mb': 0.0,
+                    'wan_month_mb': 0.0,
+                    'wan_flow_count': 0,
+                },
+            )
+            comparison['client_ip'] = comparison.get('client_ip') or client_ip
+            comparison['name'] = comparison.get('name') or str(row.get('name') or '')
+            comparison['user_id'] = comparison.get('user_id') or str(row.get('user_id') or '')
+            comparison['vlan'] = comparison.get('vlan') or str(row.get('vlan') or '')
+            comparison['mac'] = comparison.get('mac') or mac
+            comparison['identity_is_fallback'] = bool(comparison.get('identity_is_fallback')) or bool(
+                row.get('identity_is_fallback')
+            )
+            comparison['wan_month_mb'] = float(comparison['wan_month_mb']) + total_wan_mb(row)
+            comparison['wan_flow_count'] = int(comparison['wan_flow_count']) + int(row.get('flow_count') or 0)
+
+        comparison_rows = list(comparison_by_key.values())
+        for row in comparison_rows:
+            row['difference_mb'] = float(row['wan_month_mb']) - float(row['unifi_month_mb'])
+
+        return sorted(
+            comparison_rows,
+            key=lambda row: max(float(row['unifi_month_mb']), float(row['wan_month_mb'])),
+            reverse=True,
+        )
+
     def summarize_wan_identity_rows_for_mac(
         rows: list[db.WanIdentityUsageSummary],
         mac: str,
@@ -637,6 +694,7 @@ def create_app() -> Flask:
             generated_at=now,
             today_rows=visible_today_rows,
             month_rows=decorated_month_rows,
+            month_usage_comparison_rows=build_month_usage_comparison_rows(decorated_month_rows),
             today_network_rows=summarize_wan_by_network(decorated_today_rows),
             month_network_rows=summarize_wan_by_network(decorated_month_rows),
             recent_imports=recent_imports,
