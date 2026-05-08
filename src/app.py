@@ -195,6 +195,107 @@ def create_app() -> Flask:
         total_bytes = int(row.get('download_bytes') or 0) + int(row.get('upload_bytes') or 0)
         return bytes_to_mb(total_bytes)
 
+    def build_wan_attribution_diagnostics(rows: list[dict[str, object]]) -> dict[str, object]:
+        'Summarize how much WAN usage has confident, fallback, or missing identity attribution.'
+        diagnostic_rows = [
+            {
+                **row,
+                'total_mb': total_wan_mb(row),
+            }
+            for row in rows
+        ]
+        total_mb = sum(float(row['total_mb']) for row in diagnostic_rows)
+        fallback_rows = [row for row in diagnostic_rows if row.get('identity_is_fallback')]
+        unattributed_rows = [row for row in diagnostic_rows if not row.get('mac')]
+        attributed_rows = [
+            row
+            for row in diagnostic_rows
+            if row.get('mac') and not row.get('identity_is_fallback')
+        ]
+        fallback_mb = sum(float(row['total_mb']) for row in fallback_rows)
+        unattributed_mb = sum(float(row['total_mb']) for row in unattributed_rows)
+        attributed_mb = sum(float(row['total_mb']) for row in attributed_rows)
+
+        def pct(part_mb: float) -> float:
+            return (part_mb / total_mb * 100.0) if total_mb else 0.0
+
+        return {
+            'total_mb': total_mb,
+            'attributed_mb': attributed_mb,
+            'fallback_mb': fallback_mb,
+            'unattributed_mb': unattributed_mb,
+            'attributed_pct': pct(attributed_mb),
+            'fallback_pct': pct(fallback_mb),
+            'unattributed_pct': pct(unattributed_mb),
+            'attributed_client_count': len(attributed_rows),
+            'fallback_client_count': len(fallback_rows),
+            'unattributed_client_count': len(unattributed_rows),
+            'top_unattributed_rows': sorted(
+                unattributed_rows,
+                key=lambda row: float(row['total_mb']),
+                reverse=True,
+            )[:10],
+            'top_fallback_rows': sorted(
+                fallback_rows,
+                key=lambda row: float(row['total_mb']),
+                reverse=True,
+            )[:10],
+        }
+
+    def build_wan_attribution_period_rows(
+        today_diagnostics: dict[str, object],
+        month_diagnostics: dict[str, object],
+    ) -> list[dict[str, object]]:
+        'Return compact today/month attribution coverage rows.'
+        return [
+            {'label': 'Today', **today_diagnostics},
+            {'label': 'Month', **month_diagnostics},
+        ]
+
+    def build_wan_billing_readiness(
+        attribution_diagnostics: dict[str, object],
+        latest_import_age_minutes: int | None,
+    ) -> dict[str, str]:
+        'Return a concise status for deciding whether WAN usage is ready to drive billing.'
+        total_mb = float(attribution_diagnostics['total_mb'])
+        unattributed_pct = float(attribution_diagnostics['unattributed_pct'])
+        fallback_pct = float(attribution_diagnostics['fallback_pct'])
+        if latest_import_age_minutes is None:
+            return {
+                'label': 'No imports',
+                'class': 'warn-text',
+                'detail': 'WAN capture import has not produced any completed data yet.',
+            }
+        if latest_import_age_minutes > 15:
+            return {
+                'label': 'Import stale',
+                'class': 'warn-text',
+                'detail': 'WAN capture data is old enough that billing comparisons may be incomplete.',
+            }
+        if total_mb < 100.0:
+            return {
+                'label': 'Collecting',
+                'class': 'muted',
+                'detail': 'WAN volume is still low; wait for a busy period before switching billing.',
+            }
+        if unattributed_pct <= 2.0 and fallback_pct <= 10.0:
+            return {
+                'label': 'Strong',
+                'class': '',
+                'detail': 'Most WAN usage is confidently attributed to client identities.',
+            }
+        if unattributed_pct <= 10.0:
+            return {
+                'label': 'Watch',
+                'class': '',
+                'detail': 'WAN attribution is usable for comparison, but fallback or unknown rows still need review.',
+            }
+        return {
+            'label': 'Needs identity work',
+            'class': 'warn-text',
+            'detail': 'Too much WAN usage is still unidentified to use as the billing source.',
+        }
+
     def build_month_usage_comparison_rows(month_wan_rows: list[dict[str, object]]) -> list[dict[str, object]]:
         'Compare legacy UniFi month usage with WAN flow-attributed month usage.'
         comparison_by_key: dict[str, dict[str, object]] = {}
@@ -688,6 +789,8 @@ def create_app() -> Flask:
         total_today_upload_bytes = sum(row.upload_bytes for row in today_rows)
         total_month_download_bytes = sum(row.download_bytes for row in month_rows)
         total_month_upload_bytes = sum(row.upload_bytes for row in month_rows)
+        today_attribution_diagnostics = build_wan_attribution_diagnostics(decorated_today_rows)
+        month_attribution_diagnostics = build_wan_attribution_diagnostics(decorated_month_rows)
 
         return render_template(
             "wan_usage.html",
@@ -695,6 +798,16 @@ def create_app() -> Flask:
             today_rows=visible_today_rows,
             month_rows=decorated_month_rows,
             month_usage_comparison_rows=build_month_usage_comparison_rows(decorated_month_rows),
+            today_attribution_diagnostics=today_attribution_diagnostics,
+            month_attribution_diagnostics=month_attribution_diagnostics,
+            attribution_period_rows=build_wan_attribution_period_rows(
+                today_attribution_diagnostics,
+                month_attribution_diagnostics,
+            ),
+            wan_billing_readiness=build_wan_billing_readiness(
+                month_attribution_diagnostics,
+                latest_import_age_minutes,
+            ),
             today_network_rows=summarize_wan_by_network(decorated_today_rows),
             month_network_rows=summarize_wan_by_network(decorated_month_rows),
             recent_imports=recent_imports,

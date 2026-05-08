@@ -61,6 +61,134 @@
 
     <article class="panel">
         <div class="panel-body">
+            <h2>WAN Attribution Diagnostics</h2>
+            <p class="muted">
+                Month-to-date identity coverage for deciding when WAN can become the primary billing source.
+            </p>
+            <p>
+                Billing readiness:
+                <strong{% if wan_billing_readiness.class %} class="{{ wan_billing_readiness.class }}"{% endif %}>
+                    {{ wan_billing_readiness.label }}
+                </strong>
+                <span class="muted">{{ wan_billing_readiness.detail }}</span>
+            </p>
+            <section class="grid stats">
+                <article class="panel stat">
+                    <span class="label">Month Confident</span>
+                    <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.attributed_pct) }}%</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Month Fallback</span>
+                    <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.fallback_pct) }}%</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Month Unknown</span>
+                    <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.unattributed_pct) }}%</span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Total WAN</span>
+                    <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.total_mb) }} MB</span>
+                </article>
+            </section>
+            <div class="table-wrap">
+                <table class="fit-content-table">
+                    <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th class="num">Confident %</th>
+                        <th class="num">Fallback %</th>
+                        <th class="num">Unknown %</th>
+                        <th class="num">Unknown MB</th>
+                        <th class="num">Unknown Clients</th>
+                        <th class="num">Total MB</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for row in attribution_period_rows %}
+                        <tr>
+                            <td>{{ row.label }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.attributed_pct) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.fallback_pct) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.unattributed_pct) }}</td>
+                            <td class="num">{{ "{:,.2f}".format(row.unattributed_mb) }}</td>
+                            <td class="num">{{ "{:,.0f}".format(row.unattributed_client_count) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.total_mb) }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <section class="grid">
+                <section>
+                    <h3>Top Unidentified WAN Rows</h3>
+                    <div class="table-wrap">
+                        <table class="fit-content-table">
+                            <thead>
+                            <tr>
+                                <th>Client IP</th>
+                                <th>Network</th>
+                                <th class="num">WAN MB</th>
+                                <th class="num">Flows</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for row in month_attribution_diagnostics.top_unattributed_rows %}
+                                <tr>
+                                    <td class="mono">{{ row.client_ip }}</td>
+                                    <td>{{ row.vlan or "Unknown" }}</td>
+                                    <td class="num">{{ "{:,.2f}".format(row.total_mb) }}</td>
+                                    <td class="num">{{ "{:,.0f}".format(row.flow_count) }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="muted">No unidentified WAN rows this month.</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                <section>
+                    <h3>Top Fallback WAN Rows</h3>
+                    <div class="table-wrap">
+                        <table class="fit-content-table">
+                            <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Client IP</th>
+                                <th>MAC</th>
+                                <th class="num">WAN MB</th>
+                                <th class="num">Flows</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for row in month_attribution_diagnostics.top_fallback_rows %}
+                                <tr>
+                                    <td>{{ row.name or "" }}</td>
+                                    <td class="mono">{{ row.client_ip }}</td>
+                                    <td class="mono">
+                                        {% if row.mac %}
+                                            <a class="mac-link" href="{{ url_for('client_detail', mac=row.mac) }}">{{ row.mac[-5:] }}</a>
+                                        {% endif %}
+                                    </td>
+                                    <td class="num">{{ "{:,.2f}".format(row.total_mb) }}</td>
+                                    <td class="num">{{ "{:,.0f}".format(row.flow_count) }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="5" class="muted">No latest-identity fallback rows this month.</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+        </div>
+    </article>
+
+    <article class="panel">
+        <div class="panel-body">
             <h2>Month Usage Comparison</h2>
             <p class="muted">
                 UniFi MB is the existing client counter. WAN MB is internet-only flow usage attributed by client identity.
