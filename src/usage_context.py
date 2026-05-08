@@ -54,7 +54,8 @@ class VoucherUsageContext(TypedDict):
     used_mb: float
     remaining_mb: float
     used_pct: float
-    generated_at: datetime
+    created_at: datetime
+    activated_at: datetime | None
     is_over_allocation: bool
 
 
@@ -166,7 +167,7 @@ def build_voucher_usage_context(user_id: str | None) -> VoucherUsageContext | No
         return None
 
     allocation_mb = float(voucher.allocation_gb * 1000)
-    used_mb = db.get_plus_voucher_usage_total_mb(voucher)
+    activated_at, used_mb = db.get_plus_voucher_usage_summary(voucher)
     remaining_mb = max(0.0, allocation_mb - used_mb)
     used_pct = (used_mb / allocation_mb * 100.0) if allocation_mb else 0.0
     return {
@@ -176,7 +177,8 @@ def build_voucher_usage_context(user_id: str | None) -> VoucherUsageContext | No
         'used_mb': used_mb,
         'remaining_mb': remaining_mb,
         'used_pct': used_pct,
-        'generated_at': voucher.generated_at,
+        'created_at': voucher.generated_at,
+        'activated_at': activated_at,
         'is_over_allocation': used_mb >= allocation_mb,
     }
 

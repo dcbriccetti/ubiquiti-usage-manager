@@ -1,6 +1,7 @@
 '''Persistence helpers for generated Plus vouchers.'''
 
 import secrets
+from datetime import datetime
 
 from sqlalchemy import func, select
 
@@ -116,11 +117,20 @@ def get_active_plus_voucher_for_user_id(user_id: str | int | None) -> db.PlusVou
         return _voucher_record(row) if row else None
 
 
-def get_plus_voucher_usage_total_mb(voucher: db.PlusVoucherRecord) -> float:
-    'Return all usage recorded against a voucher user since it was generated.'
-    stmt = select(func.sum(db.UsageRecord.mb_used)).where(
-        db.UsageRecord.user_id == str(voucher.user_id),
+def get_plus_voucher_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datetime | None, float]:
+    'Return first usage time and lifetime usage for one voucher.'
+    user_id = str(voucher.user_id)
+    first_usage_stmt = select(func.min(db.UsageRecord.timestamp)).where(
+        db.UsageRecord.user_id == user_id,
         db.UsageRecord.timestamp >= voucher.generated_at,
     )
     with db.SessionLocal() as session:
-        return float(session.execute(stmt).scalar() or 0.0)
+        first_usage_at = session.execute(first_usage_stmt).scalar()
+        if first_usage_at is None:
+            return None, 0.0
+
+        total_usage_stmt = select(func.sum(db.UsageRecord.mb_used)).where(
+            db.UsageRecord.user_id == user_id,
+            db.UsageRecord.timestamp >= first_usage_at,
+        )
+        return first_usage_at, float(session.execute(total_usage_stmt).scalar() or 0.0)

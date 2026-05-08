@@ -713,11 +713,11 @@ def get_active_plus_voucher_for_user_id(user_id: str | int | None) -> PlusVouche
     return _get_active_plus_voucher_for_user_id(user_id)
 
 
-def get_plus_voucher_usage_total_mb(voucher: PlusVoucherRecord) -> float:
-    'Return all usage recorded against a voucher user since it was generated.'
-    from voucher_repository import get_plus_voucher_usage_total_mb as _get_plus_voucher_usage_total_mb
+def get_plus_voucher_usage_summary(voucher: PlusVoucherRecord) -> tuple[datetime | None, float]:
+    'Return first usage time and lifetime usage for one voucher.'
+    from voucher_repository import get_plus_voucher_usage_summary as _get_plus_voucher_usage_summary
 
-    return _get_plus_voucher_usage_total_mb(voucher)
+    return _get_plus_voucher_usage_summary(voucher)
 
 
 def log_usage(c: ClientInfo, interval_mb: float) -> None:

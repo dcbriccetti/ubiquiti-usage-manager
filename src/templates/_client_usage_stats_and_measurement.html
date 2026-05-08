@@ -23,7 +23,12 @@
             <h2>Voucher Balance</h2>
             <p class="muted">
                 Voucher {{ voucher_usage.user_id }}
-                · issued {{ voucher_usage.generated_at.strftime("%Y-%m-%d") }}
+                · created {{ voucher_usage.created_at.strftime("%Y-%m-%d") }}
+                {% if voucher_usage.activated_at %}
+                    · activated {{ voucher_usage.activated_at.strftime("%Y-%m-%d") }}
+                {% else %}
+                    · not activated yet
+                {% endif %}
             </p>
             <section class="grid stats">
                 <article class="panel stat">
