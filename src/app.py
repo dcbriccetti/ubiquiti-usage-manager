@@ -13,7 +13,7 @@ from datetime import date, datetime
 import ipaddress
 import os
 import re
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, stream_with_context, url_for
 
@@ -274,13 +274,16 @@ def create_app() -> Flask:
             abort(403)
 
         period_context = build_report_context(db.get_usage_months())
+        period_start = cast(datetime, period_context['period_start'])
+        period_end = cast(datetime, period_context['period_end'])
+        selected_month = cast(date, period_context['selected_month'])
         current_month = date(datetime.now().year, datetime.now().month, 1)
         insights_data = build_insights_data(
-            period_start=period_context['period_start'],
-            period_end=period_context['period_end'],
-            current_month_label=period_context['selected_month'].strftime('%b'),
+            period_start=period_start,
+            period_end=period_end,
+            current_month_label=selected_month.strftime('%b'),
             report_period_label=str(period_context['report_period_label']),
-            include_live_organization_paid_clients=period_context['selected_month'] == current_month,
+            include_live_organization_paid_clients=selected_month == current_month,
         )
         return render_template(
             "insights.html",
@@ -550,6 +553,15 @@ def create_app() -> Flask:
                 page_title="My Usage | UniFi Usage",
                 error_message=lookup_error,
                 request_ip=request_ip or "",
+                detected_mac="",
+            )
+
+        if detected_mac is None:
+            return render_template(
+                "usage_detail.html",
+                page_title="My Usage | UniFi Usage",
+                error_message="Could not determine your device MAC address from this request.",
+                request_ip=request_ip,
                 detected_mac="",
             )
 
