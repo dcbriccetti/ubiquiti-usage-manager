@@ -11,11 +11,6 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
 
 - Client table with live/historical windows: Active Now, Online Now, Today, 7 Days, and current month.
 - Per-client usage details page for admins and self-service users with daily charts and usage history.
-- Plus-user invoice workflow (admin-only):
-  - `/invoices/plus-users` monthly invoice index for billable Plus users,
-  - `/invoices/plus-users/<user_id>` per-user summary page,
-  - `/invoices/plus-users/<user_id>/summary.pdf` per-user PDF export,
-  - `/invoices/plus-users/export.zip` bulk ZIP export (all PDFs + CSV index).
 - Plus voucher workflow (admin-only):
   - `/vouchers` generates paper vouchers at preset dollar values,
   - each voucher stores a local user ID, password, and GB allocation,
@@ -69,8 +64,8 @@ Config values:
 - `MONTHLY_USAGE_ADJUSTMENTS`
 - `THROTTLING_ENABLED` (set `False` to disable policy-based throttling changes)
 - `COST_IN_CENTS_PER_GB`
-- `PLUS_REPORT_TITLE` (prepended to "Network Usage Report" in Plus-user reports)
-- `ORGANIZATION_TITLE` (shown on report pages and PDF exports)
+- `PLUS_REPORT_TITLE` (shown on printed Plus voucher instructions)
+- `ORGANIZATION_TITLE`
 - `PLUS_ADMINS`
 - `PLUS_ADMIN_IPS` (exact IPs or CIDR ranges that bypass UniFi client lookup for admin access, useful for VPN admin clients)
 - `NFDUMP_DIR` (directory containing completed `nfcapd.*` flow capture files)
@@ -82,9 +77,8 @@ Config values:
 - `ORGANIZATION_PAID_USER_IDS`
 - `ORGANIZATION_PAID_VLAN_NAMES`
 
-Billing export behavior:
+Voucher behavior:
 
-- Users in `ORGANIZATION_PAID_USER_IDS` are excluded from Plus-user billing exports.
 - Costs are calculated from `COST_IN_CENTS_PER_GB`.
 - Voucher values are priced at `COST_IN_CENTS_PER_GB` and currently offered as $5, $10, $20, $50, and $100 batches.
 - Creating vouchers also creates UniFi local RADIUS accounts, so test with a single voucher before generating a batch.
@@ -143,10 +137,9 @@ By default, the importer reads completed `nfcapd.YYYYMMDDHHMM` files from `/var/
 3. Confirm dashboard rows appear and minute usage updates.
 4. Open a client detail page from Name/MAC links.
 5. Verify month cost values match `COST_IN_CENTS_PER_GB`.
-6. Visit `/invoices/plus-users` and confirm:
-   - invoice table populates,
-   - per-user PDF downloads,
-   - ZIP export includes PDFs and `plus-user-invoice-index.csv`.
+6. Visit `/vouchers` and generate one test voucher.
+7. Confirm the matching UniFi local RADIUS user is created.
+8. Print the generated voucher batch page and verify the SSID/cost details.
 
 ## Notes
 

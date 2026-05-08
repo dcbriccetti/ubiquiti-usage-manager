@@ -31,34 +31,29 @@ class StubWanFlowUsageRecord:
     client_ip: str
 
 
-class StubPlusUserInvoiceSummary:
-    pass
-
-
 sys.modules.setdefault(
     "database",
     types.SimpleNamespace(
         WanFlowUsageRecord=StubWanFlowUsageRecord,
-        PlusUserInvoiceSummary=StubPlusUserInvoiceSummary,
     ),
 )
 
 import config
+import billing
 import flow_import
-import plus_invoices
 import throttling_policy
 
 
 class BillingTests(unittest.TestCase):
     def test_calculate_month_cost_cents_uses_configured_gb_rate(self) -> None:
-        with patch.object(plus_invoices.cfg, "COST_IN_CENTS_PER_GB", 50):
-            self.assertEqual(plus_invoices.calculate_month_cost_cents(0), 0)
-            self.assertEqual(plus_invoices.calculate_month_cost_cents(1000), 50)
-            self.assertEqual(plus_invoices.calculate_month_cost_cents(2500), 125)
+        with patch.object(billing.cfg, "COST_IN_CENTS_PER_GB", 50):
+            self.assertEqual(billing.calculate_month_cost_cents(0), 0)
+            self.assertEqual(billing.calculate_month_cost_cents(1000), 50)
+            self.assertEqual(billing.calculate_month_cost_cents(2500), 125)
 
     def test_calculate_month_cost_cents_preserves_fractional_usage(self) -> None:
-        with patch.object(plus_invoices.cfg, "COST_IN_CENTS_PER_GB", 75):
-            self.assertAlmostEqual(plus_invoices.calculate_month_cost_cents(333.333), 24.999975)
+        with patch.object(billing.cfg, "COST_IN_CENTS_PER_GB", 75):
+            self.assertAlmostEqual(billing.calculate_month_cost_cents(333.333), 24.999975)
 
 
 class ThrottlingPolicyTests(unittest.TestCase):

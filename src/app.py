@@ -11,12 +11,11 @@ merge conflicts and makes testing easier because each module has a tighter scope
 '''
 from datetime import date, datetime
 import ipaddress
-import io
 import os
 import re
 from typing import Any
 
-from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, stream_with_context, url_for
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, stream_with_context, url_for
 
 import config as cfg
 import database as db
@@ -31,15 +30,6 @@ from dashboard_service import (
 from dashboard_stream import event_stream
 from lan_identity import find_client_mac_for_ip, get_request_ip
 from logging_config import configure_logging
-from plus_invoices import (
-    build_plus_user_chart_context,
-    build_plus_user_invoice_pdf,
-    build_plus_user_invoice_zip,
-    calculate_month_cost_cents,
-    get_organization_title,
-    get_plus_network_report_title,
-    plus_user_invoice_pdf_filename,
-)
 from report_periods import build_report_period_context
 from usage_context import (
     get_client_usage_context,
@@ -67,7 +57,7 @@ def create_app() -> Flask:
 
     def build_report_context(available_months: list[date] | None = None) -> dict[str, object]:
         'Build reusable template/query context for month-selected reports.'
-        resolved_months = available_months if available_months is not None else db.get_plus_user_invoice_months()
+        resolved_months = available_months if available_months is not None else db.get_usage_months()
         return build_report_period_context(
             request.args.get('month'),
             resolved_months,
@@ -575,139 +565,6 @@ def create_app() -> Flask:
             selected_speed_limit_name=selected_speed_limit_name,
             speed_limit_form_message=speed_limit_form_message,
             **context,
-        )
-
-    @flask_app.route("/invoices/plus-users")
-    def plus_user_invoices():
-        'Render Plus-user invoice summaries for the selected report month.'
-        if not requester_is_plus_admin():
-            abort(403)
-
-        generated_at = datetime.now()
-        period_context = build_report_context()
-        summaries = db.get_plus_user_invoice_summaries_current_month(
-            excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-            period_start=period_context['period_start'],
-            period_end=period_context['period_end'],
-        )
-        invoice_rows = [
-            {
-                'summary': summary,
-                'cost_usd': calculate_month_cost_cents(summary.total_mb) / 100.0,
-            }
-            for summary in summaries
-        ]
-        return render_template(
-            "plus_user_invoices.html",
-            generated_at=generated_at,
-            summaries=summaries,
-            invoice_rows=invoice_rows,
-            organization_title=get_organization_title(),
-            excluded_user_ids=sorted(
-                user_id.strip()
-                for user_id in cfg.ORGANIZATION_PAID_USER_IDS
-                if user_id.strip()
-            ),
-            **period_context,
-        )
-
-    @flask_app.route("/invoices/plus-users/<user_id>")
-    def plus_user_invoice_summary(user_id: str):
-        'Render invoice detail for one Plus user in the selected report month.'
-        if not requester_is_plus_admin():
-            abort(403)
-
-        period_context = build_report_context()
-        summary = db.get_plus_user_invoice_summary_current_month(
-            user_id,
-            excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-            period_start=period_context['period_start'],
-            period_end=period_context['period_end'],
-        )
-        if summary is None:
-            abort(404)
-
-        generated_at = datetime.now()
-        return render_template(
-            "plus_user_invoice_summary.html",
-            generated_at=generated_at,
-            month_cost_cents=calculate_month_cost_cents(summary.total_mb),
-            organization_title=get_organization_title(),
-            plus_report_label=get_plus_network_report_title(),
-            summary=summary,
-            **period_context,
-            **build_plus_user_chart_context(
-                summary,
-                period_start=period_context['period_start'],
-                period_end=period_context['period_end'],
-            ),
-        )
-
-    @flask_app.route("/invoices/plus-users/<user_id>/summary.pdf")
-    def plus_user_invoice_pdf(user_id: str):
-        'Generate invoice-ready PDF for one Plus user in the selected report month.'
-        if not requester_is_plus_admin():
-            abort(403)
-
-        period_context = build_report_context()
-        summary = db.get_plus_user_invoice_summary_current_month(
-            user_id,
-            excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-            period_start=period_context['period_start'],
-            period_end=period_context['period_end'],
-        )
-        if summary is None:
-            abort(404)
-
-        generated_at = datetime.now()
-        report_period_label = str(period_context['report_period_label'])
-        pdf_bytes = build_plus_user_invoice_pdf(
-            summary,
-            report_period_label,
-            generated_at,
-            period_start=period_context['period_start'],
-            period_end=period_context['period_end'],
-        )
-        filename = plus_user_invoice_pdf_filename(summary, str(period_context['selected_month_value']))
-        return send_file(
-            io.BytesIO(pdf_bytes),
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=filename,
-        )
-
-    @flask_app.route("/invoices/plus-users/export.zip")
-    def plus_user_invoice_export_zip():
-        'Generate one ZIP containing PDF summaries for each billable Plus user.'
-        if not requester_is_plus_admin():
-            abort(403)
-
-        generated_at = datetime.now()
-        period_context = build_report_context()
-        report_period_label = str(period_context['report_period_label'])
-        summaries = db.get_plus_user_invoice_summaries_current_month(
-            excluded_user_ids=cfg.ORGANIZATION_PAID_USER_IDS,
-            period_start=period_context['period_start'],
-            period_end=period_context['period_end'],
-        )
-
-        zip_bytes = build_plus_user_invoice_zip(
-            summaries,
-            str(period_context['selected_month_value']),
-            lambda summary: build_plus_user_invoice_pdf(
-                summary,
-                report_period_label,
-                generated_at,
-                period_start=period_context['period_start'],
-                period_end=period_context['period_end'],
-            ),
-        )
-        zip_name = f"plus-user-invoices-{period_context['selected_month_value']}.zip"
-        return send_file(
-            io.BytesIO(zip_bytes),
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=zip_name,
         )
 
     return flask_app
