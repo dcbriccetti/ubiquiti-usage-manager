@@ -9,12 +9,12 @@ This module keeps the web entrypoint intentionally small:
 Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
-from datetime import date, datetime, time
+from datetime import date, datetime
 import ipaddress
 import io
 import os
 import re
-from typing import Any, TypedDict
+from typing import Any
 
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, stream_with_context, url_for
 
@@ -31,7 +31,6 @@ from dashboard_service import (
 from dashboard_stream import event_stream
 from lan_identity import find_client_mac_for_ip, get_request_ip
 from logging_config import configure_logging
-from monitor import get_connected_clients
 from plus_invoices import (
     build_plus_user_chart_context,
     build_plus_user_invoice_pdf,
@@ -42,63 +41,20 @@ from plus_invoices import (
     plus_user_invoice_pdf_filename,
 )
 from report_periods import build_report_period_context
-from speedlimit import SpeedLimit
-
-SpeedLimitsByName = dict[str, SpeedLimit]
-
-
-class ThrottleChartDataset(TypedDict):
-    'One stacked-bar series for monthly throttling chart.'
-    label: str
-    data: list[int]
-
-
-class UsageScalePoint(TypedDict):
-    'One bucketed usage point (hourly or daily).'
-    bucket_label: str
-    bucket_value: int
-    total_mb: float
-    active_minutes: int
-
-
-class UsageScaleContext(TypedDict):
-    'Renderable chart context for one usage scale section.'
-    key: str
-    title: str
-    x_axis_title: str
-    mb_axis_title: str
-    minutes_axis_title: str
-    summary_text: str
-    points: list[UsageScalePoint]
-    usage_device_series: list[dict[str, object]]
-    access_point_labels: list[str]
-    access_point_mb_values: list[float]
-    access_point_minutes_values: list[int]
-    throttle_x_values: list[int]
-    throttle_datasets: list[ThrottleChartDataset]
-
-
-class ClientUsageContext(TypedDict):
-    'Template context for client-detail and my-usage pages.'
-    mac: str
-    latest_record: UsageRecord
-    usage_history: list[UsageRecord]
-    daily_total_mb: float
-    last_7_days_total_mb: float
-    calendar_month_total_mb: float
-    month_cost_cents: float
-    wan_client_ip: str
-    wan_identity_observed_at: datetime | None
-    wan_today_download_mb: float
-    wan_today_upload_mb: float
-    wan_today_total_mb: float
-    wan_month_download_mb: float
-    wan_month_upload_mb: float
-    wan_month_total_mb: float
-    wan_usage_available: bool
-    usage_scales: list[UsageScaleContext]
-    current_month_label: str
-    speed_limits_by_name: SpeedLimitsByName
+from usage_context import (
+    get_client_usage_context,
+    speed_limit_option_label,
+)
+from wan_service import (
+    build_month_usage_comparison_rows,
+    build_wan_attribution_diagnostics,
+    build_wan_attribution_period_rows,
+    build_wan_billing_readiness,
+    bytes_to_mb,
+    serialize_wan_identity_rows,
+    summarize_wan_by_network,
+    total_wan_mb,
+)
 
 
 def create_app() -> Flask:
@@ -109,13 +65,6 @@ def create_app() -> Flask:
     live_update_seconds = 60
     live_update_boundary_offset_seconds = 3
 
-    def render_month_label(now: datetime) -> str:
-        'Return full month name unless it is long, then use abbreviation.'
-        full_label = now.strftime('%B')
-        if len(full_label) > 5:
-            return now.strftime('%b')
-        return full_label
-
     def build_report_context(available_months: list[date] | None = None) -> dict[str, object]:
         'Build reusable template/query context for month-selected reports.'
         resolved_months = available_months if available_months is not None else db.get_plus_user_invoice_months()
@@ -123,10 +72,6 @@ def create_app() -> Flask:
             request.args.get('month'),
             resolved_months,
         ).as_template_context()
-
-    def get_speed_limits_by_name() -> SpeedLimitsByName:
-        'Return mapping of speed-limit profile name to SpeedLimit object.'
-        return {limit.name: limit for limit in api.get_speed_limits()}
 
     def render_radius_value(value: object) -> str:
         'Return a readable display value for optional RADIUS account fields.'
@@ -137,231 +82,6 @@ def create_app() -> Flask:
     def calculate_voucher_cost_cents(allocation_gb: int) -> int:
         'Return voucher price using the configured cents-per-GB rate.'
         return int(round(allocation_gb * cfg.COST_IN_CENTS_PER_GB))
-
-    def bytes_to_mb(byte_count: int) -> float:
-        'Return decimal MB for network byte counters.'
-        return byte_count / 1_000_000.0
-
-    def serialize_wan_identity_rows(rows: list[db.WanIdentityUsageSummary]) -> list[dict[str, object]]:
-        'Serialize timestamp-attributed WAN identity rollups for templates.'
-        latest_identities_by_ip = db.get_latest_client_identities_by_ip([row.client_ip for row in rows])
-        serialized_rows: list[dict[str, object]] = []
-        for row in rows:
-            fallback_identity = latest_identities_by_ip.get(row.client_ip) if not row.mac else None
-            serialized_rows.append(
-                {
-                    'client_ip': row.client_ip,
-                    'name': row.name or (fallback_identity.name if fallback_identity else ''),
-                    'user_id': row.user_id or (fallback_identity.user_id if fallback_identity else ''),
-                    'vlan': row.vlan if row.vlan != 'Unknown' else (fallback_identity.vlan if fallback_identity else row.vlan),
-                    'mac': row.mac or (fallback_identity.mac if fallback_identity else ''),
-                    'identity_observed_at': fallback_identity.observed_at if fallback_identity else None,
-                    'identity_is_fallback': fallback_identity is not None,
-                    'upload_bytes': row.upload_bytes,
-                    'download_bytes': row.download_bytes,
-                    'flow_count': row.flow_count,
-                }
-            )
-        return serialized_rows
-
-    def summarize_wan_by_network(rows: list[dict[str, object]]) -> list[dict[str, object]]:
-        'Aggregate decorated WAN rows by latest-known network/VLAN label.'
-        summary_by_network: dict[str, dict[str, object]] = {}
-        for row in rows:
-            network_name = str(row.get('vlan') or 'Unknown')
-            summary = summary_by_network.setdefault(
-                network_name,
-                {
-                    'network': network_name,
-                    'download_bytes': 0,
-                    'upload_bytes': 0,
-                    'flow_count': 0,
-                    'client_count': 0,
-                },
-            )
-            summary['download_bytes'] = int(summary['download_bytes']) + int(row.get('download_bytes') or 0)
-            summary['upload_bytes'] = int(summary['upload_bytes']) + int(row.get('upload_bytes') or 0)
-            summary['flow_count'] = int(summary['flow_count']) + int(row.get('flow_count') or 0)
-            summary['client_count'] = int(summary['client_count']) + 1
-
-        return sorted(
-            summary_by_network.values(),
-            key=lambda summary: int(summary['download_bytes']) + int(summary['upload_bytes']),
-            reverse=True,
-        )
-
-    def total_wan_mb(row: dict[str, object]) -> float:
-        'Return total decimal MB for one decorated WAN row.'
-        total_bytes = int(row.get('download_bytes') or 0) + int(row.get('upload_bytes') or 0)
-        return bytes_to_mb(total_bytes)
-
-    def build_wan_attribution_diagnostics(rows: list[dict[str, object]]) -> dict[str, object]:
-        'Summarize how much WAN usage has confident, fallback, or missing identity attribution.'
-        diagnostic_rows = [
-            {
-                **row,
-                'total_mb': total_wan_mb(row),
-            }
-            for row in rows
-        ]
-        total_mb = sum(float(row['total_mb']) for row in diagnostic_rows)
-        fallback_rows = [row for row in diagnostic_rows if row.get('identity_is_fallback')]
-        unattributed_rows = [row for row in diagnostic_rows if not row.get('mac')]
-        attributed_rows = [
-            row
-            for row in diagnostic_rows
-            if row.get('mac') and not row.get('identity_is_fallback')
-        ]
-        fallback_mb = sum(float(row['total_mb']) for row in fallback_rows)
-        unattributed_mb = sum(float(row['total_mb']) for row in unattributed_rows)
-        attributed_mb = sum(float(row['total_mb']) for row in attributed_rows)
-
-        def pct(part_mb: float) -> float:
-            return (part_mb / total_mb * 100.0) if total_mb else 0.0
-
-        return {
-            'total_mb': total_mb,
-            'attributed_mb': attributed_mb,
-            'fallback_mb': fallback_mb,
-            'unattributed_mb': unattributed_mb,
-            'attributed_pct': pct(attributed_mb),
-            'fallback_pct': pct(fallback_mb),
-            'unattributed_pct': pct(unattributed_mb),
-            'attributed_client_count': len(attributed_rows),
-            'fallback_client_count': len(fallback_rows),
-            'unattributed_client_count': len(unattributed_rows),
-            'top_unattributed_rows': sorted(
-                unattributed_rows,
-                key=lambda row: float(row['total_mb']),
-                reverse=True,
-            )[:10],
-            'top_fallback_rows': sorted(
-                fallback_rows,
-                key=lambda row: float(row['total_mb']),
-                reverse=True,
-            )[:10],
-        }
-
-    def build_wan_attribution_period_rows(
-        today_diagnostics: dict[str, object],
-        month_diagnostics: dict[str, object],
-    ) -> list[dict[str, object]]:
-        'Return compact today/month attribution coverage rows.'
-        return [
-            {'label': 'Today', **today_diagnostics},
-            {'label': 'Month', **month_diagnostics},
-        ]
-
-    def build_wan_billing_readiness(
-        attribution_diagnostics: dict[str, object],
-        latest_import_age_minutes: int | None,
-    ) -> dict[str, str]:
-        'Return a concise status for deciding whether WAN usage is ready to drive billing.'
-        total_mb = float(attribution_diagnostics['total_mb'])
-        unattributed_pct = float(attribution_diagnostics['unattributed_pct'])
-        fallback_pct = float(attribution_diagnostics['fallback_pct'])
-        if latest_import_age_minutes is None:
-            return {
-                'label': 'No imports',
-                'class': 'warn-text',
-                'detail': 'WAN capture import has not produced any completed data yet.',
-            }
-        if latest_import_age_minutes > 15:
-            return {
-                'label': 'Import stale',
-                'class': 'warn-text',
-                'detail': 'WAN capture data is old enough that billing comparisons may be incomplete.',
-            }
-        if total_mb < 100.0:
-            return {
-                'label': 'Collecting',
-                'class': 'muted',
-                'detail': 'WAN volume is still low; wait for a busy period before switching billing.',
-            }
-        if unattributed_pct <= 2.0 and fallback_pct <= 10.0:
-            return {
-                'label': 'Strong',
-                'class': '',
-                'detail': 'Most WAN usage is confidently attributed to client identities.',
-            }
-        if unattributed_pct <= 10.0:
-            return {
-                'label': 'Watch',
-                'class': '',
-                'detail': 'WAN attribution is usable for comparison, but fallback or unknown rows still need review.',
-            }
-        return {
-            'label': 'Needs identity work',
-            'class': 'warn-text',
-            'detail': 'Too much WAN usage is still unidentified to use as the billing source.',
-        }
-
-    def build_month_usage_comparison_rows(month_wan_rows: list[dict[str, object]]) -> list[dict[str, object]]:
-        'Compare legacy UniFi month usage with WAN flow-attributed month usage.'
-        comparison_by_key: dict[str, dict[str, object]] = {}
-
-        for row in db.get_usage_window_summary('this_month'):
-            key = row.mac.lower()
-            comparison_by_key[key] = {
-                'client_ip': '',
-                'name': row.name or '',
-                'user_id': row.user_id or '',
-                'vlan': row.vlan or '',
-                'mac': row.mac,
-                'identity_is_fallback': False,
-                'unifi_month_mb': row.calendar_month_total_mb,
-                'wan_month_mb': 0.0,
-                'wan_flow_count': 0,
-            }
-
-        for row in month_wan_rows:
-            mac = str(row.get('mac') or '')
-            client_ip = str(row.get('client_ip') or '')
-            key = mac.lower() if mac else f'ip:{client_ip}'
-            comparison = comparison_by_key.setdefault(
-                key,
-                {
-                    'client_ip': client_ip,
-                    'name': '',
-                    'user_id': '',
-                    'vlan': '',
-                    'mac': mac,
-                    'identity_is_fallback': False,
-                    'unifi_month_mb': 0.0,
-                    'wan_month_mb': 0.0,
-                    'wan_flow_count': 0,
-                },
-            )
-            comparison['client_ip'] = comparison.get('client_ip') or client_ip
-            comparison['name'] = comparison.get('name') or str(row.get('name') or '')
-            comparison['user_id'] = comparison.get('user_id') or str(row.get('user_id') or '')
-            comparison['vlan'] = comparison.get('vlan') or str(row.get('vlan') or '')
-            comparison['mac'] = comparison.get('mac') or mac
-            comparison['identity_is_fallback'] = bool(comparison.get('identity_is_fallback')) or bool(
-                row.get('identity_is_fallback')
-            )
-            comparison['wan_month_mb'] = float(comparison['wan_month_mb']) + total_wan_mb(row)
-            comparison['wan_flow_count'] = int(comparison['wan_flow_count']) + int(row.get('flow_count') or 0)
-
-        comparison_rows = list(comparison_by_key.values())
-        for row in comparison_rows:
-            row['difference_mb'] = float(row['wan_month_mb']) - float(row['unifi_month_mb'])
-
-        return sorted(
-            comparison_rows,
-            key=lambda row: max(float(row['unifi_month_mb']), float(row['wan_month_mb'])),
-            reverse=True,
-        )
-
-    def summarize_wan_identity_rows_for_mac(
-        rows: list[db.WanIdentityUsageSummary],
-        mac: str,
-    ) -> tuple[float, float]:
-        'Return download/upload MB from timestamp-attributed WAN rows for one MAC.'
-        target_mac = mac.lower()
-        download_bytes = sum(row.download_bytes for row in rows if row.mac.lower() == target_mac)
-        upload_bytes = sum(row.upload_bytes for row in rows if row.mac.lower() == target_mac)
-        return bytes_to_mb(download_bytes), bytes_to_mb(upload_bytes)
 
     def get_voucher_wifi_ssid() -> str:
         'Return Wi-Fi SSID display name for printed voucher instructions.'
@@ -453,40 +173,6 @@ def create_app() -> Flask:
             "Try again in a moment after generating some network activity."
         )
 
-    def speed_limit_option_label(limit: SpeedLimit) -> str:
-        'Build select-option label for one speed-limit profile.'
-        rendered = str(limit)
-        if rendered:
-            return rendered
-        return f'{limit.name} (Unlimited)'
-
-    def profile_display_label(profile_key: str, speed_limits_by_name: SpeedLimitsByName) -> str:
-        'Render chart/display label for one stored profile name key.'
-        if not profile_key:
-            return 'Default'
-        if matched_limit := speed_limits_by_name.get(profile_key):
-            return speed_limit_option_label(matched_limit)
-        return profile_key
-
-    def profile_throttling_impact(profile_key: str, speed_limits_by_name: SpeedLimitsByName) -> float:
-        'Return throttling-impact score where larger means more restrictive.'
-        if not profile_key:
-            return -1.0
-
-        matched_limit = speed_limits_by_name.get(profile_key)
-        if not matched_limit:
-            return -0.5
-
-        caps: list[int] = []
-        for cap in (matched_limit.up_kbps, matched_limit.down_kbps):
-            if isinstance(cap, int) and cap > 0:
-                caps.append(cap)
-        if not caps:
-            return 0.0
-
-        strictest_cap_kbps: int = min(caps)
-        return 1_000_000.0 / float(strictest_cap_kbps)
-
     def warn_missing_radius_identity(record: UsageRecord, request_ip: str | None, detected_mac: str | None) -> None:
         'Log warning when Plus-network client metadata is missing RADIUS user_id.'
         if is_plus_network(record.vlan) and not (record.user_id and record.user_id.strip()):
@@ -538,186 +224,6 @@ def create_app() -> Flask:
             return is_plus_admin_user(live_user_id, live_vlan_name)
 
         return False
-
-    def get_client_usage_context(mac: str) -> ClientUsageContext:
-        'Build shared usage/detail context used by both admin and self-service pages.'
-        if usage_history := db.get_usage_history(mac):
-            latest_record = usage_history[0]
-        else:
-            if (live_snapshot := next(
-                (
-                    snapshot
-                    for snapshot in get_connected_clients()
-                    if snapshot.client.mac.lower() == mac.lower()
-                ),
-                None,
-            )) is None:
-                raise LookupError(f'No usage or live snapshot found for MAC {mac}')
-
-            latest_record = db.UsageRecord(
-                mac=live_snapshot.client.mac,
-                user_id=live_snapshot.client.user_id,
-                name=live_snapshot.client.name,
-                vlan=live_snapshot.client.vlan_name,
-                mb_used=live_snapshot.interval_mb,
-                profile=(
-                    live_snapshot.client.speed_limit.name
-                    if live_snapshot.client.speed_limit
-                    else None
-                ),
-                ap_name=live_snapshot.client.ap_name,
-                signal=live_snapshot.client.signal,
-            )
-            usage_history = []
-
-        def build_throttle_datasets(
-            bucket_rows: list[tuple[int, dict[str, int]]],
-            speed_limits_map: SpeedLimitsByName,
-        ) -> list[ThrottleChartDataset]:
-            'Build sorted stacked-profile datasets for one bucketed time scale.'
-            totals_by_profile_key: dict[str, int] = {}
-            for _, bucket_counts in bucket_rows:
-                for profile_key, minutes in bucket_counts.items():
-                    totals_by_profile_key[profile_key] = totals_by_profile_key.get(profile_key, 0) + minutes
-
-            sorted_profile_keys = sorted(
-                totals_by_profile_key.keys(),
-                key=lambda key: (
-                    profile_throttling_impact(key, speed_limits_map),
-                    totals_by_profile_key[key],
-                ),
-            )
-
-            return [
-                {
-                    'label': profile_display_label(profile_key, speed_limits_map),
-                    'data': [bucket_counts.get(profile_key, 0) for _, bucket_counts in bucket_rows],
-                }
-                for profile_key in sorted_profile_keys
-            ]
-
-        speed_limits_by_name = get_speed_limits_by_name()
-        now = datetime.now()
-        current_month_label = render_month_label(now)
-        calendar_month_total_mb = db.get_calendar_month_total(mac)
-        latest_ip_identity = db.get_latest_client_identity_by_mac(mac)
-        wan_client_ip = latest_ip_identity.ip_address if latest_ip_identity else ''
-        wan_today_download_mb = 0.0
-        wan_today_upload_mb = 0.0
-        wan_month_download_mb = 0.0
-        wan_month_upload_mb = 0.0
-        today_start = datetime.combine(now.date(), time.min)
-        month_start = datetime.combine(now.date().replace(day=1), time.min)
-        wan_today_download_mb, wan_today_upload_mb = summarize_wan_identity_rows_for_mac(
-            db.get_wan_usage_by_identity(period_start=today_start, period_end=now),
-            mac,
-        )
-        wan_month_download_mb, wan_month_upload_mb = summarize_wan_identity_rows_for_mac(
-            db.get_wan_usage_by_identity(period_start=month_start, period_end=now),
-            mac,
-        )
-        wan_usage_available = bool(
-            wan_client_ip
-            or wan_today_download_mb
-            or wan_today_upload_mb
-            or wan_month_download_mb
-            or wan_month_upload_mb
-        )
-        month_daily_usage: list[UsageScalePoint] = [
-            {
-                'bucket_label': f'{usage_day.strftime("%b")} {usage_day.day}',
-                'bucket_value': usage_day.day,
-                'total_mb': total_mb,
-                'active_minutes': active_minutes,
-            }
-            for usage_day, total_mb, active_minutes in db.get_calendar_month_daily_totals(mac)
-        ]
-        month_throttle_rows = [
-            (usage_day.day, daily_counts)
-            for usage_day, daily_counts in db.get_calendar_month_daily_profile_minutes(mac)
-        ]
-        month_throttle_datasets = build_throttle_datasets(month_throttle_rows, speed_limits_by_name)
-
-        daily_hourly_usage: list[UsageScalePoint] = [
-            {
-                'bucket_label': f'{hour:02d}:00',
-                'bucket_value': hour,
-                'total_mb': total_mb,
-                'active_minutes': active_minutes,
-            }
-            for hour, total_mb, active_minutes in db.get_today_hourly_totals(mac)
-        ]
-        daily_throttle_rows = db.get_today_hourly_profile_minutes(mac)
-        daily_throttle_datasets = build_throttle_datasets(daily_throttle_rows, speed_limits_by_name)
-        daily_access_points = db.get_today_access_point_totals(mac)
-
-        monthly_access_points = db.get_calendar_month_access_point_totals(mac)
-
-        usage_scales: list[UsageScaleContext] = [
-            {
-                'key': 'daily',
-                'title': f'Usage Today ({now.strftime("%b")} {now.day})',
-                'x_axis_title': 'Hour of day',
-                'mb_axis_title': 'MB/hour',
-                'minutes_axis_title': 'minutes/hour',
-                'summary_text': 'Top chart: MB/hour. Bottom chart: active minutes/hour stacked by speed-limit profile.',
-                'points': daily_hourly_usage,
-                'usage_device_series': [
-                    {
-                        'label': '',
-                        'data': [point['total_mb'] for point in daily_hourly_usage],
-                    }
-                ],
-                'access_point_labels': [ap_name for ap_name, _, _ in daily_access_points],
-                'access_point_mb_values': [total_mb for _, total_mb, _ in daily_access_points],
-                'access_point_minutes_values': [active_minutes for _, _, active_minutes in daily_access_points],
-                'throttle_x_values': [hour for hour, _ in daily_throttle_rows],
-                'throttle_datasets': daily_throttle_datasets,
-            },
-            {
-                'key': 'monthly',
-                'title': f'{current_month_label} Usage',
-                'x_axis_title': 'Day of month',
-                'mb_axis_title': 'MB/day',
-                'minutes_axis_title': 'minutes/day',
-                'summary_text': 'Top chart: MB/day. Bottom chart: active minutes/day stacked by speed-limit profile.',
-                'points': month_daily_usage,
-                'usage_device_series': [
-                    {
-                        'label': '',
-                        'data': [point['total_mb'] for point in month_daily_usage],
-                    }
-                ],
-                'access_point_labels': [ap_name for ap_name, _, _ in monthly_access_points],
-                'access_point_mb_values': [total_mb for _, total_mb, _ in monthly_access_points],
-                'access_point_minutes_values': [active_minutes for _, _, active_minutes in monthly_access_points],
-                'throttle_x_values': [usage_day for usage_day, _ in month_throttle_rows],
-                'throttle_datasets': month_throttle_datasets,
-            },
-        ]
-
-        return {
-            'mac': mac,
-            'latest_record': latest_record,
-            'usage_history': usage_history,
-            'daily_total_mb': db.get_daily_total(mac),
-            'last_7_days_total_mb': db.get_last_7_days_total(mac),
-            'calendar_month_total_mb': calendar_month_total_mb,
-            'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
-            'wan_client_ip': wan_client_ip,
-            'wan_usage_available': wan_usage_available,
-            'wan_identity_observed_at': latest_ip_identity.observed_at if latest_ip_identity else None,
-            'wan_today_download_mb': wan_today_download_mb,
-            'wan_today_upload_mb': wan_today_upload_mb,
-            'wan_today_total_mb': wan_today_download_mb + wan_today_upload_mb,
-            'wan_month_download_mb': wan_month_download_mb,
-            'wan_month_upload_mb': wan_month_upload_mb,
-            'wan_month_total_mb': wan_month_download_mb + wan_month_upload_mb,
-            'usage_scales': usage_scales,
-            'current_month_label': current_month_label,
-            'speed_limits_by_name': speed_limits_by_name,
-        }
-
     @flask_app.route("/")
     def dashboard():
         'Render the dashboard with live snapshots and daily usage summaries.'
