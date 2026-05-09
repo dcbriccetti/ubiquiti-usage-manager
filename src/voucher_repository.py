@@ -1,9 +1,10 @@
 '''Persistence helpers for generated Plus vouchers.'''
 
 import secrets
-from datetime import datetime
+from bisect import bisect_right
+from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 
 import database as db
 
@@ -157,6 +158,168 @@ def get_plus_voucher_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datet
     return legacy_activated_at, legacy_used_mb
 
 
+def _build_voucher_summary(
+    voucher: db.PlusVoucherRecord,
+    activated_at: datetime | None,
+    used_mb: float,
+) -> db.PlusVoucherUsageSummary:
+    'Return the admin usage summary for one voucher.'
+    allocation_mb = float(voucher.allocation_gb * 1000)
+    remaining_mb = max(0.0, allocation_mb - used_mb)
+    used_pct = (used_mb / allocation_mb * 100.0) if allocation_mb else 0.0
+    return db.PlusVoucherUsageSummary(
+        voucher=voucher,
+        activated_at=activated_at,
+        used_mb=used_mb,
+        remaining_mb=remaining_mb,
+        used_pct=used_pct,
+    )
+
+
+def _get_plus_voucher_legacy_usage_summaries(
+    vouchers: list[db.PlusVoucherRecord],
+) -> dict[int, tuple[datetime | None, float]]:
+    'Return sampled UniFi usage summaries for many vouchers in one query.'
+    if not vouchers:
+        return {}
+
+    voucher_ids = [voucher.id for voucher in vouchers]
+    stmt = (
+        select(
+            db.PlusVoucher.id,
+            func.min(db.UsageRecord.timestamp),
+            func.sum(db.UsageRecord.mb_used),
+        )
+        .join(
+            db.UsageRecord,
+            db.UsageRecord.user_id == cast(db.PlusVoucher.user_id, String),
+        )
+        .where(
+            db.PlusVoucher.id.in_(voucher_ids),
+            db.UsageRecord.timestamp >= db.PlusVoucher.generated_at,
+        )
+        .group_by(db.PlusVoucher.id)
+    )
+
+    with db.SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    return {
+        int(voucher_id): (activated_at, float(used_mb or 0.0))
+        for voucher_id, activated_at, used_mb in rows
+    }
+
+
+def _resolve_flow_identity(
+    started_at: datetime,
+    identities: list[db.ClientIpIdentityRecord],
+    observed_times: list[datetime],
+    identity_after_tolerance: timedelta,
+) -> db.ClientIpIdentityRecord | None:
+    'Return the identity observed closest to one flow timestamp.'
+    if not identities or not observed_times:
+        return None
+
+    prior_index = bisect_right(observed_times, started_at) - 1
+    if prior_index >= 0:
+        return identities[prior_index]
+    if observed_times[0] <= started_at + identity_after_tolerance:
+        return identities[0]
+    return None
+
+
+def _get_plus_voucher_wan_usage_summaries(
+    vouchers: list[db.PlusVoucherRecord],
+    period_end: datetime | None = None,
+    identity_after_tolerance: timedelta = timedelta(minutes=10),
+) -> dict[int, tuple[datetime | None, float]]:
+    'Return WAN-attributed usage summaries for many vouchers in one flow pass.'
+    if not vouchers:
+        return {}
+
+    generated_at_by_user_id = {str(voucher.user_id): voucher.generated_at for voucher in vouchers}
+    voucher_id_by_user_id = {str(voucher.user_id): voucher.id for voucher in vouchers}
+    period_start = min(voucher.generated_at for voucher in vouchers)
+    resolved_period_end = period_end or datetime.now()
+
+    flow_stmt = (
+        select(
+            db.WanFlowUsage.started_at,
+            db.WanFlowUsage.client_ip,
+            db.WanFlowUsage.bytes,
+        )
+        .where(
+            db.WanFlowUsage.started_at >= period_start,
+            db.WanFlowUsage.started_at <= resolved_period_end,
+        )
+        .order_by(db.WanFlowUsage.started_at.asc(), db.WanFlowUsage.id.asc())
+    )
+    with db.SessionLocal() as session:
+        flow_rows = session.execute(flow_stmt).all()
+
+    client_ips = sorted({str(client_ip) for _, client_ip, _ in flow_rows if client_ip})
+    if not client_ips:
+        return {}
+
+    identity_stmt = (
+        select(db.ClientIpIdentity)
+        .where(
+            db.ClientIpIdentity.ip_address.in_(client_ips),
+            db.ClientIpIdentity.observed_at >= period_start - timedelta(days=1),
+            db.ClientIpIdentity.observed_at <= resolved_period_end + identity_after_tolerance,
+        )
+        .order_by(db.ClientIpIdentity.ip_address.asc(), db.ClientIpIdentity.observed_at.asc(), db.ClientIpIdentity.id.asc())
+    )
+
+    identities_by_ip: dict[str, list[db.ClientIpIdentityRecord]] = {client_ip: [] for client_ip in client_ips}
+    with db.SessionLocal() as session:
+        for row in session.execute(identity_stmt).scalars():
+            identities_by_ip.setdefault(row.ip_address, []).append(
+                db.ClientIpIdentityRecord(
+                    observed_at=row.observed_at,
+                    ip_address=row.ip_address,
+                    mac=row.mac,
+                    name=row.name,
+                    user_id=row.user_id,
+                    vlan=row.vlan,
+                )
+            )
+
+    observed_times_by_ip = {
+        client_ip: [identity.observed_at for identity in identities]
+        for client_ip, identities in identities_by_ip.items()
+    }
+    first_usage_at_by_voucher_id: dict[int, datetime] = {}
+    total_bytes_by_voucher_id: dict[int, int] = {}
+    for started_at, client_ip, byte_count in flow_rows:
+        ip_text = str(client_ip)
+        identity = _resolve_flow_identity(
+            started_at,
+            identities_by_ip.get(ip_text, []),
+            observed_times_by_ip.get(ip_text, []),
+            identity_after_tolerance,
+        )
+        if identity is None:
+            continue
+
+        user_id = identity.user_id.strip()
+        voucher_id = voucher_id_by_user_id.get(user_id)
+        generated_at = generated_at_by_user_id.get(user_id)
+        if voucher_id is None or generated_at is None or started_at < generated_at:
+            continue
+
+        first_usage_at_by_voucher_id.setdefault(voucher_id, started_at)
+        total_bytes_by_voucher_id[voucher_id] = total_bytes_by_voucher_id.get(voucher_id, 0) + int(byte_count or 0)
+
+    return {
+        voucher_id: (
+            first_usage_at_by_voucher_id.get(voucher_id),
+            total_bytes / 1_000_000.0,
+        )
+        for voucher_id, total_bytes in total_bytes_by_voucher_id.items()
+    }
+
+
 def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:
     'Return active voucher balances for admin review.'
     stmt = (
@@ -167,21 +330,24 @@ def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:
     with db.SessionLocal() as session:
         vouchers = [_voucher_record(row) for row in session.execute(stmt).scalars().all()]
 
+    legacy_summaries = _get_plus_voucher_legacy_usage_summaries(vouchers)
+    wan_summaries = _get_plus_voucher_wan_usage_summaries(vouchers)
+    first_wan_flow_at = db.get_first_wan_flow_time()
     summaries: list[db.PlusVoucherUsageSummary] = []
     for voucher in vouchers:
-        activated_at, used_mb = get_plus_voucher_usage_summary(voucher)
-        allocation_mb = float(voucher.allocation_gb * 1000)
-        remaining_mb = max(0.0, allocation_mb - used_mb)
-        used_pct = (used_mb / allocation_mb * 100.0) if allocation_mb else 0.0
-        summaries.append(
-            db.PlusVoucherUsageSummary(
-                voucher=voucher,
-                activated_at=activated_at,
-                used_mb=used_mb,
-                remaining_mb=remaining_mb,
-                used_pct=used_pct,
+        legacy_activated_at, legacy_used_mb = legacy_summaries.get(voucher.id, (None, 0.0))
+        wan_activated_at, wan_used_mb = wan_summaries.get(voucher.id, (None, 0.0))
+        if (
+            wan_activated_at is not None
+            and (
+                legacy_activated_at is None
+                or first_wan_flow_at is None
+                or legacy_activated_at >= first_wan_flow_at
             )
-        )
+        ):
+            summaries.append(_build_voucher_summary(voucher, wan_activated_at, wan_used_mb))
+        else:
+            summaries.append(_build_voucher_summary(voucher, legacy_activated_at, legacy_used_mb))
 
     summaries.sort(
         key=lambda summary: (
