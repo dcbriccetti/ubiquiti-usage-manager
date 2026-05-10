@@ -45,9 +45,19 @@ PERFORMANCE_INDEX_SQL = [
         "ON wan_flow_usage (started_at, client_ip)",
     ),
     (
+        "ix_wan_flow_usage_client_started",
+        "CREATE INDEX IF NOT EXISTS ix_wan_flow_usage_client_started "
+        "ON wan_flow_usage (client_ip, started_at)",
+    ),
+    (
         "ix_client_ip_identities_ip_observed",
         "CREATE INDEX IF NOT EXISTS ix_client_ip_identities_ip_observed "
         "ON client_ip_identities (ip_address, observed_at)",
+    ),
+    (
+        "ix_client_ip_identities_mac_observed",
+        "CREATE INDEX IF NOT EXISTS ix_client_ip_identities_mac_observed "
+        "ON client_ip_identities (mac, observed_at)",
     ),
     (
         "ix_usage_records_mac_timestamp",
@@ -730,6 +740,25 @@ def get_wan_flow_rows_for_mac(
     if not target_mac:
         return []
 
+    identity_window_start = period_start - timedelta(days=1)
+    identity_window_end = period_end + identity_after_tolerance
+    target_identity_stmt = (
+        select(ClientIpIdentity)
+        .where(
+            ClientIpIdentity.mac == target_mac,
+            ClientIpIdentity.observed_at >= identity_window_start,
+            ClientIpIdentity.observed_at <= identity_window_end,
+        )
+        .order_by(ClientIpIdentity.ip_address.asc(), ClientIpIdentity.observed_at.asc(), ClientIpIdentity.id.asc())
+    )
+
+    with SessionLocal() as session:
+        target_identity_rows = session.execute(target_identity_stmt).scalars().all()
+
+    client_ips = sorted({row.ip_address for row in target_identity_rows if row.ip_address})
+    if not client_ips:
+        return []
+
     flow_stmt = (
         select(
             WanFlowUsage.started_at,
@@ -738,6 +767,7 @@ def get_wan_flow_rows_for_mac(
             WanFlowUsage.bytes,
         )
         .where(
+            WanFlowUsage.client_ip.in_(client_ips),
             WanFlowUsage.started_at >= period_start,
             WanFlowUsage.started_at <= period_end,
         )
@@ -747,16 +777,12 @@ def get_wan_flow_rows_for_mac(
     with SessionLocal() as session:
         flow_rows = session.execute(flow_stmt).all()
 
-    client_ips = sorted({str(client_ip) for _, client_ip, _, _ in flow_rows if client_ip})
-    if not client_ips:
-        return []
-
     identity_stmt = (
         select(ClientIpIdentity)
         .where(
             ClientIpIdentity.ip_address.in_(client_ips),
-            ClientIpIdentity.observed_at >= period_start - timedelta(days=1),
-            ClientIpIdentity.observed_at <= period_end + identity_after_tolerance,
+            ClientIpIdentity.observed_at >= identity_window_start,
+            ClientIpIdentity.observed_at <= identity_window_end,
         )
         .order_by(ClientIpIdentity.ip_address.asc(), ClientIpIdentity.observed_at.asc(), ClientIpIdentity.id.asc())
     )

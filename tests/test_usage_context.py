@@ -141,6 +141,29 @@ class ClientUsageContextTests(unittest.TestCase):
                         direction="upload",
                         client_ip="192.168.6.143",
                     ),
+                    db.ClientIpIdentity(
+                        observed_at=observed_at,
+                        ip_address="192.168.6.200",
+                        mac="aa:bb:cc:dd:ee:99",
+                        name="Other client",
+                        user_id="9999",
+                        vlan="Plus",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605092207",
+                        started_at=observed_at + timedelta(minutes=7),
+                        ended_at=observed_at + timedelta(minutes=8),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="8.8.8.8",
+                        src_port=443,
+                        dst_ip="192.168.6.200",
+                        dst_port=52344,
+                        packets=10,
+                        bytes=5_000_000_000,
+                        direction="download",
+                        client_ip="192.168.6.200",
+                    ),
                 ]
             )
             session.commit()
