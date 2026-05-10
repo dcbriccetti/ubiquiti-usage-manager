@@ -786,6 +786,22 @@ def get_wan_hourly_totals_for_mac(
     return totals_by_hour
 
 
+def get_wan_usage_summary_for_mac(
+    mac: str,
+    period_start: datetime,
+    period_end: datetime | None = None,
+) -> tuple[datetime | None, float]:
+    'Return first WAN flow time and MB attributed to one client MAC.'
+    resolved_period_end = period_end or datetime.now()
+    flow_rows = _get_wan_flow_rows_for_mac(mac, period_start, resolved_period_end)
+    if not flow_rows:
+        return None, 0.0
+
+    first_usage_at = min(started_at for started_at, _ in flow_rows)
+    total_bytes = sum(byte_count for _, byte_count in flow_rows)
+    return first_usage_at, total_bytes / 1_000_000.0
+
+
 def get_first_wan_flow_time() -> datetime | None:
     'Return the earliest imported WAN flow timestamp.'
     stmt = select(func.min(WanFlowUsage.started_at))

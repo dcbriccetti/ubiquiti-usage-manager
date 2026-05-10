@@ -30,6 +30,15 @@ class FixedDateTime(datetime):
         return fixed
 
 
+class FixedDateTimeMay10(datetime):
+    @classmethod
+    def now(cls, tz=None):  # type: ignore[override]
+        fixed = cls(2026, 5, 10, 10, 40)
+        if tz is not None:
+            return fixed.replace(tzinfo=tz)
+        return fixed
+
+
 class ClientUsageContextTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -138,6 +147,98 @@ class ClientUsageContextTests(unittest.TestCase):
         monthly_scale = next(scale for scale in context["usage_scales"] if scale["key"] == "monthly")
         day_9_point = next(point for point in monthly_scale["points"] if point["bucket_value"] == 9)
         self.assertAlmostEqual(day_9_point["total_mb"], 3.0)
+
+    def test_voucher_balance_uses_mac_wan_usage_when_identity_changes(self) -> None:
+        mac = "42:3e:c1:5d:fc:59"
+        generated_at = datetime(2026, 5, 6, 13, 32)
+        with db.SessionLocal() as session:
+            session.add(
+                db.PlusVoucher(
+                    batch_id="voucher",
+                    user_id=5921,
+                    password="paper123",
+                    allocation_gb=40,
+                    generated_at=generated_at,
+                )
+            )
+            session.add(
+                db.UsageRecord(
+                    timestamp=datetime(2026, 5, 10, 10, 1),
+                    mac=mac,
+                    user_id="",
+                    name="iPad",
+                    vlan="",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name="Office AP",
+                    signal=-50,
+                )
+            )
+            session.add_all(
+                [
+                    db.ClientIpIdentity(
+                        observed_at=datetime(2026, 5, 9, 22, 0),
+                        ip_address="192.168.6.143",
+                        mac=mac,
+                        name="iPad",
+                        user_id="",
+                        vlan="Plus",
+                    ),
+                    db.ClientIpIdentity(
+                        observed_at=datetime(2026, 5, 10, 10, 40),
+                        ip_address="192.168.6.143",
+                        mac=mac,
+                        name="iPad",
+                        user_id="5921",
+                        vlan="Plus",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605092215",
+                        started_at=datetime(2026, 5, 9, 22, 15),
+                        ended_at=datetime(2026, 5, 9, 22, 16),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="8.8.8.8",
+                        src_port=443,
+                        dst_ip="192.168.6.143",
+                        dst_port=52344,
+                        packets=10,
+                        bytes=1_700_000_000,
+                        direction="download",
+                        client_ip="192.168.6.143",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605101040",
+                        started_at=datetime(2026, 5, 10, 10, 40),
+                        ended_at=datetime(2026, 5, 10, 10, 41),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="192.168.6.143",
+                        src_port=52344,
+                        dst_ip="8.8.8.8",
+                        dst_port=443,
+                        packets=10,
+                        bytes=17_000_000,
+                        direction="upload",
+                        client_ip="192.168.6.143",
+                    ),
+                ]
+            )
+            session.commit()
+
+        with (
+            patch.object(usage_context, "datetime", FixedDateTimeMay10),
+            patch.object(db, "datetime", FixedDateTimeMay10),
+            patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+        ):
+            context = usage_context.get_client_usage_context(mac)
+
+        self.assertEqual(context["latest_record"].user_id, "5921")
+        self.assertAlmostEqual(context["calendar_month_total_mb"], 1717.0)
+        self.assertIsNotNone(context["voucher_usage"])
+        assert context["voucher_usage"] is not None
+        self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 1717.0)
+        self.assertEqual(context["voucher_usage"]["activated_at"], datetime(2026, 5, 9, 22, 15))
 
 
 if __name__ == "__main__":

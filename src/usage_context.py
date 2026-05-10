@@ -160,7 +160,7 @@ def build_throttle_datasets(
     ]
 
 
-def build_voucher_usage_context(user_id: str | None) -> VoucherUsageContext | None:
+def build_voucher_usage_context(user_id: str | None, mac: str | None = None) -> VoucherUsageContext | None:
     'Return remaining lifetime voucher allocation for one RADIUS user ID.'
     voucher = db.get_active_plus_voucher_for_user_id(user_id)
     if voucher is None:
@@ -168,6 +168,14 @@ def build_voucher_usage_context(user_id: str | None) -> VoucherUsageContext | No
 
     allocation_mb = float(voucher.allocation_gb * 1000)
     activated_at, used_mb = db.get_plus_voucher_usage_summary(voucher)
+    if mac:
+        mac_activated_at, mac_used_mb = db.get_wan_usage_summary_for_mac(
+            mac,
+            period_start=voucher.generated_at,
+        )
+        if mac_used_mb > used_mb:
+            activated_at = mac_activated_at
+            used_mb = mac_used_mb
     remaining_mb = max(0.0, allocation_mb - used_mb)
     used_pct = (used_mb / allocation_mb * 100.0) if allocation_mb else 0.0
     return {
@@ -389,7 +397,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'wan_month_download_mb': wan_month_download_mb,
         'wan_month_upload_mb': wan_month_upload_mb,
         'wan_month_total_mb': wan_month_total_mb,
-        'voucher_usage': build_voucher_usage_context(latest_record.user_id),
+        'voucher_usage': build_voucher_usage_context(latest_record.user_id, mac),
         'usage_scales': usage_scales,
         'current_month_label': current_month_label,
         'speed_limits_by_name': speed_limits_by_name,
