@@ -172,6 +172,7 @@ class ClientUsageContextTests(unittest.TestCase):
             patch.object(usage_context, "datetime", FixedDateTime),
             patch.object(db, "datetime", FixedDateTime),
             patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+            patch.object(db, "get_plus_voucher_usage_summary", side_effect=AssertionError),
         ):
             context = usage_context.get_client_usage_context(mac)
 
@@ -271,6 +272,7 @@ class ClientUsageContextTests(unittest.TestCase):
             patch.object(usage_context, "datetime", FixedDateTimeMay10),
             patch.object(db, "datetime", FixedDateTimeMay10),
             patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+            patch.object(db, "get_plus_voucher_usage_summary", side_effect=AssertionError),
         ):
             context = usage_context.get_client_usage_context(mac)
 

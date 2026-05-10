@@ -228,13 +228,15 @@ def build_voucher_usage_context(
         return None
 
     allocation_mb = float(voucher.allocation_gb * 1000)
-    activated_at, used_mb = db.get_plus_voucher_usage_summary(voucher)
     if mac_wan_flows is not None:
+        activated_at, used_mb = db.get_plus_voucher_legacy_usage_summary(voucher)
         mac_activated_at, mac_used_mb = summarize_wan_flows_for_voucher(voucher, mac_wan_flows)
         if mac_used_mb > used_mb:
             activated_at = mac_activated_at
             used_mb = mac_used_mb
-    elif mac:
+    else:
+        activated_at, used_mb = db.get_plus_voucher_usage_summary(voucher)
+    if mac_wan_flows is None and mac:
         mac_activated_at, mac_used_mb = db.get_wan_usage_summary_for_mac(
             mac,
             period_start=voucher.generated_at,

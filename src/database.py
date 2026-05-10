@@ -38,44 +38,30 @@ def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, _connection_record: 
 SessionLocal = sessionmaker(bind=engine)
 
 
-PERFORMANCE_INDEX_SQL = [
-    (
-        "ix_wan_flow_usage_started_client",
-        "CREATE INDEX IF NOT EXISTS ix_wan_flow_usage_started_client "
-        "ON wan_flow_usage (started_at, client_ip)",
-    ),
-    (
-        "ix_wan_flow_usage_client_started",
-        "CREATE INDEX IF NOT EXISTS ix_wan_flow_usage_client_started "
-        "ON wan_flow_usage (client_ip, started_at)",
-    ),
-    (
-        "ix_client_ip_identities_ip_observed",
-        "CREATE INDEX IF NOT EXISTS ix_client_ip_identities_ip_observed "
-        "ON client_ip_identities (ip_address, observed_at)",
-    ),
-    (
-        "ix_client_ip_identities_mac_observed",
-        "CREATE INDEX IF NOT EXISTS ix_client_ip_identities_mac_observed "
-        "ON client_ip_identities (mac, observed_at)",
-    ),
-    (
-        "ix_usage_records_mac_timestamp",
-        "CREATE INDEX IF NOT EXISTS ix_usage_records_mac_timestamp "
-        "ON usage_records (mac, timestamp)",
-    ),
-    (
-        "ix_plus_vouchers_user_active",
-        "CREATE INDEX IF NOT EXISTS ix_plus_vouchers_user_active "
-        "ON plus_vouchers (user_id, consumed_at, generated_at)",
-    ),
+PERFORMANCE_INDEX_SPECS = [
+    ("ix_wan_flow_usage_started_client", "wan_flow_usage", ("started_at", "client_ip")),
+    ("ix_wan_flow_usage_client_started", "wan_flow_usage", ("client_ip", "started_at")),
+    ("ix_client_ip_identities_ip_observed", "client_ip_identities", ("ip_address", "observed_at")),
+    ("ix_client_ip_identities_mac_observed", "client_ip_identities", ("mac", "observed_at")),
+    ("ix_usage_records_mac_timestamp", "usage_records", ("mac", "timestamp")),
+    ("ix_plus_vouchers_user_active", "plus_vouchers", ("user_id", "consumed_at", "generated_at")),
 ]
 
 
 def ensure_performance_indexes() -> None:
     'Create composite indexes used by the higher-volume reporting queries.'
+    preparer = engine.dialect.identifier_preparer
     with engine.begin() as connection:
-        for _, statement in PERFORMANCE_INDEX_SQL:
+        for index_name, table_name, column_names in PERFORMANCE_INDEX_SPECS:
+            table = Base.metadata.tables.get(table_name)
+            if table is None:
+                logger.warning("Skipping index %s because table %s is not registered.", index_name, table_name)
+                continue
+            quoted_columns = ', '.join(preparer.quote(column_name) for column_name in column_names)
+            statement = (
+                f"CREATE INDEX IF NOT EXISTS {preparer.quote(index_name)} "
+                f"ON {preparer.quote(table.name)} ({quoted_columns})"
+            )
             connection.exec_driver_sql(statement)
 
 
@@ -1025,6 +1011,13 @@ def get_plus_voucher_usage_summary(voucher: PlusVoucherRecord) -> tuple[datetime
     from voucher_repository import get_plus_voucher_usage_summary as _get_plus_voucher_usage_summary
 
     return _get_plus_voucher_usage_summary(voucher)
+
+
+def get_plus_voucher_legacy_usage_summary(voucher: PlusVoucherRecord) -> tuple[datetime | None, float]:
+    'Return sampled UniFi usage time and lifetime usage for one voucher.'
+    from voucher_repository import get_plus_voucher_legacy_usage_summary as _get_plus_voucher_legacy_usage_summary
+
+    return _get_plus_voucher_legacy_usage_summary(voucher)
 
 
 def get_active_plus_voucher_summaries() -> list[PlusVoucherUsageSummary]:
