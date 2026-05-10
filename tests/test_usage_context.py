@@ -1,0 +1,144 @@
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import patch
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SRC_DIR = PROJECT_ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+if "database" in sys.modules and not hasattr(sys.modules["database"], "UsageRecord"):
+    del sys.modules["database"]
+
+import database as db
+import usage_context
+
+
+class FixedDateTime(datetime):
+    @classmethod
+    def now(cls, tz=None):  # type: ignore[override]
+        fixed = cls(2026, 5, 9, 22, 15)
+        if tz is not None:
+            return fixed.replace(tzinfo=tz)
+        return fixed
+
+
+class ClientUsageContextTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        db_path = Path(self.temp_dir.name) / "meter-test.db"
+        self.engine = create_engine(f"sqlite:///{db_path}")
+        self.original_session_local = db.SessionLocal
+        db.SessionLocal = sessionmaker(bind=self.engine)
+        db.Base.metadata.create_all(self.engine)
+
+    def tearDown(self) -> None:
+        db.SessionLocal = self.original_session_local
+        db.Base.metadata.drop_all(self.engine)
+        self.engine.dispose()
+        self.temp_dir.cleanup()
+
+    def test_wan_usage_fills_zero_sampled_usage_and_voucher_identity(self) -> None:
+        mac = "42:3e:c1:5d:fc:59"
+        generated_at = datetime(2026, 5, 6, 13, 32)
+        observed_at = datetime(2026, 5, 9, 22, 0)
+        with db.SessionLocal() as session:
+            session.add(
+                db.PlusVoucher(
+                    batch_id="voucher",
+                    user_id=2119,
+                    password="paper123",
+                    allocation_gb=200,
+                    generated_at=generated_at,
+                )
+            )
+            session.add(
+                db.UsageRecord(
+                    timestamp=datetime(2026, 5, 9, 22, 1),
+                    mac=mac,
+                    user_id="",
+                    name="iPad",
+                    vlan="",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name="AP",
+                    signal=-50,
+                )
+            )
+            session.add(
+                db.ClientIpIdentity(
+                    observed_at=observed_at,
+                    ip_address="192.168.6.143",
+                    mac=mac,
+                    name="iPad",
+                    user_id="2119",
+                    vlan="Plus",
+                )
+            )
+            session.add_all(
+                [
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605092205",
+                        started_at=observed_at + timedelta(minutes=5),
+                        ended_at=observed_at + timedelta(minutes=6),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="8.8.8.8",
+                        src_port=443,
+                        dst_ip="192.168.6.143",
+                        dst_port=52344,
+                        packets=10,
+                        bytes=2_000_000,
+                        direction="download",
+                        client_ip="192.168.6.143",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605092206",
+                        started_at=observed_at + timedelta(minutes=6),
+                        ended_at=observed_at + timedelta(minutes=7),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="192.168.6.143",
+                        src_port=52344,
+                        dst_ip="8.8.8.8",
+                        dst_port=443,
+                        packets=10,
+                        bytes=1_000_000,
+                        direction="upload",
+                        client_ip="192.168.6.143",
+                    ),
+                ]
+            )
+            session.commit()
+
+        with (
+            patch.object(usage_context, "datetime", FixedDateTime),
+            patch.object(db, "datetime", FixedDateTime),
+            patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+        ):
+            context = usage_context.get_client_usage_context(mac)
+
+        self.assertEqual(context["latest_record"].user_id, "2119")
+        self.assertEqual(context["latest_record"].vlan, "Plus")
+        self.assertAlmostEqual(context["daily_total_mb"], 3.0)
+        self.assertAlmostEqual(context["last_7_days_total_mb"], 3.0)
+        self.assertAlmostEqual(context["calendar_month_total_mb"], 3.0)
+        self.assertAlmostEqual(context["wan_today_total_mb"], 3.0)
+        self.assertIsNotNone(context["voucher_usage"])
+        assert context["voucher_usage"] is not None
+        self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 3.0)
+
+        monthly_scale = next(scale for scale in context["usage_scales"] if scale["key"] == "monthly")
+        day_9_point = next(point for point in monthly_scale["points"] if point["bucket_value"] == 9)
+        self.assertAlmostEqual(day_9_point["total_mb"], 3.0)
+
+
+if __name__ == "__main__":
+    unittest.main()

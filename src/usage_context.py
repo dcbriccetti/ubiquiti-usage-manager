@@ -1,6 +1,6 @@
 '''Client usage detail view-model construction.'''
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import TypedDict
 
 import database as db
@@ -183,6 +183,49 @@ def build_voucher_usage_context(user_id: str | None) -> VoucherUsageContext | No
     }
 
 
+def hydrate_usage_record_identity(
+    latest_record: UsageRecord,
+    latest_ip_identity: db.ClientIpIdentityRecord | None,
+    wan_rows: list[db.WanIdentityUsageSummary],
+    mac: str,
+) -> None:
+    'Fill missing client identity fields from WAN identity observations.'
+    target_mac = mac.lower()
+    identity_user_id = latest_ip_identity.user_id if latest_ip_identity else ''
+    identity_vlan = latest_ip_identity.vlan if latest_ip_identity else ''
+    identity_name = latest_ip_identity.name if latest_ip_identity else ''
+
+    for row in wan_rows:
+        if row.mac.lower() != target_mac:
+            continue
+        identity_user_id = identity_user_id or row.user_id
+        identity_vlan = identity_vlan or row.vlan
+        identity_name = identity_name or row.name
+        if identity_user_id and identity_vlan and identity_name:
+            break
+
+    if not latest_record.user_id and identity_user_id:
+        latest_record.user_id = identity_user_id
+    if not latest_record.vlan and identity_vlan:
+        latest_record.vlan = identity_vlan
+    if not latest_record.name and identity_name:
+        latest_record.name = identity_name
+
+
+def merge_wan_totals_into_usage_points(
+    points: list[UsageScalePoint],
+    wan_totals_by_bucket: dict[int, float],
+) -> list[UsageScalePoint]:
+    'Prefer WAN flow totals for chart buckets when they exceed sampled usage.'
+    return [
+        {
+            **point,
+            'total_mb': max(point['total_mb'], wan_totals_by_bucket.get(point['bucket_value'], 0.0)),
+        }
+        for point in points
+    ]
+
+
 def get_client_usage_context(mac: str) -> ClientUsageContext:
     'Build shared usage/detail context used by both admin and self-service pages.'
     if usage_history := db.get_usage_history(mac):
@@ -217,19 +260,24 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
     speed_limits_by_name = get_speed_limits_by_name()
     now = datetime.now()
     current_month_label = render_month_label(now)
-    calendar_month_total_mb = db.get_calendar_month_total(mac)
     latest_ip_identity = db.get_latest_client_identity_by_mac(mac)
     wan_client_ip = latest_ip_identity.ip_address if latest_ip_identity else ''
     today_start = datetime.combine(now.date(), time.min)
+    seven_days_ago = now - timedelta(days=7)
     month_start = datetime.combine(now.date().replace(day=1), time.min)
-    wan_today_download_mb, wan_today_upload_mb = summarize_wan_identity_rows_for_mac(
-        db.get_wan_usage_by_identity(period_start=today_start, period_end=now),
+    today_wan_rows = db.get_wan_usage_by_identity(period_start=today_start, period_end=now)
+    last_7_days_wan_rows = db.get_wan_usage_by_identity(period_start=seven_days_ago, period_end=now)
+    month_wan_rows = db.get_wan_usage_by_identity(period_start=month_start, period_end=now)
+    hydrate_usage_record_identity(latest_record, latest_ip_identity, month_wan_rows, mac)
+    wan_today_download_mb, wan_today_upload_mb = summarize_wan_identity_rows_for_mac(today_wan_rows, mac)
+    wan_last_7_days_download_mb, wan_last_7_days_upload_mb = summarize_wan_identity_rows_for_mac(
+        last_7_days_wan_rows,
         mac,
     )
-    wan_month_download_mb, wan_month_upload_mb = summarize_wan_identity_rows_for_mac(
-        db.get_wan_usage_by_identity(period_start=month_start, period_end=now),
-        mac,
-    )
+    wan_month_download_mb, wan_month_upload_mb = summarize_wan_identity_rows_for_mac(month_wan_rows, mac)
+    wan_today_total_mb = wan_today_download_mb + wan_today_upload_mb
+    wan_last_7_days_total_mb = wan_last_7_days_download_mb + wan_last_7_days_upload_mb
+    wan_month_total_mb = wan_month_download_mb + wan_month_upload_mb
     wan_usage_available = bool(
         wan_client_ip
         or wan_today_download_mb
@@ -237,6 +285,12 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         or wan_month_download_mb
         or wan_month_upload_mb
     )
+    legacy_daily_total_mb = db.get_daily_total(mac)
+    legacy_last_7_days_total_mb = db.get_last_7_days_total(mac)
+    legacy_calendar_month_total_mb = db.get_calendar_month_total(mac)
+    daily_total_mb = max(legacy_daily_total_mb, wan_today_total_mb)
+    last_7_days_total_mb = max(legacy_last_7_days_total_mb, wan_last_7_days_total_mb)
+    calendar_month_total_mb = max(legacy_calendar_month_total_mb, wan_month_total_mb)
     month_daily_usage: list[UsageScalePoint] = [
         {
             'bucket_label': f'{usage_day.strftime("%b")} {usage_day.day}',
@@ -246,6 +300,11 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         }
         for usage_day, total_mb, active_minutes in db.get_calendar_month_daily_totals(mac)
     ]
+    month_wan_totals_by_day = {
+        usage_day.day: total_mb
+        for usage_day, total_mb in db.get_wan_daily_totals_for_mac(mac, month_start, now).items()
+    }
+    month_daily_usage = merge_wan_totals_into_usage_points(month_daily_usage, month_wan_totals_by_day)
     month_throttle_rows = [
         (usage_day.day, daily_counts)
         for usage_day, daily_counts in db.get_calendar_month_daily_profile_minutes(mac)
@@ -261,6 +320,10 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         }
         for hour, total_mb, active_minutes in db.get_today_hourly_totals(mac)
     ]
+    daily_hourly_usage = merge_wan_totals_into_usage_points(
+        daily_hourly_usage,
+        db.get_wan_hourly_totals_for_mac(mac, today_start, now),
+    )
     daily_throttle_rows = db.get_today_hourly_profile_minutes(mac)
     daily_throttle_datasets = build_throttle_datasets(daily_throttle_rows, speed_limits_by_name)
     daily_access_points = db.get_today_access_point_totals(mac)
@@ -313,8 +376,8 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'mac': mac,
         'latest_record': latest_record,
         'usage_history': usage_history,
-        'daily_total_mb': db.get_daily_total(mac),
-        'last_7_days_total_mb': db.get_last_7_days_total(mac),
+        'daily_total_mb': daily_total_mb,
+        'last_7_days_total_mb': last_7_days_total_mb,
         'calendar_month_total_mb': calendar_month_total_mb,
         'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
         'wan_client_ip': wan_client_ip,
@@ -322,10 +385,10 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'wan_identity_observed_at': latest_ip_identity.observed_at if latest_ip_identity else None,
         'wan_today_download_mb': wan_today_download_mb,
         'wan_today_upload_mb': wan_today_upload_mb,
-        'wan_today_total_mb': wan_today_download_mb + wan_today_upload_mb,
+        'wan_today_total_mb': wan_today_total_mb,
         'wan_month_download_mb': wan_month_download_mb,
         'wan_month_upload_mb': wan_month_upload_mb,
-        'wan_month_total_mb': wan_month_download_mb + wan_month_upload_mb,
+        'wan_month_total_mb': wan_month_total_mb,
         'voucher_usage': build_voucher_usage_context(latest_record.user_id),
         'usage_scales': usage_scales,
         'current_month_label': current_month_label,

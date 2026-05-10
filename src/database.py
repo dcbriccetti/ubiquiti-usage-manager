@@ -679,6 +679,113 @@ def get_wan_usage_summary_for_user_id(
     return first_usage_at, total_bytes / 1_000_000.0
 
 
+def _get_wan_flow_rows_for_mac(
+    mac: str,
+    period_start: datetime,
+    period_end: datetime,
+    identity_after_tolerance: timedelta = timedelta(minutes=10),
+) -> list[tuple[datetime, int]]:
+    'Return WAN flow timestamps and bytes attributed to one client MAC.'
+    target_mac = mac.lower()
+    if not target_mac:
+        return []
+
+    flow_stmt = (
+        select(
+            WanFlowUsage.started_at,
+            WanFlowUsage.client_ip,
+            WanFlowUsage.bytes,
+        )
+        .where(
+            WanFlowUsage.started_at >= period_start,
+            WanFlowUsage.started_at <= period_end,
+        )
+        .order_by(WanFlowUsage.started_at.asc(), WanFlowUsage.id.asc())
+    )
+
+    with SessionLocal() as session:
+        flow_rows = session.execute(flow_stmt).all()
+
+    client_ips = sorted({str(client_ip) for _, client_ip, _ in flow_rows if client_ip})
+    if not client_ips:
+        return []
+
+    identity_stmt = (
+        select(ClientIpIdentity)
+        .where(
+            ClientIpIdentity.ip_address.in_(client_ips),
+            ClientIpIdentity.observed_at >= period_start - timedelta(days=1),
+            ClientIpIdentity.observed_at <= period_end + identity_after_tolerance,
+        )
+        .order_by(ClientIpIdentity.ip_address.asc(), ClientIpIdentity.observed_at.asc(), ClientIpIdentity.id.asc())
+    )
+
+    identities_by_ip: dict[str, list[ClientIpIdentityRecord]] = {client_ip: [] for client_ip in client_ips}
+    with SessionLocal() as session:
+        for row in session.execute(identity_stmt).scalars():
+            identities_by_ip.setdefault(row.ip_address, []).append(
+                ClientIpIdentityRecord(
+                    observed_at=row.observed_at,
+                    ip_address=row.ip_address,
+                    mac=row.mac,
+                    name=row.name,
+                    user_id=row.user_id,
+                    vlan=row.vlan,
+                )
+            )
+
+    observed_times_by_ip = {
+        client_ip: [identity.observed_at for identity in identities]
+        for client_ip, identities in identities_by_ip.items()
+    }
+
+    attributed_rows: list[tuple[datetime, int]] = []
+    for started_at, client_ip, byte_count in flow_rows:
+        ip_text = str(client_ip)
+        identities = identities_by_ip.get(ip_text, [])
+        observed_times = observed_times_by_ip.get(ip_text, [])
+        identity: ClientIpIdentityRecord | None = None
+        if identities and observed_times:
+            prior_index = bisect_right(observed_times, started_at) - 1
+            if prior_index >= 0:
+                identity = identities[prior_index]
+            elif observed_times[0] <= started_at + identity_after_tolerance:
+                identity = identities[0]
+
+        if identity is None or identity.mac.lower() != target_mac:
+            continue
+
+        attributed_rows.append((started_at, int(byte_count or 0)))
+
+    return attributed_rows
+
+
+def get_wan_daily_totals_for_mac(
+    mac: str,
+    period_start: datetime,
+    period_end: datetime,
+) -> dict[date, float]:
+    'Return WAN-attributed MB totals by day for one client MAC.'
+    totals_by_day: dict[date, float] = {}
+    for started_at, byte_count in _get_wan_flow_rows_for_mac(mac, period_start, period_end):
+        usage_day = started_at.date()
+        totals_by_day[usage_day] = totals_by_day.get(usage_day, 0.0) + byte_count / 1_000_000.0
+    return totals_by_day
+
+
+def get_wan_hourly_totals_for_mac(
+    mac: str,
+    period_start: datetime,
+    period_end: datetime,
+) -> dict[int, float]:
+    'Return WAN-attributed MB totals by hour for one client MAC.'
+    totals_by_hour: dict[int, float] = {}
+    for started_at, byte_count in _get_wan_flow_rows_for_mac(mac, period_start, period_end):
+        usage_hour = started_at.hour
+        totals_by_hour[usage_hour] = totals_by_hour.get(usage_hour, 0.0) + byte_count / 1_000_000.0
+    return totals_by_hour
+
+
 def get_first_wan_flow_time() -> datetime | None:
     'Return the earliest imported WAN flow timestamp.'
     stmt = select(func.min(WanFlowUsage.started_at))
