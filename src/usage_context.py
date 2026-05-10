@@ -9,7 +9,6 @@ from billing import calculate_month_cost_cents
 from database import UsageRecord
 from monitor import get_connected_clients
 from speedlimit import SpeedLimit
-from wan_service import summarize_wan_identity_rows_for_mac
 
 
 SpeedLimitsByName = dict[str, SpeedLimit]
@@ -160,15 +159,72 @@ def build_throttle_datasets(
     ]
 
 
-def build_voucher_usage_context(user_id: str | None, mac: str | None = None) -> VoucherUsageContext | None:
+def summarize_wan_flows(
+    flows: list[db.WanMacFlowUsage],
+    period_start: datetime,
+    period_end: datetime,
+) -> tuple[float, float]:
+    'Return download/upload MB for attributed MAC flows in one period.'
+    download_bytes = 0
+    upload_bytes = 0
+    for flow in flows:
+        if flow.started_at < period_start or flow.started_at > period_end:
+            continue
+        if flow.direction == 'upload':
+            upload_bytes += flow.bytes
+        else:
+            download_bytes += flow.bytes
+    return download_bytes / 1_000_000.0, upload_bytes / 1_000_000.0
+
+
+def build_wan_flow_bucket_totals(
+    flows: list[db.WanMacFlowUsage],
+    period_start: datetime,
+    period_end: datetime,
+    bucket: str,
+) -> dict[int, float]:
+    'Return WAN-attributed MB totals by day or hour bucket.'
+    totals_by_bucket: dict[int, float] = {}
+    for flow in flows:
+        if flow.started_at < period_start or flow.started_at > period_end:
+            continue
+        bucket_value = flow.started_at.day if bucket == 'day' else flow.started_at.hour
+        totals_by_bucket[bucket_value] = totals_by_bucket.get(bucket_value, 0.0) + flow.bytes / 1_000_000.0
+    return totals_by_bucket
+
+
+def summarize_wan_flows_for_voucher(
+    voucher: db.PlusVoucherRecord,
+    flows: list[db.WanMacFlowUsage],
+) -> tuple[datetime | None, float]:
+    'Return first flow and MB for current-device WAN usage after voucher creation.'
+    voucher_flows = [flow for flow in flows if flow.started_at >= voucher.generated_at]
+    if not voucher_flows:
+        return None, 0.0
+    first_usage_at = min(flow.started_at for flow in voucher_flows)
+    total_mb = sum(flow.bytes for flow in voucher_flows) / 1_000_000.0
+    return first_usage_at, total_mb
+
+
+def build_voucher_usage_context(
+    user_id: str | None,
+    mac: str | None = None,
+    voucher: db.PlusVoucherRecord | None = None,
+    mac_wan_flows: list[db.WanMacFlowUsage] | None = None,
+) -> VoucherUsageContext | None:
     'Return remaining lifetime voucher allocation for one RADIUS user ID.'
-    voucher = db.get_active_plus_voucher_for_user_id(user_id)
+    voucher = voucher or db.get_active_plus_voucher_for_user_id(user_id)
     if voucher is None:
         return None
 
     allocation_mb = float(voucher.allocation_gb * 1000)
     activated_at, used_mb = db.get_plus_voucher_usage_summary(voucher)
-    if mac:
+    if mac_wan_flows is not None:
+        mac_activated_at, mac_used_mb = summarize_wan_flows_for_voucher(voucher, mac_wan_flows)
+        if mac_used_mb > used_mb:
+            activated_at = mac_activated_at
+            used_mb = mac_used_mb
+    elif mac:
         mac_activated_at, mac_used_mb = db.get_wan_usage_summary_for_mac(
             mac,
             period_start=voucher.generated_at,
@@ -218,6 +274,15 @@ def hydrate_usage_record_identity(
         latest_record.vlan = identity_vlan
     if not latest_record.name and identity_name:
         latest_record.name = identity_name
+
+
+def needs_identity_hydration(latest_record: UsageRecord) -> bool:
+    'Return True when the display/client record still lacks identity fields.'
+    return not (
+        latest_record.user_id
+        and latest_record.vlan
+        and latest_record.name
+    )
 
 
 def merge_wan_totals_into_usage_points(
@@ -273,16 +338,30 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
     today_start = datetime.combine(now.date(), time.min)
     seven_days_ago = now - timedelta(days=7)
     month_start = datetime.combine(now.date().replace(day=1), time.min)
-    today_wan_rows = db.get_wan_usage_by_identity(period_start=today_start, period_end=now)
-    last_7_days_wan_rows = db.get_wan_usage_by_identity(period_start=seven_days_ago, period_end=now)
-    month_wan_rows = db.get_wan_usage_by_identity(period_start=month_start, period_end=now)
+    month_wan_rows: list[db.WanIdentityUsageSummary] = []
     hydrate_usage_record_identity(latest_record, latest_ip_identity, month_wan_rows, mac)
-    wan_today_download_mb, wan_today_upload_mb = summarize_wan_identity_rows_for_mac(today_wan_rows, mac)
-    wan_last_7_days_download_mb, wan_last_7_days_upload_mb = summarize_wan_identity_rows_for_mac(
-        last_7_days_wan_rows,
-        mac,
+    if needs_identity_hydration(latest_record):
+        month_wan_rows = db.get_wan_usage_by_identity(period_start=month_start, period_end=now)
+        hydrate_usage_record_identity(latest_record, latest_ip_identity, month_wan_rows, mac)
+
+    voucher = db.get_active_plus_voucher_for_user_id(latest_record.user_id)
+    wan_flow_start = min(month_start, voucher.generated_at) if voucher else month_start
+    mac_wan_flows = db.get_wan_flow_rows_for_mac(mac, wan_flow_start, now)
+    wan_today_download_mb, wan_today_upload_mb = summarize_wan_flows(
+        mac_wan_flows,
+        today_start,
+        now,
     )
-    wan_month_download_mb, wan_month_upload_mb = summarize_wan_identity_rows_for_mac(month_wan_rows, mac)
+    wan_last_7_days_download_mb, wan_last_7_days_upload_mb = summarize_wan_flows(
+        mac_wan_flows,
+        seven_days_ago,
+        now,
+    )
+    wan_month_download_mb, wan_month_upload_mb = summarize_wan_flows(
+        mac_wan_flows,
+        month_start,
+        now,
+    )
     wan_today_total_mb = wan_today_download_mb + wan_today_upload_mb
     wan_last_7_days_total_mb = wan_last_7_days_download_mb + wan_last_7_days_upload_mb
     wan_month_total_mb = wan_month_download_mb + wan_month_upload_mb
@@ -308,10 +387,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         }
         for usage_day, total_mb, active_minutes in db.get_calendar_month_daily_totals(mac)
     ]
-    month_wan_totals_by_day = {
-        usage_day.day: total_mb
-        for usage_day, total_mb in db.get_wan_daily_totals_for_mac(mac, month_start, now).items()
-    }
+    month_wan_totals_by_day = build_wan_flow_bucket_totals(mac_wan_flows, month_start, now, 'day')
     month_daily_usage = merge_wan_totals_into_usage_points(month_daily_usage, month_wan_totals_by_day)
     month_throttle_rows = [
         (usage_day.day, daily_counts)
@@ -330,7 +406,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
     ]
     daily_hourly_usage = merge_wan_totals_into_usage_points(
         daily_hourly_usage,
-        db.get_wan_hourly_totals_for_mac(mac, today_start, now),
+        build_wan_flow_bucket_totals(mac_wan_flows, today_start, now, 'hour'),
     )
     daily_throttle_rows = db.get_today_hourly_profile_minutes(mac)
     daily_throttle_datasets = build_throttle_datasets(daily_throttle_rows, speed_limits_by_name)
@@ -397,7 +473,12 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'wan_month_download_mb': wan_month_download_mb,
         'wan_month_upload_mb': wan_month_upload_mb,
         'wan_month_total_mb': wan_month_total_mb,
-        'voucher_usage': build_voucher_usage_context(latest_record.user_id, mac),
+        'voucher_usage': build_voucher_usage_context(
+            latest_record.user_id,
+            mac,
+            voucher=voucher,
+            mac_wan_flows=mac_wan_flows,
+        ),
         'usage_scales': usage_scales,
         'current_month_label': current_month_label,
         'speed_limits_by_name': speed_limits_by_name,

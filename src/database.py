@@ -38,6 +38,37 @@ def set_sqlite_pragma(dbapi_connection: sqlite3.Connection, _connection_record: 
 SessionLocal = sessionmaker(bind=engine)
 
 
+PERFORMANCE_INDEX_SQL = [
+    (
+        "ix_wan_flow_usage_started_client",
+        "CREATE INDEX IF NOT EXISTS ix_wan_flow_usage_started_client "
+        "ON wan_flow_usage (started_at, client_ip)",
+    ),
+    (
+        "ix_client_ip_identities_ip_observed",
+        "CREATE INDEX IF NOT EXISTS ix_client_ip_identities_ip_observed "
+        "ON client_ip_identities (ip_address, observed_at)",
+    ),
+    (
+        "ix_usage_records_mac_timestamp",
+        "CREATE INDEX IF NOT EXISTS ix_usage_records_mac_timestamp "
+        "ON usage_records (mac, timestamp)",
+    ),
+    (
+        "ix_plus_vouchers_user_active",
+        "CREATE INDEX IF NOT EXISTS ix_plus_vouchers_user_active "
+        "ON plus_vouchers (user_id, consumed_at, generated_at)",
+    ),
+]
+
+
+def ensure_performance_indexes() -> None:
+    'Create composite indexes used by the higher-volume reporting queries.'
+    with engine.begin() as connection:
+        for _, statement in PERFORMANCE_INDEX_SQL:
+            connection.exec_driver_sql(statement)
+
+
 def _month_period_bounds(
     period_start: datetime | None = None,
     period_end: datetime | None = None,
@@ -249,6 +280,14 @@ class WanIdentityUsageSummary:
 
 
 @dataclass(frozen=True, kw_only=True)
+class WanMacFlowUsage:
+    'One WAN flow attributed to a specific client MAC.'
+    started_at: datetime
+    bytes: int
+    direction: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class FlowImportRecord:
     'Import bookkeeping view-model for one nfcapd capture file.'
     source_file: str
@@ -359,6 +398,7 @@ class ClientIpIdentity(Base):
 def init_db() -> None:
     'Create database tables if they do not already exist.'
     Base.metadata.create_all(bind=engine)
+    ensure_performance_indexes()
 
 
 def flow_import_exists(source_file: str) -> bool:
@@ -679,12 +719,12 @@ def get_wan_usage_summary_for_user_id(
     return first_usage_at, total_bytes / 1_000_000.0
 
 
-def _get_wan_flow_rows_for_mac(
+def get_wan_flow_rows_for_mac(
     mac: str,
     period_start: datetime,
     period_end: datetime,
     identity_after_tolerance: timedelta = timedelta(minutes=10),
-) -> list[tuple[datetime, int]]:
+) -> list[WanMacFlowUsage]:
     'Return WAN flow timestamps and bytes attributed to one client MAC.'
     target_mac = mac.lower()
     if not target_mac:
@@ -694,6 +734,7 @@ def _get_wan_flow_rows_for_mac(
         select(
             WanFlowUsage.started_at,
             WanFlowUsage.client_ip,
+            WanFlowUsage.direction,
             WanFlowUsage.bytes,
         )
         .where(
@@ -706,7 +747,7 @@ def _get_wan_flow_rows_for_mac(
     with SessionLocal() as session:
         flow_rows = session.execute(flow_stmt).all()
 
-    client_ips = sorted({str(client_ip) for _, client_ip, _ in flow_rows if client_ip})
+    client_ips = sorted({str(client_ip) for _, client_ip, _, _ in flow_rows if client_ip})
     if not client_ips:
         return []
 
@@ -739,8 +780,8 @@ def _get_wan_flow_rows_for_mac(
         for client_ip, identities in identities_by_ip.items()
     }
 
-    attributed_rows: list[tuple[datetime, int]] = []
-    for started_at, client_ip, byte_count in flow_rows:
+    attributed_rows: list[WanMacFlowUsage] = []
+    for started_at, client_ip, direction, byte_count in flow_rows:
         ip_text = str(client_ip)
         identities = identities_by_ip.get(ip_text, [])
         observed_times = observed_times_by_ip.get(ip_text, [])
@@ -755,7 +796,13 @@ def _get_wan_flow_rows_for_mac(
         if identity is None or identity.mac.lower() != target_mac:
             continue
 
-        attributed_rows.append((started_at, int(byte_count or 0)))
+        attributed_rows.append(
+            WanMacFlowUsage(
+                started_at=started_at,
+                bytes=int(byte_count or 0),
+                direction=str(direction or ''),
+            )
+        )
 
     return attributed_rows
 
@@ -767,9 +814,9 @@ def get_wan_daily_totals_for_mac(
 ) -> dict[date, float]:
     'Return WAN-attributed MB totals by day for one client MAC.'
     totals_by_day: dict[date, float] = {}
-    for started_at, byte_count in _get_wan_flow_rows_for_mac(mac, period_start, period_end):
-        usage_day = started_at.date()
-        totals_by_day[usage_day] = totals_by_day.get(usage_day, 0.0) + byte_count / 1_000_000.0
+    for flow in get_wan_flow_rows_for_mac(mac, period_start, period_end):
+        usage_day = flow.started_at.date()
+        totals_by_day[usage_day] = totals_by_day.get(usage_day, 0.0) + flow.bytes / 1_000_000.0
     return totals_by_day
 
 
@@ -780,9 +827,9 @@ def get_wan_hourly_totals_for_mac(
 ) -> dict[int, float]:
     'Return WAN-attributed MB totals by hour for one client MAC.'
     totals_by_hour: dict[int, float] = {}
-    for started_at, byte_count in _get_wan_flow_rows_for_mac(mac, period_start, period_end):
-        usage_hour = started_at.hour
-        totals_by_hour[usage_hour] = totals_by_hour.get(usage_hour, 0.0) + byte_count / 1_000_000.0
+    for flow in get_wan_flow_rows_for_mac(mac, period_start, period_end):
+        usage_hour = flow.started_at.hour
+        totals_by_hour[usage_hour] = totals_by_hour.get(usage_hour, 0.0) + flow.bytes / 1_000_000.0
     return totals_by_hour
 
 
@@ -793,12 +840,12 @@ def get_wan_usage_summary_for_mac(
 ) -> tuple[datetime | None, float]:
     'Return first WAN flow time and MB attributed to one client MAC.'
     resolved_period_end = period_end or datetime.now()
-    flow_rows = _get_wan_flow_rows_for_mac(mac, period_start, resolved_period_end)
+    flow_rows = get_wan_flow_rows_for_mac(mac, period_start, resolved_period_end)
     if not flow_rows:
         return None, 0.0
 
-    first_usage_at = min(started_at for started_at, _ in flow_rows)
-    total_bytes = sum(byte_count for _, byte_count in flow_rows)
+    first_usage_at = min(flow.started_at for flow in flow_rows)
+    total_bytes = sum(flow.bytes for flow in flow_rows)
     return first_usage_at, total_bytes / 1_000_000.0
 
 
