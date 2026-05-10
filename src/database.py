@@ -155,6 +155,13 @@ class GlobalDailyNetworkUsage:
     plus_minutes: int
 
 
+@dataclass(frozen=True, kw_only=True)
+class GlobalWanHourlyUsage:
+    'Hourly month-to-date WAN usage total.'
+    bucket_start: datetime
+    total_mb: float
+
+
 @dataclass
 class DailyNetworkUsageBucket:
     'Mutable accumulator for one day of Basic/Plus usage.'
@@ -1828,6 +1835,67 @@ def get_global_daily_network_usage_current_month(
             )
         )
         day += timedelta(days=1)
+
+    return series
+
+
+def _wan_hour_bucket_expression() -> Any:
+    'Return a SQL expression that truncates WAN flow timestamps to the hour.'
+    if engine.dialect.name == 'postgresql':
+        return func.date_trunc('hour', WanFlowUsage.started_at)
+    return func.strftime('%Y-%m-%d %H:00:00', WanFlowUsage.started_at)
+
+
+def _coerce_hour_bucket(raw_bucket: object) -> datetime | None:
+    'Return a datetime from a SQL hour bucket value.'
+    if isinstance(raw_bucket, datetime):
+        return raw_bucket.replace(minute=0, second=0, microsecond=0)
+    if isinstance(raw_bucket, str):
+        try:
+            return datetime.strptime(raw_bucket, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            return None
+    return None
+
+
+def get_global_wan_hourly_usage_current_month(
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+) -> list[GlobalWanHourlyUsage]:
+    'Return hourly WAN usage totals for a month period.'
+    month_start_dt, month_end_dt, _, _ = _month_period_bounds(period_start, period_end)
+    bucket_expr = _wan_hour_bucket_expression().label('hour_bucket')
+    stmt = (
+        select(bucket_expr, func.sum(WanFlowUsage.bytes))
+        .where(
+            WanFlowUsage.started_at >= month_start_dt,
+            WanFlowUsage.started_at <= month_end_dt,
+        )
+        .group_by(bucket_expr)
+        .order_by(bucket_expr.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    totals_by_hour: dict[datetime, float] = {}
+    for raw_bucket, total_bytes in rows:
+        bucket_start = _coerce_hour_bucket(raw_bucket)
+        if bucket_start is None:
+            continue
+        totals_by_hour[bucket_start] = float(total_bytes or 0) / 1_000_000.0
+
+    hour_cursor = month_start_dt.replace(minute=0, second=0, microsecond=0)
+    end_hour = month_end_dt.replace(minute=0, second=0, microsecond=0)
+    series: list[GlobalWanHourlyUsage] = []
+    while hour_cursor <= end_hour:
+        series.append(
+            GlobalWanHourlyUsage(
+                bucket_start=hour_cursor,
+                total_mb=totals_by_hour.get(hour_cursor, 0.0),
+            )
+        )
+        hour_cursor += timedelta(hours=1)
 
     return series
 

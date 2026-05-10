@@ -452,6 +452,53 @@
             });
         }
 
+        const hourlyWanCanvas = document.getElementById("global-hourly-wan-chart");
+        if (hourlyWanCanvas) {
+            new Chart(hourlyWanCanvas, {
+                type: "line",
+                data: {
+                    labels: config.wanHourlyLabels,
+                    datasets: [
+                        {
+                            label: "WAN MB",
+                            data: config.wanHourlyMb,
+                            borderColor: "rgba(2, 132, 199, 0.92)",
+                            backgroundColor: "rgba(2, 132, 199, 0.14)",
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            pointHitRadius: 8,
+                            tension: 0.18,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: titleFor(config.wanHourlyFullLabels || []),
+                            }
+                        }
+                    },
+                    scales: {
+                        x: xAxis("Hour", false),
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: "WAN MB/hour" },
+                            grid: { color: "rgba(31, 41, 51, 0.20)" }
+                        }
+                    }
+                }
+            });
+        }
+
         const minutesCanvas = document.getElementById("global-daily-minutes-chart");
         if (minutesCanvas) {
             new Chart(minutesCanvas, {
