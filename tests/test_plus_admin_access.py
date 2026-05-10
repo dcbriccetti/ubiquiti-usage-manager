@@ -134,6 +134,37 @@ class PlusAdminAccessTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_successful_admin_check_is_cached_for_fast_followup_clicks(self) -> None:
+        flask_app = app.create_app()
+        live_clients = [
+            {
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "ip": "192.168.1.22",
+                "network": "Plus",
+                "1x_identity": "daveb",
+            }
+        ]
+
+        with (
+            patch.object(app.cfg, "PLUS_ADMINS", {"daveb"}),
+            patch.object(app.db, "get_usage_history", return_value=[]),
+            patch.object(app.api, "get_api_data", return_value=live_clients) as get_api_data,
+            patch.object(app, "build_live_dashboard_payload", return_value={}),
+        ):
+            client = flask_app.test_client()
+            first_response = client.get(
+                "/api/dashboard-snapshot",
+                environ_base={"REMOTE_ADDR": "192.168.1.22"},
+            )
+            second_response = client.get(
+                "/api/dashboard-snapshot",
+                environ_base={"REMOTE_ADDR": "192.168.1.22"},
+            )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(get_api_data.call_count, 1)
+
     def test_live_basic_network_does_not_inherit_stale_plus_admin_status(self) -> None:
         flask_app = app.create_app()
         live_clients = [

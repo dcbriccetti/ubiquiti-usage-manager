@@ -1,6 +1,7 @@
 '''Client usage detail view-model construction.'''
 
 from datetime import datetime, time, timedelta
+import time as monotonic_time
 from typing import TypedDict
 
 import database as db
@@ -12,6 +13,8 @@ from speedlimit import SpeedLimit
 
 
 SpeedLimitsByName = dict[str, SpeedLimit]
+SPEED_LIMIT_CACHE_SECONDS = 300.0
+_speed_limits_cache: tuple[float, SpeedLimitsByName] | None = None
 
 
 class ThrottleChartDataset(TypedDict):
@@ -92,7 +95,14 @@ def render_month_label(now: datetime) -> str:
 
 def get_speed_limits_by_name() -> SpeedLimitsByName:
     'Return mapping of speed-limit profile name to SpeedLimit object.'
-    return {limit.name: limit for limit in api.get_speed_limits()}
+    global _speed_limits_cache
+    now_monotonic = monotonic_time.monotonic()
+    if _speed_limits_cache and _speed_limits_cache[0] > now_monotonic:
+        return _speed_limits_cache[1]
+
+    speed_limits_by_name = {limit.name: limit for limit in api.get_speed_limits()}
+    _speed_limits_cache = (now_monotonic + SPEED_LIMIT_CACHE_SECONDS, speed_limits_by_name)
+    return speed_limits_by_name
 
 
 def speed_limit_option_label(limit: SpeedLimit) -> str:
@@ -234,7 +244,7 @@ def build_voucher_usage_context(
             used_mb = mac_used_mb
     remaining_mb = max(0.0, allocation_mb - used_mb)
     used_pct = (used_mb / allocation_mb * 100.0) if allocation_mb else 0.0
-    return {
+    voucher_context: VoucherUsageContext = {
         'user_id': voucher.user_id,
         'allocation_gb': voucher.allocation_gb,
         'allocation_mb': allocation_mb,
@@ -245,6 +255,7 @@ def build_voucher_usage_context(
         'activated_at': activated_at,
         'is_over_allocation': used_mb >= allocation_mb,
     }
+    return voucher_context
 
 
 def hydrate_usage_record_identity(
@@ -290,13 +301,16 @@ def merge_wan_totals_into_usage_points(
     wan_totals_by_bucket: dict[int, float],
 ) -> list[UsageScalePoint]:
     'Prefer WAN flow totals for chart buckets when they exceed sampled usage.'
-    return [
-        {
-            **point,
+    merged_points: list[UsageScalePoint] = []
+    for point in points:
+        merged_point: UsageScalePoint = {
+            'bucket_label': point['bucket_label'],
+            'bucket_value': point['bucket_value'],
             'total_mb': max(point['total_mb'], wan_totals_by_bucket.get(point['bucket_value'], 0.0)),
+            'active_minutes': point['active_minutes'],
         }
-        for point in points
-    ]
+        merged_points.append(merged_point)
+    return merged_points
 
 
 def get_client_usage_context(mac: str) -> ClientUsageContext:

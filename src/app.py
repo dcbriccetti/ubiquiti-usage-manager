@@ -13,6 +13,7 @@ from datetime import date, datetime
 import ipaddress
 import os
 import re
+import time
 from typing import Any, TypedDict, cast
 
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, stream_with_context, url_for
@@ -63,6 +64,8 @@ def create_app() -> Flask:
     flask_app = Flask(__name__)
     live_update_seconds = 60
     live_update_boundary_offset_seconds = 3
+    admin_auth_cache_seconds = 30.0
+    admin_auth_cache_by_ip: dict[str, float] = {}
 
     def build_report_context(available_months: list[date] | None = None) -> dict[str, object]:
         'Build reusable template/query context for month-selected reports.'
@@ -134,10 +137,22 @@ def create_app() -> Flask:
         'Return a count plus singular/plural label.'
         return f'{count} {singular if count == 1 else (plural or singular + "s")}'
 
-    def get_live_client_record_by_mac(mac: str) -> dict[str, Any] | None:
+    def get_client_mac_from_records(request_ip: str, client_records: list[dict[str, Any]]) -> str | None:
+        'Return the client MAC whose active or recent IP matches the requester.'
+        for client in client_records:
+            client_ip = client.get('ip') or client.get('last_ip')
+            client_mac = client.get('mac')
+            if isinstance(client_ip, str) and client_ip == request_ip and isinstance(client_mac, str):
+                return client_mac.lower()
+        return None
+
+    def get_live_client_record_by_mac(
+        mac: str,
+        live_clients: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any] | None:
         'Return live UniFi station payload for one MAC, if currently connected.'
         target_mac = mac.lower()
-        for client in api.get_api_data("stat/sta"):
+        for client in live_clients if live_clients is not None else api.get_api_data("stat/sta"):
             raw_mac = client.get("mac")
             if isinstance(raw_mac, str) and raw_mac.lower() == target_mac:
                 return client
@@ -167,9 +182,12 @@ def create_app() -> Flask:
         }
         return user_id.strip().lower() in plus_admins
 
-    def get_live_client_admin_status(detected_mac: str) -> bool | None:
+    def get_live_client_admin_status(
+        detected_mac: str,
+        live_clients: list[dict[str, Any]] | None = None,
+    ) -> bool | None:
         'Return live admin status for a connected client, or None when identity is incomplete.'
-        live_client = get_live_client_record_by_mac(detected_mac)
+        live_client = get_live_client_record_by_mac(detected_mac, live_clients)
         if live_client is None:
             return None
 
@@ -263,24 +281,36 @@ def create_app() -> Flask:
 
     def requester_is_plus_admin() -> bool:
         'Resolve current requester and return whether they are a Plus admin.'
-        if not (request_ip := resolve_request_ip()):
+        request_ip = resolve_request_ip()
+        if not request_ip:
             return False
+        request_ip_text: str = request_ip
 
-        if request_ip_is_plus_admin(request_ip):
+        now_monotonic = time.monotonic()
+        if admin_auth_cache_by_ip.get(request_ip_text, 0.0) > now_monotonic:
             return True
 
-        detected_mac = find_client_mac_for_ip(request_ip)
+        def remember_admin(result: bool) -> bool:
+            if result:
+                admin_auth_cache_by_ip[request_ip_text] = time.monotonic() + admin_auth_cache_seconds
+            return result
+
+        if request_ip_is_plus_admin(request_ip_text):
+            return remember_admin(True)
+
+        live_clients = api.get_api_data("stat/sta")
+        detected_mac = get_client_mac_from_records(request_ip_text, live_clients) or find_client_mac_for_ip(request_ip_text)
         if not detected_mac:
             return False
 
-        if (live_admin_status := get_live_client_admin_status(detected_mac)) is not None:
-            return live_admin_status
+        if (live_admin_status := get_live_client_admin_status(detected_mac, live_clients)) is not None:
+            return remember_admin(live_admin_status)
 
         usage_history = db.get_usage_history(detected_mac, limit=1)
         if usage_history:
             latest_record = usage_history[0]
-            warn_missing_radius_identity(latest_record, request_ip, detected_mac)
-            return is_plus_admin_user(latest_record.user_id, latest_record.vlan)
+            warn_missing_radius_identity(latest_record, request_ip_text, detected_mac)
+            return remember_admin(is_plus_admin_user(latest_record.user_id, latest_record.vlan))
 
         return False
     @flask_app.route("/")

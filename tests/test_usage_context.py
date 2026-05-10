@@ -18,6 +18,7 @@ if "database" in sys.modules and not hasattr(sys.modules["database"], "UsageReco
     del sys.modules["database"]
 
 import database as db
+from speedlimit import SpeedLimit
 import usage_context
 
 
@@ -49,10 +50,27 @@ class ClientUsageContextTests(unittest.TestCase):
         db.Base.metadata.create_all(self.engine)
 
     def tearDown(self) -> None:
+        usage_context._speed_limits_cache = None
         db.SessionLocal = self.original_session_local
         db.Base.metadata.drop_all(self.engine)
         self.engine.dispose()
         self.temp_dir.cleanup()
+
+    def test_speed_limit_lookup_is_cached_for_detail_page_renders(self) -> None:
+        usage_context._speed_limits_cache = None
+        with patch.object(
+            usage_context.api,
+            "get_speed_limits",
+            return_value=[
+                SpeedLimit(id="slow-id", name="slow", up_kbps=1000, down_kbps=2000),
+            ],
+        ) as get_speed_limits:
+            first_limits = usage_context.get_speed_limits_by_name()
+            second_limits = usage_context.get_speed_limits_by_name()
+
+        self.assertEqual(first_limits, second_limits)
+        self.assertEqual(set(first_limits), {"slow"})
+        self.assertEqual(get_speed_limits.call_count, 1)
 
     def test_wan_usage_fills_zero_sampled_usage_and_voucher_identity(self) -> None:
         mac = "42:3e:c1:5d:fc:59"
