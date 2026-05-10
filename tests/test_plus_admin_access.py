@@ -83,6 +83,57 @@ class PlusAdminAccessTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_plus_report_title_network_counts_as_plus_network(self) -> None:
+        flask_app = app.create_app()
+        live_clients = [
+            {
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "network": "Example Plus",
+                "1x_identity": "president",
+            }
+        ]
+
+        with (
+            patch.object(app.cfg, "PLUS_REPORT_TITLE", "Example Plus"),
+            patch.object(app.cfg, "PLUS_ADMINS", {"president", "it"}),
+            patch.object(app, "find_client_mac_for_ip", return_value="aa:bb:cc:dd:ee:ff"),
+            patch.object(app.db, "get_usage_history", return_value=[]),
+            patch.object(app.api, "get_api_data", return_value=live_clients),
+            patch.object(app, "build_live_dashboard_payload", return_value={}),
+        ):
+            response = flask_app.test_client().get(
+                "/api/dashboard-snapshot",
+                environ_base={"REMOTE_ADDR": "192.168.1.22"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_configured_plus_network_names_are_normalized(self) -> None:
+        flask_app = app.create_app()
+        live_clients = [
+            {
+                "mac": "aa:bb:cc:dd:ee:ff",
+                "network": " Example Plus ",
+                "1x_identity": "president",
+            }
+        ]
+
+        with (
+            patch.object(app.cfg, "PLUS_REPORT_TITLE", ""),
+            patch.object(app.cfg, "PLUS_NETWORK_NAMES", {" example plus "}),
+            patch.object(app.cfg, "PLUS_ADMINS", {"president"}),
+            patch.object(app, "find_client_mac_for_ip", return_value="aa:bb:cc:dd:ee:ff"),
+            patch.object(app.db, "get_usage_history", return_value=[]),
+            patch.object(app.api, "get_api_data", return_value=live_clients),
+            patch.object(app, "build_live_dashboard_payload", return_value={}),
+        ):
+            response = flask_app.test_client().get(
+                "/api/dashboard-snapshot",
+                environ_base={"REMOTE_ADDR": "192.168.1.22"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+
     def test_live_basic_network_does_not_inherit_stale_plus_admin_status(self) -> None:
         flask_app = app.create_app()
         live_clients = [

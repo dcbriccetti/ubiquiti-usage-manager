@@ -145,7 +145,16 @@ def create_app() -> Flask:
 
     def is_plus_network(vlan_name: str | None) -> bool:
         'Return True when the VLAN/network label represents the Plus network.'
-        return bool(vlan_name and vlan_name.strip().lower() == "plus")
+        if not vlan_name:
+            return False
+        plus_network_names = {
+            str(network_name).strip().lower()
+            for network_name in getattr(cfg, 'PLUS_NETWORK_NAMES', {'Plus'})
+            if str(network_name).strip()
+        }
+        if plus_report_title := str(getattr(cfg, 'PLUS_REPORT_TITLE', '')).strip():
+            plus_network_names.add(plus_report_title.lower())
+        return vlan_name.strip().lower() in plus_network_names
 
     def is_plus_admin_user(user_id: str | None, vlan_name: str | None) -> bool:
         'Return True when requester is a Plus user whose RADIUS username is in admin allowlist.'
