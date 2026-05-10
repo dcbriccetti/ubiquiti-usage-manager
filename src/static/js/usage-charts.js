@@ -488,7 +488,16 @@
                         }
                     },
                     scales: {
-                        x: xAxis("Hour", false),
+                        x: {
+                            offset: false,
+                            title: { display: true, text: "Day of month" },
+                            grid: { display: false },
+                            ticks: {
+                                autoSkip: false,
+                                maxRotation: 0,
+                                callback: (_value, index) => config.wanHourlyTickLabels?.[index] || ""
+                            }
+                        },
                         y: {
                             beginAtZero: true,
                             title: { display: true, text: "WAN MB/hour" },

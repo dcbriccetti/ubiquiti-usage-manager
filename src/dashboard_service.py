@@ -115,6 +115,7 @@ class InsightsData(TypedDict):
     daily_network_plus_minutes: list[int]
     wan_hourly_title: str
     wan_hourly_labels: list[str]
+    wan_hourly_tick_labels: list[str]
     wan_hourly_full_labels: list[str]
     wan_hourly_mb: list[float]
     organization_paid_total_mb: float
@@ -815,6 +816,10 @@ def build_insights_data(
             else f'Hourly WAN Usage ({selected_report_label})'
         ),
         'wan_hourly_labels': [f'{row.bucket_start.day} {row.bucket_start:%H}:00' for row in wan_hourly_usage],
+        'wan_hourly_tick_labels': [
+            str(row.bucket_start.day) if row.bucket_start.hour == 0 else ''
+            for row in wan_hourly_usage
+        ],
         'wan_hourly_full_labels': [
             f'{row.bucket_start:%b} {row.bucket_start.day} {row.bucket_start:%H}:00'
             for row in wan_hourly_usage
