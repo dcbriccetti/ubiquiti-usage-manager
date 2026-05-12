@@ -17,7 +17,7 @@ in one place, so UI changes do not require route-level rewrites.
 '''
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 import re
 import time as monotonic_time
 from threading import Lock
@@ -110,8 +110,7 @@ class InsightsData(TypedDict):
     top_access_points_this_month: list[dict[str, object]]
     daily_network_x_labels: list[int]
     daily_network_full_labels: list[str]
-    daily_network_basic_mb: list[float]
-    daily_network_plus_mb: list[float]
+    daily_wan_mb: list[float]
     daily_network_basic_minutes: list[int]
     daily_network_plus_minutes: list[int]
     wan_hourly_title: str
@@ -286,6 +285,24 @@ def _serialize_usage_actor_row(row: db.GlobalTopUser, include_vlan_name: bool = 
     if include_vlan_name:
         data['vlan_name'] = row.vlan_name
     return data
+
+
+def _global_top_user_from_wan_row(
+    row: db.WanIdentityUsageSummary,
+    sampled_metadata_by_mac: dict[str, db.GlobalTopUser],
+) -> db.GlobalTopUser:
+    'Return an insights-table user row with WAN MB and sampled active minutes.'
+    mac = row.mac or ''
+    mac_key = mac.lower()
+    sampled_metadata = sampled_metadata_by_mac.get(mac_key)
+    return db.GlobalTopUser(
+        mac=mac,
+        name=row.name or (sampled_metadata.name if sampled_metadata else '') or row.client_ip,
+        user_id=row.user_id or (sampled_metadata.user_id if sampled_metadata else ''),
+        vlan_name=row.vlan if row.vlan != 'Unknown' else (sampled_metadata.vlan_name if sampled_metadata else ''),
+        total_mb=_wan_total_mb(row),
+        active_minutes=sampled_metadata.active_minutes if sampled_metadata else 0,
+    )
 
 
 def _wan_total_mb(row: db.WanIdentityUsageSummary) -> float:
@@ -826,8 +843,13 @@ def build_insights_data(
     organization_paid_vlan_criteria = set(cfg.ORGANIZATION_PAID_VLAN_NAMES)
     organization_paid_mac_criteria = set(cfg.ORGANIZATION_PAID_DEVICE_MACS)
     organization_paid_user_id_criteria = set(cfg.ORGANIZATION_PAID_USER_IDS)
+    organization_paid_vlan_keys = {vlan.strip().lower() for vlan in organization_paid_vlan_criteria if vlan.strip()}
+    organization_paid_mac_keys = {mac.strip().lower() for mac in organization_paid_mac_criteria if mac.strip()}
+    organization_paid_user_id_keys = {user_id.strip().lower() for user_id in organization_paid_user_id_criteria if user_id.strip()}
     selected_month_label = current_month_label or render_month_label(datetime.now())
     selected_report_label = report_period_label or datetime.now().strftime('%B %Y')
+    resolved_period_end = period_end or datetime.now()
+    resolved_period_start = period_start or datetime.combine(resolved_period_end.date().replace(day=1), time.min)
 
     connected_snapshots: list[ClientSnapshot] = []
     if (
@@ -838,24 +860,39 @@ def build_insights_data(
 
     def is_organization_paid_identity(mac: str, user_id: str | None, vlan_name: str | None) -> bool:
         return (
-            (vlan_name or '') in organization_paid_vlan_criteria
-            or mac in organization_paid_mac_criteria
-            or (user_id or '') in organization_paid_user_id_criteria
+            (vlan_name or '').strip().lower() in organization_paid_vlan_keys
+            or mac.strip().lower() in organization_paid_mac_keys
+            or (user_id or '').strip().lower() in organization_paid_user_id_keys
         )
 
     insights = db.get_global_month_insights(
-        top_limit=6,
+        top_limit=10_000,
         period_start=period_start,
         period_end=period_end,
     )
-    top_users_by_mac_this_month = db.get_global_top_users_current_month(
-        limit=60,
-        exclude_organization_paid_macs=organization_paid_mac_criteria,
-        exclude_organization_paid_user_ids=organization_paid_user_id_criteria,
-        exclude_organization_paid_vlan_names=organization_paid_vlan_criteria,
+    sampled_users_by_mac_this_month = db.get_global_top_users_current_month(
+        limit=10_000,
         period_start=period_start,
         period_end=period_end,
     )
+    sampled_metadata_by_mac = {
+        row.mac.lower(): row
+        for row in sampled_users_by_mac_this_month
+        if row.mac
+    }
+    monthly_wan_rows = db.get_wan_usage_by_identity(
+        period_start=resolved_period_start,
+        period_end=resolved_period_end,
+    )
+    user_paid_wan_rows = [
+        row
+        for row in monthly_wan_rows
+        if not is_organization_paid_identity(row.mac, row.user_id, row.vlan)
+    ]
+    top_users_by_mac_this_month = [
+        _global_top_user_from_wan_row(row, sampled_metadata_by_mac)
+        for row in user_paid_wan_rows
+    ]
     top_users_this_month = aggregate_top_users_by_identity(top_users_by_mac_this_month, limit=6)
     daily_network_usage = db.get_global_daily_network_usage_current_month(
         period_start=period_start,
@@ -865,6 +902,10 @@ def build_insights_data(
         period_start=period_start,
         period_end=period_end,
     )
+    daily_wan_mb_by_day: dict[date, float] = {}
+    for hourly_row in wan_hourly_usage:
+        usage_day = hourly_row.bucket_start.date()
+        daily_wan_mb_by_day[usage_day] = daily_wan_mb_by_day.get(usage_day, 0.0) + hourly_row.total_mb
     payer_split = db.get_global_payer_split_current_month(
         organization_paid_macs=organization_paid_mac_criteria,
         organization_paid_user_ids=organization_paid_user_id_criteria,
@@ -872,14 +913,34 @@ def build_insights_data(
         period_start=period_start,
         period_end=period_end,
     )
-    organization_paid_clients = db.get_global_organization_paid_clients_current_month(
+    organization_paid_total_mb = 0.0
+    user_paid_total_mb = 0.0
+    organization_paid_wan_rows: list[db.WanIdentityUsageSummary] = []
+    for wan_row in monthly_wan_rows:
+        row_total_mb = _wan_total_mb(wan_row)
+        if is_organization_paid_identity(wan_row.mac, wan_row.user_id, wan_row.vlan):
+            organization_paid_total_mb += row_total_mb
+            organization_paid_wan_rows.append(wan_row)
+        else:
+            user_paid_total_mb += row_total_mb
+
+    organization_paid_sampled_clients = db.get_global_organization_paid_clients_current_month(
         organization_paid_macs=organization_paid_mac_criteria,
         organization_paid_user_ids=organization_paid_user_id_criteria,
         organization_paid_vlan_names=organization_paid_vlan_criteria,
-        limit=12,
+        limit=10_000,
         period_start=period_start,
         period_end=period_end,
     )
+    organization_paid_metadata_by_mac = {
+        entry.mac.lower(): entry
+        for entry in organization_paid_sampled_clients
+        if entry.mac
+    }
+    organization_paid_clients = [
+        _global_top_user_from_wan_row(row, organization_paid_metadata_by_mac)
+        for row in organization_paid_wan_rows
+    ]
     organization_paid_clients_by_mac = {entry.mac.lower(): entry for entry in organization_paid_clients}
     for snapshot in connected_snapshots:
         client = snapshot.client
@@ -904,6 +965,11 @@ def build_insights_data(
         key=lambda entry: (entry.total_mb, entry.active_minutes, entry.name.lower()),
         reverse=True,
     )[:12]
+    top_access_points_this_month = sorted(
+        insights.top_access_points,
+        key=lambda entry: (entry.active_minutes, entry.ap_name.lower()),
+        reverse=True,
+    )[:6]
     speed_limits_by_name = {limit.name: limit for limit in api.get_speed_limits()}
     concurrency_insights = db.get_global_concurrency_insights_current_month(
         period_start=period_start,
@@ -942,11 +1008,10 @@ def build_insights_data(
         'active_users_chart_full_labels': insights.active_users_daily_full_labels,
         'active_users_chart_counts': insights.active_users_daily_counts,
         'top_users_this_month': [_serialize_usage_actor_row(top_row) for top_row in top_users_this_month],
-        'top_access_points_this_month': [_serialize_access_point_row(ap_row) for ap_row in insights.top_access_points],
+        'top_access_points_this_month': [_serialize_access_point_row(ap_row) for ap_row in top_access_points_this_month],
         'daily_network_x_labels': [row.usage_day.day for row in daily_network_usage],
         'daily_network_full_labels': [f'{row.usage_day.strftime("%b")} {row.usage_day.day}' for row in daily_network_usage],
-        'daily_network_basic_mb': [row.basic_mb for row in daily_network_usage],
-        'daily_network_plus_mb': [row.plus_mb for row in daily_network_usage],
+        'daily_wan_mb': [daily_wan_mb_by_day.get(row.usage_day, 0.0) for row in daily_network_usage],
         'daily_network_basic_minutes': [row.basic_minutes for row in daily_network_usage],
         'daily_network_plus_minutes': [row.plus_minutes for row in daily_network_usage],
         'wan_hourly_title': (
@@ -964,11 +1029,11 @@ def build_insights_data(
             for row in wan_hourly_usage
         ],
         'wan_hourly_mb': [row.total_mb for row in wan_hourly_usage],
-        'organization_paid_total_mb': payer_split.organization_paid_total_mb,
-        'organization_paid_cost_cents': calculate_month_cost_cents(payer_split.organization_paid_total_mb),
+        'organization_paid_total_mb': organization_paid_total_mb,
+        'organization_paid_cost_cents': calculate_month_cost_cents(organization_paid_total_mb),
         'organization_paid_minutes': payer_split.organization_paid_minutes,
-        'user_paid_total_mb': payer_split.user_paid_total_mb,
-        'user_paid_cost_cents': calculate_month_cost_cents(payer_split.user_paid_total_mb),
+        'user_paid_total_mb': user_paid_total_mb,
+        'user_paid_cost_cents': calculate_month_cost_cents(user_paid_total_mb),
         'user_paid_minutes': payer_split.user_paid_minutes,
         'organization_paid_clients': [
             _serialize_usage_actor_row(org_row, include_vlan_name=True)

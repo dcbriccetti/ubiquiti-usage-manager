@@ -438,15 +438,14 @@
                 data: {
                     labels: config.xLabels,
                     datasets: [
-                        { label: "Basic", data: config.basicMb, backgroundColor: "rgba(15, 118, 110, 0.72)" },
-                        { label: "Plus", data: config.plusMb, backgroundColor: "rgba(194, 65, 12, 0.82)" }
+                        { label: "WAN MB", data: config.dailyWanMb, backgroundColor: "rgba(2, 132, 199, 0.72)" }
                     ]
                 },
                 options: {
                     ...sharedStackedOptions,
                     scales: {
                         ...sharedStackedOptions.scales,
-                        y: { ...sharedStackedOptions.scales.y, title: { display: true, text: "MB/day" } }
+                        y: { ...sharedStackedOptions.scales.y, title: { display: true, text: "WAN MB/day" } }
                     }
                 }
             });

@@ -65,9 +65,9 @@
         <article class="panel">
             <div class="panel-body">
                 <h2>Traffic & Concurrency</h2>
-                <h3>Daily MB (Stacked Basic/Plus)</h3>
+                <h3>Daily WAN MB</h3>
                 <div class="month-chart-wrap">
-                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily MB stacked by Basic and Plus"></canvas>
+                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily WAN MB"></canvas>
                 </div>
                 <h3>{{ wan_hourly_title }}</h3>
                 <div class="month-chart-wrap">
@@ -140,7 +140,7 @@
                             <thead>
                                 <tr>
                                     <th>Category</th>
-                                    <th class="num">MB</th>
+                                    <th class="num">WAN MB</th>
                                     <th class="num">Allocated</th>
                                     <th class="num">%</th>
                                     <th class="num">Minutes</th>
@@ -165,12 +165,11 @@
                         </table>
                     </article>
                     <article class="insights-ap-hotspots">
-                        <h3>Usage by Access Point</h3>
+                        <h3>Activity by Access Point</h3>
                         <table class="insights-table">
                             <thead>
                                 <tr>
                                     <th>Access Point</th>
-                                    <th class="num">MB</th>
                                     <th class="num">Minutes</th>
                                 </tr>
                             </thead>
@@ -178,12 +177,11 @@
                                 {% for ap in top_access_points_this_month %}
                                     <tr>
                                         <td class="nowrap-col">{{ ap.ap_name }}</td>
-                                        <td class="num">{{ "{:,.0f}".format(ap.total_mb) }}</td>
                                         <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
                                     </tr>
                                 {% else %}
                                     <tr>
-                                        <td colspan="3" class="muted">No access-point usage data for {{ report_period_label }}.</td>
+                                        <td colspan="2" class="muted">No access-point activity data for {{ report_period_label }}.</td>
                                     </tr>
                                 {% endfor %}
                             </tbody>
@@ -208,9 +206,9 @@
                                     <th>Name</th>
                                     <th class="mac-col">MAC</th>
                                     <th class="network-col">VLAN</th>
-                                    <th class="num">MB</th>
-                                    <th class="num">Cost</th>
+                                    <th class="num">WAN MB</th>
                                     <th class="num">Minutes</th>
+                                    <th class="num">Cost</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -218,15 +216,19 @@
                                     <tr>
                                         <td class="nowrap-col user-id-col">{{ organization_client.user_id or "" }}</td>
                                         <td class="nowrap-col">
-                                            <a class="mac-link" href="{{ url_for('client_detail', mac=organization_client.mac) }}" title="Usage details">
+                                            {% if organization_client.mac %}
+                                                <a class="mac-link" href="{{ url_for('client_detail', mac=organization_client.mac) }}" title="Usage details">
+                                                    {{ organization_client.name }}
+                                                </a>
+                                            {% else %}
                                                 {{ organization_client.name }}
-                                            </a>
+                                            {% endif %}
                                         </td>
                                         <td class="nowrap-col mono mac-col">{{ organization_client.mac[-5:] }}</td>
                                         <td class="nowrap-col network-col">{{ organization_client.vlan_name or "" }}</td>
                                         <td class="num">{{ "{:,.0f}".format(organization_client.total_mb) }}</td>
-                                        <td class="num">${{ "{:,.2f}".format((organization_client.month_cost_cents or 0) / 100.0) }}</td>
                                         <td class="num">{{ "{:,.0f}".format(organization_client.active_minutes) }}</td>
+                                        <td class="num">${{ "{:,.2f}".format((organization_client.month_cost_cents or 0) / 100.0) }}</td>
                                     </tr>
                                 {% else %}
                                     <tr>
@@ -237,14 +239,14 @@
                         </table>
                     </article>
                     <article>
-                        <h3>Top Users by {{ current_month_label }} MB</h3>
+                        <h3>Top Users by {{ current_month_label }} WAN MB</h3>
                         <table class="insights-table">
                             <thead>
                                 <tr>
                                     <th>User</th>
-                                    <th class="num">MB</th>
-                                    <th class="num">Cost</th>
+                                    <th class="num">WAN MB</th>
                                     <th class="num">Minutes</th>
+                                    <th class="num">Cost</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -258,8 +260,8 @@
                                             {% endif %}
                                         </td>
                                         <td class="num">{{ "{:,.0f}".format(user.total_mb) }}</td>
-                                        <td class="num">${{ "{:,.2f}".format((user.month_cost_cents or 0) / 100.0) }}</td>
                                         <td class="num">{{ "{:,.0f}".format(user.active_minutes) }}</td>
+                                        <td class="num">${{ "{:,.2f}".format((user.month_cost_cents or 0) / 100.0) }}</td>
                                     </tr>
                                 {% else %}
                                     <tr>
@@ -282,8 +284,7 @@
             "activeUsersCounts": active_users_chart_counts,
             "xLabels": daily_network_x_labels,
             "fullLabels": daily_network_full_labels,
-            "basicMb": daily_network_basic_mb,
-            "plusMb": daily_network_plus_mb,
+            "dailyWanMb": daily_wan_mb,
             "basicMinutes": daily_network_basic_minutes,
             "plusMinutes": daily_network_plus_minutes,
             "wanHourlyLabels": wan_hourly_labels,

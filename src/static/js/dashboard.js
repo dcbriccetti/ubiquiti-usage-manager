@@ -452,7 +452,7 @@
         statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
         statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
         if (data.current_month_label) {
-            statUsageMonthLabel.textContent = `Usage ${data.current_month_label}`;
+            statUsageMonthLabel.textContent = `WAN ${data.current_month_label}`;
             usageMonthHeader.textContent = data.current_month_label;
             const monthOption = windowSelect.querySelector('option[value="this_month"]');
             if (monthOption) {

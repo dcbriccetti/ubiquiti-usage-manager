@@ -27,15 +27,15 @@
             </div>
             <section class="grid stats dashboard-stats">
                 <article class="panel stat">
-                    <span class="label">Usage Today</span>
+                    <span class="label">WAN Today</span>
                     <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(payload.total_today_mb) }} MB</span>
                 </article>
                 <article class="panel stat">
-                    <span class="label">Usage 7&nbsp;Days</span>
+                    <span class="label">WAN 7&nbsp;Days</span>
                     <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(payload.total_last_7_days_mb) }} MB</span>
                 </article>
                 <article class="panel stat">
-                    <span class="label" id="stat-usage-month-label">Usage {{ payload.current_month_label }}</span>
+                    <span class="label" id="stat-usage-month-label">WAN {{ payload.current_month_label }}</span>
                     <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(payload.total_calendar_month_mb) }} MB</span>
                 </article>
             </section>
