@@ -264,24 +264,24 @@ def build_month_usage_comparison_rows(
     else:
         unifi_rows = db.get_usage_window_summary('this_month')
 
-    for row in unifi_rows:
-        key = row.mac.lower()
+    for unifi_row in unifi_rows:
+        key = unifi_row.mac.lower()
         comparison_by_key[key] = {
             'client_ip': '',
-            'name': row.name or '',
-            'user_id': row.user_id or '',
-            'vlan': row.vlan or '',
-            'mac': row.mac,
+            'name': unifi_row.name or '',
+            'user_id': unifi_row.user_id or '',
+            'vlan': unifi_row.vlan or '',
+            'mac': unifi_row.mac,
             'identity_is_fallback': False,
-            'unifi_period_mb': row.calendar_month_total_mb,
+            'unifi_period_mb': unifi_row.calendar_month_total_mb,
             'wan_period_mb': 0.0,
             'wan_flow_count': 0,
             'difference_mb': 0.0,
         }
 
-    for row in month_wan_rows:
-        mac = row['mac']
-        client_ip = row['client_ip']
+    for wan_row in month_wan_rows:
+        mac = wan_row['mac']
+        client_ip = wan_row['client_ip']
         key = mac.lower() if mac else f'ip:{client_ip}'
         comparison = comparison_by_key.setdefault(
             key,
@@ -299,17 +299,17 @@ def build_month_usage_comparison_rows(
             },
         )
         comparison['client_ip'] = comparison['client_ip'] or client_ip
-        comparison['name'] = comparison['name'] or row['name']
-        comparison['user_id'] = comparison['user_id'] or row['user_id']
-        comparison['vlan'] = comparison['vlan'] or row['vlan']
+        comparison['name'] = comparison['name'] or wan_row['name']
+        comparison['user_id'] = comparison['user_id'] or wan_row['user_id']
+        comparison['vlan'] = comparison['vlan'] or wan_row['vlan']
         comparison['mac'] = comparison['mac'] or mac
-        comparison['identity_is_fallback'] = comparison['identity_is_fallback'] or row['identity_is_fallback']
-        comparison['wan_period_mb'] += total_wan_mb(row)
-        comparison['wan_flow_count'] += row['flow_count']
+        comparison['identity_is_fallback'] = comparison['identity_is_fallback'] or wan_row['identity_is_fallback']
+        comparison['wan_period_mb'] += total_wan_mb(wan_row)
+        comparison['wan_flow_count'] += wan_row['flow_count']
 
     comparison_rows = list(comparison_by_key.values())
-    for row in comparison_rows:
-        row['difference_mb'] = row['wan_period_mb'] - row['unifi_period_mb']
+    for comparison_row in comparison_rows:
+        comparison_row['difference_mb'] = comparison_row['wan_period_mb'] - comparison_row['unifi_period_mb']
 
     return sorted(
         comparison_rows,

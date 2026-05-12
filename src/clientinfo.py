@@ -58,7 +58,7 @@ class ClientInfo:
 
         raw_channel = c.get('channel')
         try:
-            channel = int(raw_channel)
+            channel = int(str(raw_channel))
         except (TypeError, ValueError):
             return ''
 

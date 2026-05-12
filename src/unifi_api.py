@@ -8,7 +8,7 @@ from typing import Any
 import time
 import logging
 
-import requests
+import requests  # type: ignore[import-untyped]
 import urllib3
 import config as cfg
 from speedlimit import SpeedLimit
