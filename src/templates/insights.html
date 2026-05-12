@@ -126,8 +126,11 @@
                         {% set user_share_pct = ((user_paid_total_mb * 100.0) / total_split_mb) if total_split_mb > 0 else 0.0 %}
                         <p class="muted">
                             The organization pays the ISP
-                            ${{ "{:,.2f}".format(isp_base_cost_usd) }}
-                            + ${{ "{:,.2f}".format(isp_topoff_cost_usd) }} × topoffs needed.
+                            ${{ "{:,.2f}".format(isp_terminal_access_cost_usd) }} terminal access
+                            + ${{ "{:,.2f}".format(isp_included_usage_cost_usd) }} for the first
+                            {{ "{:,}".format(isp_included_usage_gb) }} GB
+                            + ${{ "{:,.2f}".format(isp_topoff_cost_usd) }} per
+                            {{ "{:,}".format(isp_topoff_usage_gb) }} GB topoff.
                             The table below allocates measured usage at the configured internal rate.
                         </p>
                         <table class="insights-table">

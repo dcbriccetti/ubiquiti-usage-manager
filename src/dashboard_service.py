@@ -93,7 +93,10 @@ class InsightsData(TypedDict):
     current_month_label: str
     report_period_label: str
     active_users_terminal_label: str
-    isp_base_cost_usd: float
+    isp_terminal_access_cost_usd: float
+    isp_included_usage_gb: int
+    isp_included_usage_cost_usd: float
+    isp_topoff_usage_gb: int
     isp_topoff_cost_usd: float
     active_users_daily_min: int
     active_users_daily_mean: float
@@ -925,7 +928,10 @@ def build_insights_data(
         'current_month_label': selected_month_label,
         'report_period_label': selected_report_label,
         'active_users_terminal_label': 'Active Users Today' if include_live_organization_paid_clients else 'Active Users Final Day',
-        'isp_base_cost_usd': float(cfg.ISP_BASE_COST_USD),
+        'isp_terminal_access_cost_usd': float(cfg.ISP_TERMINAL_ACCESS_COST_USD),
+        'isp_included_usage_gb': int(cfg.ISP_INCLUDED_USAGE_GB),
+        'isp_included_usage_cost_usd': float(cfg.ISP_INCLUDED_USAGE_COST_USD),
+        'isp_topoff_usage_gb': int(cfg.ISP_TOPOFF_USAGE_GB),
         'isp_topoff_cost_usd': float(cfg.ISP_TOPOFF_COST_USD),
         'active_users_daily_min': insights.active_users_min,
         'active_users_daily_mean': insights.active_users_mean,
