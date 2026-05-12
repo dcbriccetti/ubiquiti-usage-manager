@@ -57,6 +57,7 @@
     let stream = null;
     let selectedWindow = windowSelect.value;
     let selectedActivitySpan = activitySpanSelect.value;
+    let selectionGeneration = 0;
     let topCurrentConsumersChart = null;
     const activityScaleQuantile = 0.95;
     const activityScaleFloorMb = 0.05;
@@ -396,7 +397,10 @@
     const getStreamUrl = () => `${streamBaseUrl}?window=${encodeURIComponent(selectedWindow)}&activity_span=${encodeURIComponent(selectedActivitySpan)}`;
     const getSnapshotUrl = () => `${snapshotBaseUrl}?window=${encodeURIComponent(selectedWindow)}&activity_span=${encodeURIComponent(selectedActivitySpan)}`;
 
-    const applyPayload = (data) => {
+    const applyPayload = (data, generation = selectionGeneration) => {
+        if (generation !== selectionGeneration) {
+            return;
+        }
         statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
         statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
         statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
@@ -427,24 +431,30 @@
         renderConnectedClients(data.clients);
     };
 
-    const fetchSnapshot = async () => {
+    const fetchSnapshot = async (generation = selectionGeneration) => {
+        const snapshotUrl = getSnapshotUrl();
         try {
-            const response = await fetch(getSnapshotUrl(), { cache: 'no-store' });
+            const response = await fetch(snapshotUrl, { cache: 'no-store' });
+            if (generation !== selectionGeneration) return;
             if (!response.ok) return;
             const data = await response.json();
-            applyPayload(data);
+            applyPayload(data, generation);
         } catch (_err) {
             // Keep current values on transient fetch issues.
         }
     };
 
-    const connectStream = () => {
-        stream = new EventSource(getStreamUrl());
+    const connectStream = (generation = selectionGeneration) => {
+        const nextStream = new EventSource(getStreamUrl());
+        stream = nextStream;
 
-        stream.onmessage = (event) => {
+        nextStream.onmessage = (event) => {
+            if (generation !== selectionGeneration || nextStream !== stream) {
+                return;
+            }
             try {
                 const data = JSON.parse(event.data);
-                applyPayload(data);
+                applyPayload(data, generation);
                 if (fallbackTimer) {
                     clearInterval(fallbackTimer);
                     fallbackTimer = null;
@@ -454,38 +464,47 @@
             }
         };
 
-        stream.onopen = () => {
+        nextStream.onopen = () => {
+            if (generation !== selectionGeneration || nextStream !== stream) {
+                return;
+            }
             if (fallbackTimer) {
                 clearInterval(fallbackTimer);
                 fallbackTimer = null;
             }
         };
 
-        stream.onerror = () => {
+        nextStream.onerror = () => {
+            if (generation !== selectionGeneration || nextStream !== stream) {
+                return;
+            }
             if (!fallbackTimer) {
-                fetchSnapshot();
-                fallbackTimer = window.setInterval(fetchSnapshot, (initialPayload.live_update_seconds || 60) * 1000);
+                fetchSnapshot(generation);
+                fallbackTimer = window.setInterval(() => fetchSnapshot(generation), (initialPayload.live_update_seconds || 60) * 1000);
             }
         };
     };
 
     const reconnectForNewSelection = () => {
+        selectionGeneration += 1;
         selectedWindow = windowSelect.value;
         selectedActivitySpan = activitySpanSelect.value;
         if (stream) {
             stream.close();
+            stream = null;
         }
         if (fallbackTimer) {
             clearInterval(fallbackTimer);
             fallbackTimer = null;
         }
-        fetchSnapshot();
-        connectStream();
+        const generation = selectionGeneration;
+        fetchSnapshot(generation);
+        connectStream(generation);
     };
 
     windowSelect.addEventListener('change', reconnectForNewSelection);
     activitySpanSelect.addEventListener('change', reconnectForNewSelection);
 
     applyPayload(initialPayload);
-    connectStream();
+    connectStream(selectionGeneration);
 })();
