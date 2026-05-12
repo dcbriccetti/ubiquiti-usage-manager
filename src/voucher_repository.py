@@ -3,10 +3,24 @@
 import secrets
 from bisect import bisect_right
 from datetime import datetime, timedelta
+from threading import Lock
+import time as monotonic_time
 
 from sqlalchemy import func, select
 
 import database as db
+
+
+ACTIVE_VOUCHER_SUMMARIES_CACHE_SECONDS = 30.0
+_active_voucher_summaries_cache_lock = Lock()
+_active_voucher_summaries_cache: tuple[object, float, list[db.PlusVoucherUsageSummary]] | None = None
+
+
+def _clear_active_voucher_summaries_cache() -> None:
+    'Clear cached admin voucher balances after voucher writes.'
+    global _active_voucher_summaries_cache
+    with _active_voucher_summaries_cache_lock:
+        _active_voucher_summaries_cache = None
 
 
 def _voucher_record(row: db.PlusVoucher) -> db.PlusVoucherRecord:
@@ -60,6 +74,7 @@ def create_plus_vouchers(count: int, allocation_gb: int) -> list[db.PlusVoucherR
         session.add_all(vouchers)
         session.commit()
         vouchers.sort(key=lambda voucher: voucher.user_id)
+        _clear_active_voucher_summaries_cache()
         return [_voucher_record(voucher) for voucher in vouchers]
 
 
@@ -167,7 +182,7 @@ def _get_plus_voucher_wan_usage_summaries(
     period_end: datetime | None = None,
     identity_after_tolerance: timedelta = timedelta(minutes=10),
 ) -> dict[int, tuple[datetime | None, float]]:
-    'Return WAN-attributed usage summaries for many vouchers in one flow pass.'
+    'Return WAN-attributed usage summaries for many vouchers in one candidate-IP flow pass.'
     if not vouchers:
         return {}
 
@@ -176,36 +191,37 @@ def _get_plus_voucher_wan_usage_summaries(
     period_start = min(voucher.generated_at for voucher in vouchers)
     resolved_period_end = period_end or datetime.now()
 
-    flow_stmt = (
-        select(
-            db.WanFlowUsage.started_at,
-            db.WanFlowUsage.client_ip,
-            db.WanFlowUsage.bytes,
-        )
+    candidate_identity_stmt = (
+        select(db.ClientIpIdentity.ip_address)
         .where(
-            db.WanFlowUsage.started_at >= period_start,
-            db.WanFlowUsage.started_at <= resolved_period_end,
+            db.ClientIpIdentity.user_id.in_(sorted(generated_at_by_user_id)),
+            db.ClientIpIdentity.observed_at >= period_start - timedelta(days=1),
+            db.ClientIpIdentity.observed_at <= resolved_period_end + identity_after_tolerance,
         )
-        .order_by(db.WanFlowUsage.started_at.asc(), db.WanFlowUsage.id.asc())
     )
     with db.SessionLocal() as session:
-        flow_rows = session.execute(flow_stmt).all()
+        candidate_ips = sorted(
+            {
+                str(ip_address)
+                for ip_address in session.execute(candidate_identity_stmt).scalars()
+                if ip_address
+            }
+        )
 
-    client_ips = sorted({str(client_ip) for _, client_ip, _ in flow_rows if client_ip})
-    if not client_ips:
+    if not candidate_ips:
         return {}
 
     identity_stmt = (
         select(db.ClientIpIdentity)
         .where(
-            db.ClientIpIdentity.ip_address.in_(client_ips),
+            db.ClientIpIdentity.ip_address.in_(candidate_ips),
             db.ClientIpIdentity.observed_at >= period_start - timedelta(days=1),
             db.ClientIpIdentity.observed_at <= resolved_period_end + identity_after_tolerance,
         )
         .order_by(db.ClientIpIdentity.ip_address.asc(), db.ClientIpIdentity.observed_at.asc(), db.ClientIpIdentity.id.asc())
     )
 
-    identities_by_ip: dict[str, list[db.ClientIpIdentityRecord]] = {client_ip: [] for client_ip in client_ips}
+    identities_by_ip: dict[str, list[db.ClientIpIdentityRecord]] = {client_ip: [] for client_ip in candidate_ips}
     with db.SessionLocal() as session:
         for row in session.execute(identity_stmt).scalars():
             identities_by_ip.setdefault(row.ip_address, []).append(
@@ -218,6 +234,22 @@ def _get_plus_voucher_wan_usage_summaries(
                     vlan=row.vlan,
                 )
             )
+
+    flow_stmt = (
+        select(
+            db.WanFlowUsage.started_at,
+            db.WanFlowUsage.client_ip,
+            db.WanFlowUsage.bytes,
+        )
+        .where(
+            db.WanFlowUsage.client_ip.in_(candidate_ips),
+            db.WanFlowUsage.started_at >= period_start,
+            db.WanFlowUsage.started_at <= resolved_period_end,
+        )
+        .order_by(db.WanFlowUsage.started_at.asc(), db.WanFlowUsage.id.asc())
+    )
+    with db.SessionLocal() as session:
+        flow_rows = session.execute(flow_stmt).all()
 
     observed_times_by_ip = {
         client_ip: [identity.observed_at for identity in identities]
@@ -256,6 +288,17 @@ def _get_plus_voucher_wan_usage_summaries(
 
 def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:
     'Return active voucher balances for admin review.'
+    global _active_voucher_summaries_cache
+    cache_key = db.SessionLocal
+    now_monotonic = monotonic_time.monotonic()
+    with _active_voucher_summaries_cache_lock:
+        if (
+            _active_voucher_summaries_cache
+            and _active_voucher_summaries_cache[0] is cache_key
+            and _active_voucher_summaries_cache[1] > now_monotonic
+        ):
+            return list(_active_voucher_summaries_cache[2])
+
     stmt = (
         select(db.PlusVoucher)
         .where(db.PlusVoucher.consumed_at.is_(None))
@@ -279,4 +322,10 @@ def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:
         reverse=True,
     )
     summaries.sort(key=lambda summary: summary.activated_at is None)
+    with _active_voucher_summaries_cache_lock:
+        _active_voucher_summaries_cache = (
+            cache_key,
+            monotonic_time.monotonic() + ACTIVE_VOUCHER_SUMMARIES_CACHE_SECONDS,
+            list(summaries),
+        )
     return summaries

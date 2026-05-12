@@ -43,6 +43,7 @@ PERFORMANCE_INDEX_SPECS = [
     ("ix_wan_flow_usage_client_started", "wan_flow_usage", ("client_ip", "started_at")),
     ("ix_client_ip_identities_ip_observed", "client_ip_identities", ("ip_address", "observed_at")),
     ("ix_client_ip_identities_mac_observed", "client_ip_identities", ("mac", "observed_at")),
+    ("ix_client_ip_identities_user_observed", "client_ip_identities", ("user_id", "observed_at")),
     ("ix_usage_records_mac_timestamp", "usage_records", ("mac", "timestamp")),
     ("ix_plus_vouchers_user_active", "plus_vouchers", ("user_id", "consumed_at", "generated_at")),
 ]
