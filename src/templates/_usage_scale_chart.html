@@ -3,21 +3,15 @@
     {% set chart_id_prefix = "usage-scale-chart-" ~ (mac or "client")|replace(":", "") ~ "-" ~ usage_scale.key %}
     {% set mb_chart_id = chart_id_prefix ~ "-mb" %}
     {% set minutes_chart_id = chart_id_prefix ~ "-minutes" %}
-    {% set mb_ap_pie_id = chart_id_prefix ~ "-mb-ap" %}
     {% set minutes_ap_pie_id = chart_id_prefix ~ "-minutes-ap" %}
     {% set labels = usage_points | map(attribute='bucket_value') | list %}
     {% set full_labels = usage_points | map(attribute='bucket_label') | list %}
     {% set mb_series = usage_points | map(attribute='total_mb') | list %}
 
     <div class="usage-scale-row">
-        <div class="usage-scale-primary month-chart-wrap" style="height: 220px;">
+        <div class="month-chart-wrap" style="height: 220px;">
             <canvas id="{{ mb_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} MB usage"></canvas>
         </div>
-        <aside class="usage-scale-side month-chart-wrap usage-scale-pie-wrap" style="height: 220px;">
-            <h3>Usage Volume by Access Point</h3>
-            <canvas id="{{ mb_ap_pie_id }}" class="usage-scale-pie-canvas" role="img" aria-label="MB by access point"></canvas>
-            <p class="muted usage-scale-empty" data-empty-for="{{ mb_ap_pie_id }}" hidden>No access-point usage data.</p>
-        </aside>
     </div>
 
     <div class="usage-scale-row">
@@ -36,7 +30,7 @@
             "type": "usage-scale",
             "mbCanvasId": mb_chart_id,
             "minutesCanvasId": minutes_chart_id,
-            "mbApPieCanvasId": mb_ap_pie_id,
+            "mbApPieCanvasId": null,
             "minutesApPieCanvasId": minutes_ap_pie_id,
             "labels": labels,
             "mbSeries": mb_series,

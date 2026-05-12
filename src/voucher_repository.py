@@ -4,7 +4,7 @@ import secrets
 from bisect import bisect_right
 from datetime import datetime, timedelta
 
-from sqlalchemy import String, cast, func, select
+from sqlalchemy import func, select
 
 import database as db
 
@@ -118,44 +118,12 @@ def get_active_plus_voucher_for_user_id(user_id: str | int | None) -> db.PlusVou
         return _voucher_record(row) if row else None
 
 
-def get_plus_voucher_legacy_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datetime | None, float]:
-    'Return first sampled UniFi usage time and lifetime usage for one voucher.'
-    user_id = str(voucher.user_id)
-    first_usage_stmt = select(func.min(db.UsageRecord.timestamp)).where(
-        db.UsageRecord.user_id == user_id,
-        db.UsageRecord.timestamp >= voucher.generated_at,
-    )
-    with db.SessionLocal() as session:
-        first_usage_at = session.execute(first_usage_stmt).scalar()
-        if first_usage_at is None:
-            return None, 0.0
-
-        total_usage_stmt = select(func.sum(db.UsageRecord.mb_used)).where(
-            db.UsageRecord.user_id == user_id,
-            db.UsageRecord.timestamp >= first_usage_at,
-        )
-        return first_usage_at, float(session.execute(total_usage_stmt).scalar() or 0.0)
-
-
 def get_plus_voucher_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datetime | None, float]:
-    'Return first usage time and lifetime usage for one voucher, preferring WAN flow usage.'
-    legacy_activated_at, legacy_used_mb = get_plus_voucher_legacy_usage_summary(voucher)
-    wan_activated_at, wan_used_mb = db.get_wan_usage_summary_for_user_id(
+    'Return WAN-attributed first usage time and lifetime usage for one voucher.'
+    return db.get_wan_usage_summary_for_user_id(
         voucher.user_id,
         period_start=voucher.generated_at,
     )
-    first_wan_flow_at = db.get_first_wan_flow_time()
-    if (
-        wan_activated_at is not None
-        and (
-            legacy_activated_at is None
-            or first_wan_flow_at is None
-            or legacy_activated_at >= first_wan_flow_at
-        )
-    ):
-        return wan_activated_at, wan_used_mb
-
-    return legacy_activated_at, legacy_used_mb
 
 
 def _build_voucher_summary(
@@ -174,40 +142,6 @@ def _build_voucher_summary(
         remaining_mb=remaining_mb,
         used_pct=used_pct,
     )
-
-
-def _get_plus_voucher_legacy_usage_summaries(
-    vouchers: list[db.PlusVoucherRecord],
-) -> dict[int, tuple[datetime | None, float]]:
-    'Return sampled UniFi usage summaries for many vouchers in one query.'
-    if not vouchers:
-        return {}
-
-    voucher_ids = [voucher.id for voucher in vouchers]
-    stmt = (
-        select(
-            db.PlusVoucher.id,
-            func.min(db.UsageRecord.timestamp),
-            func.sum(db.UsageRecord.mb_used),
-        )
-        .join(
-            db.UsageRecord,
-            db.UsageRecord.user_id == cast(db.PlusVoucher.user_id, String),
-        )
-        .where(
-            db.PlusVoucher.id.in_(voucher_ids),
-            db.UsageRecord.timestamp >= db.PlusVoucher.generated_at,
-        )
-        .group_by(db.PlusVoucher.id)
-    )
-
-    with db.SessionLocal() as session:
-        rows = session.execute(stmt).all()
-
-    return {
-        int(voucher_id): (activated_at, float(used_mb or 0.0))
-        for voucher_id, activated_at, used_mb in rows
-    }
 
 
 def _resolve_flow_identity(
@@ -330,24 +264,11 @@ def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:
     with db.SessionLocal() as session:
         vouchers = [_voucher_record(row) for row in session.execute(stmt).scalars().all()]
 
-    legacy_summaries = _get_plus_voucher_legacy_usage_summaries(vouchers)
     wan_summaries = _get_plus_voucher_wan_usage_summaries(vouchers)
-    first_wan_flow_at = db.get_first_wan_flow_time()
     summaries: list[db.PlusVoucherUsageSummary] = []
     for voucher in vouchers:
-        legacy_activated_at, legacy_used_mb = legacy_summaries.get(voucher.id, (None, 0.0))
         wan_activated_at, wan_used_mb = wan_summaries.get(voucher.id, (None, 0.0))
-        if (
-            wan_activated_at is not None
-            and (
-                legacy_activated_at is None
-                or first_wan_flow_at is None
-                or legacy_activated_at >= first_wan_flow_at
-            )
-        ):
-            summaries.append(_build_voucher_summary(voucher, wan_activated_at, wan_used_mb))
-        else:
-            summaries.append(_build_voucher_summary(voucher, legacy_activated_at, legacy_used_mb))
+        summaries.append(_build_voucher_summary(voucher, wan_activated_at, wan_used_mb))
 
     summaries.sort(
         key=lambda summary: (

@@ -229,11 +229,7 @@ def build_voucher_usage_context(
 
     allocation_mb = float(voucher.allocation_gb * 1000)
     if mac_wan_flows is not None:
-        activated_at, used_mb = db.get_plus_voucher_legacy_usage_summary(voucher)
-        mac_activated_at, mac_used_mb = summarize_wan_flows_for_voucher(voucher, mac_wan_flows)
-        if mac_used_mb > used_mb:
-            activated_at = mac_activated_at
-            used_mb = mac_used_mb
+        activated_at, used_mb = summarize_wan_flows_for_voucher(voucher, mac_wan_flows)
     else:
         activated_at, used_mb = db.get_plus_voucher_usage_summary(voucher)
     if mac_wan_flows is None and mac:
@@ -302,13 +298,13 @@ def merge_wan_totals_into_usage_points(
     points: list[UsageScalePoint],
     wan_totals_by_bucket: dict[int, float],
 ) -> list[UsageScalePoint]:
-    'Prefer WAN flow totals for chart buckets when they exceed sampled usage.'
+    'Attach WAN flow totals to chart buckets while preserving sampled active minutes.'
     merged_points: list[UsageScalePoint] = []
     for point in points:
         merged_point: UsageScalePoint = {
             'bucket_label': point['bucket_label'],
             'bucket_value': point['bucket_value'],
-            'total_mb': max(point['total_mb'], wan_totals_by_bucket.get(point['bucket_value'], 0.0)),
+            'total_mb': wan_totals_by_bucket.get(point['bucket_value'], 0.0),
             'active_minutes': point['active_minutes'],
         }
         merged_points.append(merged_point)
@@ -388,12 +384,9 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         or wan_month_download_mb
         or wan_month_upload_mb
     )
-    legacy_daily_total_mb = db.get_daily_total(mac)
-    legacy_last_7_days_total_mb = db.get_last_7_days_total(mac)
-    legacy_calendar_month_total_mb = db.get_calendar_month_total(mac)
-    daily_total_mb = max(legacy_daily_total_mb, wan_today_total_mb)
-    last_7_days_total_mb = max(legacy_last_7_days_total_mb, wan_last_7_days_total_mb)
-    calendar_month_total_mb = max(legacy_calendar_month_total_mb, wan_month_total_mb)
+    daily_total_mb = wan_today_total_mb
+    last_7_days_total_mb = wan_last_7_days_total_mb
+    calendar_month_total_mb = wan_month_total_mb
     month_daily_usage: list[UsageScalePoint] = [
         {
             'bucket_label': f'{usage_day.strftime("%b")} {usage_day.day}',
@@ -436,7 +429,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Hour of day',
             'mb_axis_title': 'MB/hour',
             'minutes_axis_title': 'minutes/hour',
-            'summary_text': 'Top chart: MB/hour. Bottom chart: active minutes/hour stacked by speed-limit profile.',
+            'summary_text': 'Top chart: WAN MB/hour. Bottom chart: active minutes/hour stacked by speed-limit profile.',
             'points': daily_hourly_usage,
             'usage_device_series': [
                 {
@@ -445,7 +438,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
                 }
             ],
             'access_point_labels': [ap_name for ap_name, _, _ in daily_access_points],
-            'access_point_mb_values': [total_mb for _, total_mb, _ in daily_access_points],
+            'access_point_mb_values': [],
             'access_point_minutes_values': [active_minutes for _, _, active_minutes in daily_access_points],
             'throttle_x_values': [hour for hour, _ in daily_throttle_rows],
             'throttle_datasets': daily_throttle_datasets,
@@ -456,7 +449,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Day of month',
             'mb_axis_title': 'MB/day',
             'minutes_axis_title': 'minutes/day',
-            'summary_text': 'Top chart: MB/day. Bottom chart: active minutes/day stacked by speed-limit profile.',
+            'summary_text': 'Top chart: WAN MB/day. Bottom chart: active minutes/day stacked by speed-limit profile.',
             'points': month_daily_usage,
             'usage_device_series': [
                 {
@@ -465,7 +458,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
                 }
             ],
             'access_point_labels': [ap_name for ap_name, _, _ in monthly_access_points],
-            'access_point_mb_values': [total_mb for _, total_mb, _ in monthly_access_points],
+            'access_point_mb_values': [],
             'access_point_minutes_values': [active_minutes for _, _, active_minutes in monthly_access_points],
             'throttle_x_values': [usage_day for usage_day, _ in month_throttle_rows],
             'throttle_datasets': month_throttle_datasets,

@@ -36,15 +36,15 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
         self.engine.dispose()
         self.temp_dir.cleanup()
 
-    def test_active_summaries_batch_legacy_and_wan_usage(self) -> None:
+    def test_active_summaries_use_wan_usage_without_sampled_fallback(self) -> None:
         generated_at = datetime(2026, 5, 1, 10, 0)
         with db.SessionLocal() as session:
             session.add_all(
                 [
                     db.PlusVoucher(
-                        batch_id="legacy",
+                        batch_id="sampled",
                         user_id=101,
-                        password="legacy1",
+                        password="sample1",
                         allocation_gb=10,
                         generated_at=generated_at,
                     ),
@@ -63,7 +63,7 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
                         timestamp=generated_at + timedelta(hours=1),
                         mac="aa:bb:cc:dd:ee:01",
                         user_id="101",
-                        name="Legacy voucher",
+                        name="Sampled-only voucher",
                         vlan="Plus",
                         mb_used=300.0,
                         profile="default",
@@ -74,7 +74,7 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
                         timestamp=generated_at + timedelta(hours=2),
                         mac="aa:bb:cc:dd:ee:01",
                         user_id="101",
-                        name="Legacy voucher",
+                        name="Sampled-only voucher",
                         vlan="Plus",
                         mb_used=200.0,
                         profile="default",
@@ -128,8 +128,8 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
 
         summaries_by_user_id = {summary.voucher.user_id: summary for summary in summaries}
         self.assertEqual(set(summaries_by_user_id), {101, 102})
-        self.assertEqual(summaries_by_user_id[101].activated_at, generated_at + timedelta(hours=1))
-        self.assertEqual(summaries_by_user_id[101].used_mb, 500.0)
+        self.assertIsNone(summaries_by_user_id[101].activated_at)
+        self.assertEqual(summaries_by_user_id[101].used_mb, 0.0)
         self.assertEqual(summaries_by_user_id[102].activated_at, generated_at + timedelta(hours=4))
         self.assertEqual(summaries_by_user_id[102].used_mb, 2.0)
 

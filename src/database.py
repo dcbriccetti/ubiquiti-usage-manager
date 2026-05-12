@@ -1020,13 +1020,6 @@ def get_plus_voucher_usage_summary(voucher: PlusVoucherRecord) -> tuple[datetime
     return _get_plus_voucher_usage_summary(voucher)
 
 
-def get_plus_voucher_legacy_usage_summary(voucher: PlusVoucherRecord) -> tuple[datetime | None, float]:
-    'Return sampled UniFi usage time and lifetime usage for one voucher.'
-    from voucher_repository import get_plus_voucher_legacy_usage_summary as _get_plus_voucher_legacy_usage_summary
-
-    return _get_plus_voucher_legacy_usage_summary(voucher)
-
-
 def get_active_plus_voucher_summaries() -> list[PlusVoucherUsageSummary]:
     'Return active voucher balances for admin review.'
     from voucher_repository import get_active_plus_voucher_summaries as _get_active_plus_voucher_summaries
