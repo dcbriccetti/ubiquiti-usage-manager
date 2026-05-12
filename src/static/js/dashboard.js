@@ -18,6 +18,7 @@
     const connectedBody = document.getElementById('connected-clients-body');
     const windowSelect = document.getElementById('window-select');
     const activitySpanSelect = document.getElementById('activity-span-select');
+    const dashboardLoadingStatus = document.getElementById('dashboard-loading-status');
     const statUsageToday = document.getElementById('stat-usage-today');
     const statUsage7Days = document.getElementById('stat-usage-7-days');
     const statUsageThisMonth = document.getElementById('stat-usage-this-month');
@@ -34,7 +35,7 @@
 
     if (
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
-        !windowSelect || !activitySpanSelect || !statUsageToday || !statUsage7Days ||
+        !windowSelect || !activitySpanSelect || !dashboardLoadingStatus || !statUsageToday || !statUsage7Days ||
         !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader || !usageCostHeader ||
         !costGroupHeader || !topConsumersTitle ||
         !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty ||
@@ -77,6 +78,13 @@
         today: 'Today Cost',
         last_7_days: '7-Day Cost',
         this_month: 'Month Cost'
+    };
+    const windowLabelByWindow = {
+        active_now: 'Recent WAN',
+        online_now: 'Online Now',
+        today: 'Today',
+        last_7_days: '7 Days',
+        this_month: 'month'
     };
 
     const applyWindowColumnVisibility = () => {
@@ -221,6 +229,44 @@
             return 'No clients have recent WAN usage in this view yet.';
         }
         return 'No clients found for this view yet.';
+    };
+
+    const selectedWindowLabel = () => {
+        if (selectedWindow === 'this_month') {
+            const monthOption = windowSelect.querySelector('option[value="this_month"]');
+            return monthOption?.textContent || windowLabelByWindow.this_month;
+        }
+        return windowLabelByWindow[selectedWindow] || 'selected view';
+    };
+
+    const setLoadingState = (isLoading) => {
+        clientsTable.classList.toggle('dashboard-loading', Boolean(isLoading));
+        clientsTable.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+        windowSelect.disabled = Boolean(isLoading);
+        activitySpanSelect.disabled = Boolean(isLoading);
+        dashboardLoadingStatus.hidden = !isLoading;
+        if (isLoading) {
+            dashboardLoadingStatus.textContent = `Loading ${selectedWindowLabel()}...`;
+            connectedBody.innerHTML = '<tr><td colspan="19" class="muted">Loading usage...</td></tr>';
+            topCurrentConsumersCanvas.hidden = true;
+            topCurrentConsumersLegend.hidden = true;
+            topCurrentConsumersEmpty.hidden = false;
+            topCurrentConsumersEmpty.textContent = 'Loading...';
+        }
+    };
+
+    const showSnapshotWaitState = () => {
+        clientsTable.classList.remove('dashboard-loading');
+        clientsTable.setAttribute('aria-busy', 'false');
+        windowSelect.disabled = false;
+        activitySpanSelect.disabled = false;
+        dashboardLoadingStatus.hidden = false;
+        dashboardLoadingStatus.textContent = 'Waiting for live update...';
+        connectedBody.innerHTML = '<tr><td colspan="19" class="muted">Still waiting for usage data...</td></tr>';
+        topCurrentConsumersCanvas.hidden = true;
+        topCurrentConsumersLegend.hidden = true;
+        topCurrentConsumersEmpty.hidden = false;
+        topCurrentConsumersEmpty.textContent = 'Waiting for data...';
     };
 
     const applySparklineBarHeights = () => {
@@ -401,6 +447,7 @@
         if (generation !== selectionGeneration) {
             return;
         }
+        setLoadingState(false);
         statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
         statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
         statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
@@ -427,6 +474,7 @@
         topConsumersTitle.textContent = String(data.top_consumers_title || 'Usage Share');
         wanImportStatus.textContent = String(data.wan_import_status || 'WAN import: unknown');
         wanImportStatus.classList.toggle('warn-text', Boolean(data.wan_import_stale));
+        dashboardLoadingStatus.hidden = true;
         renderTopCurrentConsumers(data.top_current_consumers);
         renderConnectedClients(data.clients);
     };
@@ -435,12 +483,14 @@
         const snapshotUrl = getSnapshotUrl();
         try {
             const response = await fetch(snapshotUrl, { cache: 'no-store' });
-            if (generation !== selectionGeneration) return;
-            if (!response.ok) return;
+            if (generation !== selectionGeneration) return false;
+            if (!response.ok) return false;
             const data = await response.json();
             applyPayload(data, generation);
+            return true;
         } catch (_err) {
             // Keep current values on transient fetch issues.
+            return false;
         }
     };
 
@@ -485,10 +535,12 @@
         };
     };
 
-    const reconnectForNewSelection = () => {
+    const reconnectForNewSelection = async () => {
         selectionGeneration += 1;
         selectedWindow = windowSelect.value;
         selectedActivitySpan = activitySpanSelect.value;
+        applyWindowColumnVisibility();
+        setLoadingState(true);
         if (stream) {
             stream.close();
             stream = null;
@@ -498,8 +550,14 @@
             fallbackTimer = null;
         }
         const generation = selectionGeneration;
-        fetchSnapshot(generation);
+        const snapshotLoaded = await fetchSnapshot(generation);
+        if (generation !== selectionGeneration) {
+            return;
+        }
         connectStream(generation);
+        if (!snapshotLoaded) {
+            showSnapshotWaitState();
+        }
     };
 
     windowSelect.addEventListener('change', reconnectForNewSelection);
