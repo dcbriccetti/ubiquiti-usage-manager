@@ -480,6 +480,10 @@
                         tooltip: {
                             callbacks: {
                                 title: titleFor(config.wanHourlyFullLabels || []),
+                                label: (tooltipItem) => {
+                                    const value = Math.round(Number(tooltipItem.parsed?.y || 0));
+                                    return `WAN MB: ${value.toLocaleString()}`;
+                                },
                             }
                         }
                     },
