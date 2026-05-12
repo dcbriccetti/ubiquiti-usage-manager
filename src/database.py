@@ -293,6 +293,7 @@ class WanIdentityUsageSummary:
 @dataclass(frozen=True, kw_only=True)
 class WanMacFlowUsage:
     'One WAN flow attributed to a specific client MAC.'
+    source_file: str
     started_at: datetime
     bytes: int
     direction: str
@@ -1093,6 +1094,7 @@ def get_wan_flow_rows_for_mac(
 
     flow_stmt = (
         select(
+            WanFlowUsage.source_file,
             WanFlowUsage.started_at,
             WanFlowUsage.client_ip,
             WanFlowUsage.direction,
@@ -1139,7 +1141,7 @@ def get_wan_flow_rows_for_mac(
     }
 
     attributed_rows: list[WanMacFlowUsage] = []
-    for started_at, client_ip, direction, byte_count in flow_rows:
+    for source_file, started_at, client_ip, direction, byte_count in flow_rows:
         ip_text = str(client_ip)
         identities = identities_by_ip.get(ip_text, [])
         observed_times = observed_times_by_ip.get(ip_text, [])
@@ -1156,6 +1158,7 @@ def get_wan_flow_rows_for_mac(
 
         attributed_rows.append(
             WanMacFlowUsage(
+                source_file=str(source_file),
                 started_at=started_at,
                 bytes=int(byte_count or 0),
                 direction=str(direction or ''),
@@ -1212,6 +1215,23 @@ def get_first_wan_flow_time() -> datetime | None:
     stmt = select(func.min(WanFlowUsage.started_at))
     with SessionLocal() as session:
         return session.execute(stmt).scalar()
+
+
+def get_flow_import_times_by_source_file(source_files: set[str]) -> dict[str, datetime]:
+    'Return import timestamps for source files that have completed ingestion.'
+    normalized_sources = sorted(source_file for source_file in source_files if source_file)
+    if not normalized_sources:
+        return {}
+
+    flow_import_columns = FlowImport.__table__.c
+    stmt = select(flow_import_columns.source_file, flow_import_columns.imported_at).where(
+        flow_import_columns.source_file.in_(normalized_sources)
+    )
+    with SessionLocal() as session:
+        return {
+            str(source_file): imported_at
+            for source_file, imported_at in session.execute(stmt).all()
+        }
 
 
 def get_recent_flow_imports(limit: int = 20) -> list[FlowImportRecord]:

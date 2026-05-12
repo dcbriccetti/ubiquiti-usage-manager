@@ -1,29 +1,46 @@
 <section class="grid">
     <article class="panel usage-history-panel">
         <div class="panel-body">
-            <h2>Recent Client Samples</h2>
+            <h2>Recent WAN Imports</h2>
             <table>
                 <thead>
                     <tr>
-                        <th class="nowrap-col">Time</th>
-                        <th class="ap-col">Access Point</th>
-                        <th>Speed Limit</th>
+                        <th class="nowrap-col">Imported</th>
+                        <th class="nowrap-col">Source</th>
+                        <th class="nowrap-col">Flow Window</th>
+                        <th class="num">WAN MB</th>
+                        <th class="num">Down</th>
+                        <th class="num">Up</th>
+                        <th class="num">Flows</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in usage_history %}
+                    {% for row in wan_import_usage_rows %}
                         <tr>
-                            <td class="nowrap-col">{{ row.timestamp.strftime("%Y-%m-%d %H:%M:%S") }}</td>
-                            <td class="ap-col">{{ (row.ap_name or "").removesuffix(" AP") }}</td>
-                            <td>
-                                {% if row.profile %}
-                                    {{ speed_limits_by_name.get(row.profile, row.profile) }}
+                            <td class="nowrap-col">
+                                {% if row.imported_at %}
+                                    {{ row.imported_at.strftime("%Y-%m-%d %H:%M") }}
+                                {% else %}
+                                    <span class="muted">Unknown</span>
                                 {% endif %}
                             </td>
+                            <td class="nowrap-col" title="{{ row.source_file }}">
+                                {{ row.source_label }}
+                            </td>
+                            <td class="nowrap-col">
+                                {{ row.first_flow_at.strftime("%m-%d %H:%M") }}
+                                {% if row.first_flow_at != row.last_flow_at %}
+                                    - {{ row.last_flow_at.strftime("%m-%d %H:%M") }}
+                                {% endif %}
+                            </td>
+                            <td class="num">{{ "{:,.1f}".format(row.total_mb) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.download_mb) }}</td>
+                            <td class="num">{{ "{:,.1f}".format(row.upload_mb) }}</td>
+                            <td class="num">{{ "{:,.0f}".format(row.flow_count) }}</td>
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="3" class="muted">{{ empty_usage_message }}</td>
+                            <td colspan="7" class="muted">No non-zero WAN imports attributed to this client for {{ current_month_label }} yet.</td>
                         </tr>
                     {% endfor %}
                 </tbody>

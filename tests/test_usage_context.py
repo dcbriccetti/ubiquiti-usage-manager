@@ -109,6 +109,14 @@ class ClientUsageContextTests(unittest.TestCase):
                     vlan="Plus",
                 )
             )
+            session.add(
+                db.FlowImport(
+                    source_file="nfcapd.202605092205",
+                    imported_at=observed_at + timedelta(minutes=10),
+                    record_count=2,
+                    skipped_count=0,
+                )
+            )
             session.add_all(
                 [
                     db.WanFlowUsage(
@@ -127,7 +135,7 @@ class ClientUsageContextTests(unittest.TestCase):
                         client_ip="192.168.6.143",
                     ),
                     db.WanFlowUsage(
-                        source_file="nfcapd.202605092206",
+                        source_file="nfcapd.202605092205",
                         started_at=observed_at + timedelta(minutes=6),
                         ended_at=observed_at + timedelta(minutes=7),
                         duration_seconds=60.0,
@@ -185,6 +193,17 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertIsNotNone(context["voucher_usage"])
         assert context["voucher_usage"] is not None
         self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 3.0)
+        self.assertEqual(len(context["wan_import_usage_rows"]), 1)
+        recent_import = context["wan_import_usage_rows"][0]
+        self.assertEqual(recent_import["source_file"], "nfcapd.202605092205")
+        self.assertEqual(recent_import["source_label"], "nfcapd.202605092205")
+        self.assertEqual(recent_import["imported_at"], observed_at + timedelta(minutes=10))
+        self.assertEqual(recent_import["first_flow_at"], observed_at + timedelta(minutes=5))
+        self.assertEqual(recent_import["last_flow_at"], observed_at + timedelta(minutes=6))
+        self.assertAlmostEqual(recent_import["total_mb"], 3.0)
+        self.assertAlmostEqual(recent_import["download_mb"], 2.0)
+        self.assertAlmostEqual(recent_import["upload_mb"], 1.0)
+        self.assertEqual(recent_import["flow_count"], 2)
 
         monthly_scale = next(scale for scale in context["usage_scales"] if scale["key"] == "monthly")
         day_9_point = next(point for point in monthly_scale["points"] if point["bucket_value"] == 9)

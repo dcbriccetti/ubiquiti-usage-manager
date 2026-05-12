@@ -1,5 +1,6 @@
 '''Client usage detail view-model construction.'''
 
+from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 import time as monotonic_time
 from typing import TypedDict
@@ -61,6 +62,19 @@ class VoucherUsageContext(TypedDict):
     is_over_allocation: bool
 
 
+class WanImportUsageContext(TypedDict):
+    'WAN usage attributed to the client from one imported capture.'
+    source_file: str
+    source_label: str
+    imported_at: datetime | None
+    first_flow_at: datetime
+    last_flow_at: datetime
+    download_mb: float
+    upload_mb: float
+    total_mb: float
+    flow_count: int
+
+
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
     mac: str
@@ -79,10 +93,22 @@ class ClientUsageContext(TypedDict):
     wan_month_upload_mb: float
     wan_month_total_mb: float
     wan_usage_available: bool
+    wan_import_usage_rows: list[WanImportUsageContext]
     voucher_usage: VoucherUsageContext | None
     usage_scales: list[UsageScaleContext]
     current_month_label: str
     speed_limits_by_name: SpeedLimitsByName
+
+
+@dataclass
+class WanImportUsageAccumulator:
+    'Mutable accumulator for one client/source-file WAN import row.'
+    source_file: str
+    first_flow_at: datetime
+    last_flow_at: datetime
+    download_bytes: int = 0
+    upload_bytes: int = 0
+    flow_count: int = 0
 
 
 def render_month_label(now: datetime) -> str:
@@ -185,6 +211,62 @@ def summarize_wan_flows(
         else:
             download_bytes += flow.bytes
     return download_bytes / 1_000_000.0, upload_bytes / 1_000_000.0
+
+
+def build_wan_import_usage_context(
+    flows: list[db.WanMacFlowUsage],
+    period_start: datetime,
+    period_end: datetime,
+    limit: int = 40,
+) -> list[WanImportUsageContext]:
+    'Return client-detail rows grouped by non-zero WAN capture import.'
+    summaries_by_source: dict[str, WanImportUsageAccumulator] = {}
+    for flow in flows:
+        if flow.started_at < period_start or flow.started_at > period_end or flow.bytes <= 0:
+            continue
+
+        summary = summaries_by_source.get(flow.source_file)
+        if summary is None:
+            summary = WanImportUsageAccumulator(
+                source_file=flow.source_file,
+                first_flow_at=flow.started_at,
+                last_flow_at=flow.started_at,
+            )
+            summaries_by_source[flow.source_file] = summary
+
+        summary.first_flow_at = min(summary.first_flow_at, flow.started_at)
+        summary.last_flow_at = max(summary.last_flow_at, flow.started_at)
+        if flow.direction == 'upload':
+            summary.upload_bytes += flow.bytes
+        else:
+            summary.download_bytes += flow.bytes
+        summary.flow_count += 1
+
+    imported_at_by_source = db.get_flow_import_times_by_source_file(set(summaries_by_source))
+    rows: list[WanImportUsageContext] = []
+    for summary in summaries_by_source.values():
+        total_bytes = summary.download_bytes + summary.upload_bytes
+        if total_bytes <= 0:
+            continue
+        rows.append(
+            {
+                'source_file': summary.source_file,
+                'source_label': summary.source_file.rsplit('/', 1)[-1],
+                'imported_at': imported_at_by_source.get(summary.source_file),
+                'first_flow_at': summary.first_flow_at,
+                'last_flow_at': summary.last_flow_at,
+                'download_mb': summary.download_bytes / 1_000_000.0,
+                'upload_mb': summary.upload_bytes / 1_000_000.0,
+                'total_mb': total_bytes / 1_000_000.0,
+                'flow_count': summary.flow_count,
+            }
+        )
+
+    return sorted(
+        rows,
+        key=lambda row: (row['imported_at'] or row['last_flow_at'], row['last_flow_at'], row['source_file']),
+        reverse=True,
+    )[:max(1, limit)]
 
 
 def build_wan_flow_bucket_totals(
@@ -359,6 +441,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
     voucher = db.get_active_plus_voucher_for_user_id(latest_record.user_id)
     wan_flow_start = min(month_start, voucher.generated_at) if voucher else month_start
     mac_wan_flows = db.get_wan_flow_rows_for_mac(mac, wan_flow_start, now)
+    wan_import_usage_rows = build_wan_import_usage_context(mac_wan_flows, month_start, now)
     wan_today_download_mb, wan_today_upload_mb = summarize_wan_flows(
         mac_wan_flows,
         today_start,
@@ -482,6 +565,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'wan_month_download_mb': wan_month_download_mb,
         'wan_month_upload_mb': wan_month_upload_mb,
         'wan_month_total_mb': wan_month_total_mb,
+        'wan_import_usage_rows': wan_import_usage_rows,
         'voucher_usage': build_voucher_usage_context(
             latest_record.user_id,
             mac,
