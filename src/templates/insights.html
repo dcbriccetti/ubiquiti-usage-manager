@@ -51,10 +51,13 @@
                         <span class="value">{{ "{:,.0f}".format(active_users_today) }}</span>
                     </div>
                 </section>
-                <p class="muted">Based on {{ active_users_days_in_period }} day{% if active_users_days_in_period != 1 %}s{% endif %} in {{ report_period_label }}.</p>
+                <p class="muted">
+                    Based on {{ active_users_days_in_period }} day{% if active_users_days_in_period != 1 %}s{% endif %} in {{ report_period_label }}.
+                    X-axis labels are days of the month; bar height is the number of distinct clients seen that day.
+                </p>
                 <h3>Daily Active Clients</h3>
                 <div class="month-chart-wrap">
-                    <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients in selected month"></canvas>
+                    <canvas id="global-daily-active-clients-chart" class="month-chart-canvas" role="img" aria-label="Daily active clients by day of month"></canvas>
                 </div>
             </div>
         </article>

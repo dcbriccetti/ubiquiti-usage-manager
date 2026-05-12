@@ -369,7 +369,7 @@
                     labels: config.activeUsersXLabels,
                     datasets: [
                         {
-                            label: "Active Clients",
+                            label: "Distinct clients",
                             data: config.activeUsersCounts,
                             backgroundColor: "rgba(59, 130, 246, 0.78)"
                         }
@@ -390,7 +390,7 @@
                         x: xAxis("Day of month"),
                         y: {
                             beginAtZero: true,
-                            title: { display: true, text: "Active clients/day" },
+                            title: { display: true, text: "Distinct clients seen" },
                             grid: { color: "rgba(31, 41, 51, 0.20)" }
                         }
                     }
