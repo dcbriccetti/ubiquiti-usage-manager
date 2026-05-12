@@ -26,6 +26,15 @@
         "rgba(22, 163, 74, 0.78)",
         "rgba(107, 114, 128, 0.78)"
     ];
+    const vlanColors = [
+        "rgba(15, 118, 110, 0.72)",
+        "rgba(194, 65, 12, 0.82)",
+        "rgba(37, 99, 235, 0.78)",
+        "rgba(161, 98, 7, 0.78)",
+        "rgba(2, 132, 199, 0.78)",
+        "rgba(190, 24, 93, 0.78)",
+        "rgba(107, 114, 128, 0.78)"
+    ];
     const accessPointPalette = [
         "rgba(0, 114, 178, 0.9)",
         "rgba(204, 121, 167, 0.9)",
@@ -433,13 +442,20 @@
 
         const mbCanvas = document.getElementById("global-daily-mb-chart");
         if (mbCanvas) {
+            const vlanLabels = Array.isArray(config.dailyWanVlanLabels) ? config.dailyWanVlanLabels : [];
+            const vlanSeries = Array.isArray(config.dailyWanVlanMb) ? config.dailyWanVlanMb : [];
             new Chart(mbCanvas, {
                 type: "bar",
                 data: {
                     labels: config.xLabels,
-                    datasets: [
-                        { label: "WAN MB", data: config.dailyWanMb, backgroundColor: "rgba(2, 132, 199, 0.72)" }
-                    ]
+                    datasets: vlanLabels.map((vlanLabel, idx) => ({
+                        label: String(vlanLabel || "Unknown"),
+                        data: Array.isArray(vlanSeries[idx]) ? vlanSeries[idx] : [],
+                        backgroundColor: vlanColors[idx % vlanColors.length],
+                        borderRadius: 2,
+                        stack: "wan-vlan",
+                        ...commonBarStyle
+                    }))
                 },
                 options: {
                     ...sharedStackedOptions,

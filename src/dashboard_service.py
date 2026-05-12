@@ -17,7 +17,7 @@ in one place, so UI changes do not require route-level rewrites.
 '''
 
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import datetime, time, timedelta
 import re
 import time as monotonic_time
 from threading import Lock
@@ -110,7 +110,8 @@ class InsightsData(TypedDict):
     top_access_points_this_month: list[dict[str, object]]
     daily_network_x_labels: list[int]
     daily_network_full_labels: list[str]
-    daily_wan_mb: list[float]
+    daily_wan_vlan_labels: list[str]
+    daily_wan_vlan_mb: list[list[float]]
     daily_network_basic_minutes: list[int]
     daily_network_plus_minutes: list[int]
     wan_hourly_title: str
@@ -902,10 +903,10 @@ def build_insights_data(
         period_start=period_start,
         period_end=period_end,
     )
-    daily_wan_mb_by_day: dict[date, float] = {}
-    for hourly_row in wan_hourly_usage:
-        usage_day = hourly_row.bucket_start.date()
-        daily_wan_mb_by_day[usage_day] = daily_wan_mb_by_day.get(usage_day, 0.0) + hourly_row.total_mb
+    daily_wan_vlan_usage = db.get_global_daily_wan_usage_by_vlan(
+        period_start=resolved_period_start,
+        period_end=resolved_period_end,
+    )
     payer_split = db.get_global_payer_split_current_month(
         organization_paid_macs=organization_paid_mac_criteria,
         organization_paid_user_ids=organization_paid_user_id_criteria,
@@ -1011,7 +1012,8 @@ def build_insights_data(
         'top_access_points_this_month': [_serialize_access_point_row(ap_row) for ap_row in top_access_points_this_month],
         'daily_network_x_labels': [row.usage_day.day for row in daily_network_usage],
         'daily_network_full_labels': [f'{row.usage_day.strftime("%b")} {row.usage_day.day}' for row in daily_network_usage],
-        'daily_wan_mb': [daily_wan_mb_by_day.get(row.usage_day, 0.0) for row in daily_network_usage],
+        'daily_wan_vlan_labels': [row.vlan for row in daily_wan_vlan_usage],
+        'daily_wan_vlan_mb': [row.daily_mb for row in daily_wan_vlan_usage],
         'daily_network_basic_minutes': [row.basic_minutes for row in daily_network_usage],
         'daily_network_plus_minutes': [row.plus_minutes for row in daily_network_usage],
         'wan_hourly_title': (

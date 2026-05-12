@@ -163,6 +163,13 @@ class GlobalWanHourlyUsage:
     total_mb: float
 
 
+@dataclass(frozen=True, kw_only=True)
+class GlobalDailyWanVlanUsage:
+    'Daily WAN usage totals for one VLAN.'
+    vlan: str
+    daily_mb: list[float]
+
+
 @dataclass
 class DailyNetworkUsageBucket:
     'Mutable accumulator for one day of Basic/Plus usage.'
@@ -780,6 +787,98 @@ def get_total_wan_usage(
     with SessionLocal() as session:
         total_bytes = int(session.execute(stmt).scalar() or 0)
     return total_bytes / 1_000_000.0
+
+
+def get_global_daily_wan_usage_by_vlan(
+    period_start: datetime,
+    period_end: datetime,
+    identity_after_tolerance: timedelta = timedelta(minutes=10),
+) -> list[GlobalDailyWanVlanUsage]:
+    'Return daily WAN MB series grouped by VLAN identity.'
+    _, _, month_start, month_end = _month_period_bounds(period_start, period_end)
+    flow_stmt = (
+        select(
+            WanFlowUsage.started_at,
+            WanFlowUsage.client_ip,
+            WanFlowUsage.bytes,
+        )
+        .where(
+            WanFlowUsage.started_at >= period_start,
+            WanFlowUsage.started_at <= period_end,
+        )
+        .order_by(WanFlowUsage.started_at.asc(), WanFlowUsage.id.asc())
+    )
+
+    with SessionLocal() as session:
+        flow_rows = session.execute(flow_stmt).all()
+
+    client_ips = sorted({str(client_ip) for _, client_ip, _ in flow_rows if client_ip})
+    if not client_ips:
+        return []
+
+    identity_stmt = (
+        select(ClientIpIdentity)
+        .where(
+            ClientIpIdentity.ip_address.in_(client_ips),
+            ClientIpIdentity.observed_at >= period_start - timedelta(days=1),
+            ClientIpIdentity.observed_at <= period_end + identity_after_tolerance,
+        )
+        .order_by(ClientIpIdentity.ip_address.asc(), ClientIpIdentity.observed_at.asc(), ClientIpIdentity.id.asc())
+    )
+
+    identities_by_ip: dict[str, list[ClientIpIdentityRecord]] = {client_ip: [] for client_ip in client_ips}
+    with SessionLocal() as session:
+        for row in session.execute(identity_stmt).scalars():
+            identities_by_ip.setdefault(row.ip_address, []).append(
+                ClientIpIdentityRecord(
+                    observed_at=row.observed_at,
+                    ip_address=row.ip_address,
+                    mac=row.mac,
+                    name=row.name,
+                    user_id=row.user_id,
+                    vlan=row.vlan,
+                )
+            )
+
+    observed_times_by_ip = {
+        client_ip: [identity.observed_at for identity in identities]
+        for client_ip, identities in identities_by_ip.items()
+    }
+    totals_by_vlan_day: dict[str, dict[date, float]] = {}
+    for started_at, client_ip, byte_count in flow_rows:
+        if not isinstance(started_at, datetime):
+            continue
+        ip_text = str(client_ip)
+        identities = identities_by_ip.get(ip_text, [])
+        observed_times = observed_times_by_ip.get(ip_text, [])
+        identity: ClientIpIdentityRecord | None = None
+        if identities and observed_times:
+            prior_index = bisect_right(observed_times, started_at) - 1
+            if prior_index >= 0:
+                identity = identities[prior_index]
+            elif observed_times[0] <= started_at + identity_after_tolerance:
+                identity = identities[0]
+
+        vlan = identity.vlan if identity and identity.vlan else 'Unknown'
+        usage_day = started_at.date()
+        vlan_totals = totals_by_vlan_day.setdefault(vlan, {})
+        vlan_totals[usage_day] = vlan_totals.get(usage_day, 0.0) + (int(byte_count or 0) / 1_000_000.0)
+
+    day_count = (month_end - month_start).days + 1
+    return [
+        GlobalDailyWanVlanUsage(
+            vlan=vlan,
+            daily_mb=[
+                totals_by_day.get(month_start + timedelta(days=offset), 0.0)
+                for offset in range(day_count)
+            ],
+        )
+        for vlan, totals_by_day in sorted(
+            totals_by_vlan_day.items(),
+            key=lambda item: (sum(item[1].values()), item[0].lower()),
+            reverse=True,
+        )
+    ]
 
 
 def get_wan_activity_series_by_mac(

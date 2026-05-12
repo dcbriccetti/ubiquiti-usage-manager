@@ -52,7 +52,7 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
             )
             session.commit()
 
-    def add_identity(self, observed_at: datetime, ip_address: str, mac: str, user_id: str = "") -> None:
+    def add_identity(self, observed_at: datetime, ip_address: str, mac: str, user_id: str = "", vlan: str = "Plus") -> None:
         with db.SessionLocal() as session:
             session.add(
                 db.ClientIpIdentity(
@@ -61,7 +61,7 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
                     mac=mac,
                     name="Test client",
                     user_id=user_id,
-                    vlan="Plus",
+                    vlan=vlan,
                 )
             )
             session.commit()
@@ -157,6 +157,46 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
         self.assertEqual(recent_row.mac, mac)
         self.assertEqual(recent_row.download_bytes, 2_000_000)
         self.assertEqual(recent_row.flow_count, 1)
+
+    def test_global_daily_wan_usage_by_vlan_groups_attributed_flows(self) -> None:
+        self.add_identity(
+            datetime(2026, 5, 1, 0, 0),
+            "192.168.1.20",
+            "aa:bb:cc:dd:ee:20",
+            user_id="20",
+            vlan="Basic",
+        )
+        self.add_flow("capture-vlan-basic-1", datetime(2026, 5, 1, 1, 0), 1_000_000)
+        self.add_flow("capture-vlan-basic-2", datetime(2026, 5, 2, 1, 0), 2_000_000)
+
+        with db.SessionLocal() as session:
+            session.add(
+                db.WanFlowUsage(
+                    source_file="capture-vlan-unknown",
+                    started_at=datetime(2026, 5, 1, 2, 0),
+                    ended_at=datetime(2026, 5, 1, 2, 0),
+                    duration_seconds=60.0,
+                    proto="TCP",
+                    src_ip="192.168.1.99",
+                    src_port=12345,
+                    dst_ip="8.8.8.8",
+                    dst_port=443,
+                    packets=10,
+                    bytes=4_000_000,
+                    direction="download",
+                    client_ip="192.168.1.99",
+                )
+            )
+            session.commit()
+
+        rows = db.get_global_daily_wan_usage_by_vlan(
+            period_start=datetime(2026, 5, 1, 0, 0),
+            period_end=datetime(2026, 5, 2, 23, 59),
+        )
+
+        rows_by_vlan = {row.vlan: row.daily_mb for row in rows}
+        self.assertEqual(rows_by_vlan["Unknown"], [4.0, 0.0])
+        self.assertEqual(rows_by_vlan["Basic"], [1.0, 2.0])
 
 
 if __name__ == "__main__":

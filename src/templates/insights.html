@@ -65,9 +65,9 @@
         <article class="panel">
             <div class="panel-body">
                 <h2>Traffic & Concurrency</h2>
-                <h3>Daily WAN MB</h3>
+                <h3>Daily WAN MB by VLAN</h3>
                 <div class="month-chart-wrap">
-                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily WAN MB"></canvas>
+                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily WAN MB stacked by VLAN"></canvas>
                 </div>
                 <h3>{{ wan_hourly_title }}</h3>
                 <div class="month-chart-wrap">
@@ -284,7 +284,8 @@
             "activeUsersCounts": active_users_chart_counts,
             "xLabels": daily_network_x_labels,
             "fullLabels": daily_network_full_labels,
-            "dailyWanMb": daily_wan_mb,
+            "dailyWanVlanLabels": daily_wan_vlan_labels,
+            "dailyWanVlanMb": daily_wan_vlan_mb,
             "basicMinutes": daily_network_basic_minutes,
             "plusMinutes": daily_network_plus_minutes,
             "wanHourlyLabels": wan_hourly_labels,
