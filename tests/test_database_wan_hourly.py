@@ -52,6 +52,20 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
             )
             session.commit()
 
+    def add_identity(self, observed_at: datetime, ip_address: str, mac: str, user_id: str = "") -> None:
+        with db.SessionLocal() as session:
+            session.add(
+                db.ClientIpIdentity(
+                    observed_at=observed_at,
+                    ip_address=ip_address,
+                    mac=mac,
+                    name="Test client",
+                    user_id=user_id,
+                    vlan="Plus",
+                )
+            )
+            session.commit()
+
     def test_global_wan_hourly_usage_aggregates_and_fills_empty_hours(self) -> None:
         self.add_flow("capture-1", datetime(2026, 5, 1, 1, 5), 1_000_000)
         self.add_flow("capture-2", datetime(2026, 5, 1, 1, 45), 2_000_000)
@@ -73,6 +87,53 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
             ],
         )
         self.assertEqual([row.total_mb for row in series], [0.0, 3.0, 0.0, 4.0])
+
+    def test_total_wan_usage_sums_period_bytes(self) -> None:
+        self.add_flow("capture-total-1", datetime(2026, 5, 1, 1, 5), 1_000_000)
+        self.add_flow("capture-total-2", datetime(2026, 5, 1, 1, 45), 2_000_000)
+        self.add_flow("capture-total-3", datetime(2026, 5, 2, 0, 0), 8_000_000)
+
+        total_mb = db.get_total_wan_usage(
+            period_start=datetime(2026, 5, 1, 0, 0),
+            period_end=datetime(2026, 5, 1, 23, 59),
+        )
+
+        self.assertEqual(total_mb, 3.0)
+
+    def test_wan_activity_series_buckets_by_attributed_mac(self) -> None:
+        mac = "aa:bb:cc:dd:ee:20"
+        self.add_identity(datetime(2026, 5, 1, 0, 0), "192.168.1.20", mac, user_id="20")
+        self.add_identity(datetime(2026, 5, 1, 0, 0), "192.168.1.21", "aa:bb:cc:dd:ee:21", user_id="21")
+        self.add_flow("capture-series-1", datetime(2026, 5, 1, 0, 5), 1_000_000)
+        self.add_flow("capture-series-2", datetime(2026, 5, 1, 0, 12), 2_000_000)
+        with db.SessionLocal() as session:
+            session.add(
+                db.WanFlowUsage(
+                    source_file="capture-series-other",
+                    started_at=datetime(2026, 5, 1, 0, 15),
+                    ended_at=datetime(2026, 5, 1, 0, 15),
+                    duration_seconds=60.0,
+                    proto="TCP",
+                    src_ip="192.168.1.21",
+                    src_port=12345,
+                    dst_ip="8.8.8.8",
+                    dst_port=443,
+                    packets=10,
+                    bytes=4_000_000,
+                    direction="download",
+                    client_ip="192.168.1.21",
+                )
+            )
+            session.commit()
+
+        series = db.get_wan_activity_series_by_mac(
+            [mac],
+            buckets=4,
+            bucket_seconds=300,
+            period_end=datetime(2026, 5, 1, 0, 20),
+        )
+
+        self.assertEqual(series[mac], [0.0, 1.0, 2.0, 0.0])
 
 
 if __name__ == "__main__":

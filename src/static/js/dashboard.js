@@ -64,8 +64,8 @@
     const activityScaleByView = new Map();
     const realtimeWindows = new Set(['active_now', 'online_now']);
     const windowFocusClassByWindow = {
-        active_now: 'focus-minute-total',
-        online_now: 'focus-minute-total',
+        active_now: 'focus-recent',
+        online_now: 'focus-recent',
         today: 'focus-today',
         last_7_days: 'focus-7-days',
         this_month: 'focus-month'
@@ -83,9 +83,9 @@
         clientsTable.classList.toggle('realtime-window', isRealtime);
         clientsTable.classList.toggle('non-realtime-window', !isRealtime);
         clientsTable.classList.toggle('hide-cost-column', isRealtime);
-        preUsageGroupHeader.colSpan = isRealtime ? 12 : 7;
+        preUsageGroupHeader.colSpan = isRealtime ? 11 : 7;
         usageGroupHeader.colSpan = isRealtime ? 4 : 3;
-        clientsTable.classList.remove('focus-minute-total', 'focus-today', 'focus-7-days', 'focus-month');
+        clientsTable.classList.remove('focus-recent', 'focus-today', 'focus-7-days', 'focus-month');
         if (windowFocusClassByWindow[selectedWindow]) {
             clientsTable.classList.add(windowFocusClassByWindow[selectedWindow]);
         }
@@ -93,44 +93,10 @@
     };
 
     const formatInt = (value) => Math.round(value).toLocaleString();
-    const formatMinute = (value) => {
-        if (!value || value <= 0) return '';
-        return value.toLocaleString(undefined, {
-            minimumFractionDigits: 3,
-            maximumFractionDigits: 3
-        });
-    };
-    const formatAvgMbps = (intervalMb) => {
-        if (!intervalMb || intervalMb <= 0) return '';
-        const avgMbps = (intervalMb * 8) / 60;
-        return avgMbps.toLocaleString(undefined, {
-            minimumFractionDigits: 3,
-            maximumFractionDigits: 3
-        });
-    };
-    const renderMinuteTotalCell = (client) => {
-        const totalText = formatMinute(client.interval_mb);
-        const upText = formatMinute(client.minute_tx_mb) || '0';
-        const downText = formatMinute(client.minute_rx_mb) || '0';
-        const title = totalText ? `Up: ${upText} MB; Dn: ${downText} MB` : '';
-        return `<td class="num usage-col usage-first minute-col minute-total-col" title="${escapeHtml(title)}">${totalText}</td>`;
-    };
     const formatWhole = (value) => {
         if (!value) return '';
         const rounded = Math.round(value);
         return rounded > 0 ? rounded.toLocaleString() : '';
-    };
-    const formatWanDetail = (value) => {
-        const numeric = Number(value) || 0;
-        return numeric.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        });
-    };
-    const wanTodayTitle = (client) => {
-        const total = Number(client.wan_today_total_mb) || 0;
-        if (total <= 0) return '';
-        return `WAN identity today: ${formatWanDetail(total)} MB; Down: ${formatWanDetail(client.wan_today_download_mb)} MB; Up: ${formatWanDetail(client.wan_today_upload_mb)} MB`;
     };
     const formatCost = (costCents) => {
         if (!costCents || costCents < 0.5) return '';
@@ -231,7 +197,7 @@
         const values = (client && Array.isArray(client.recent_activity)) ? client.recent_activity : [];
         if (!values.length) return '';
         const sharedScale = getCurrentActivityScale();
-        const bucketLabel = selectedActivitySpan === '12d' ? 'MB/day' : (selectedActivitySpan === '12h' ? 'MB/hour' : 'MB/min');
+        const bucketLabel = selectedActivitySpan === '12d' ? 'WAN MB/day' : (selectedActivitySpan === '12h' ? 'WAN MB/hour' : 'WAN MB/5 min');
         const bars = values.map((value) => {
             const numeric = Number(value) || 0;
             const isCapped = numeric > sharedScale;
@@ -240,7 +206,7 @@
             const tip = `${numeric.toFixed(3)} ${bucketLabel}${isCapped ? ` (capped at ${sharedScale.toFixed(3)})` : ''}`;
             return `<span class="${klass}" data-bar-height="${height.toFixed(1)}" title="${escapeHtml(tip)}"></span>`;
         }).join('');
-        return `<div class="sparkline" title="Recent activity (${bucketLabel}, shared scale ${sharedScale.toFixed(3)})">${bars}</div>`;
+        return `<div class="sparkline" title="Recent WAN activity (${bucketLabel}, completed captures, shared scale ${sharedScale.toFixed(3)})">${bars}</div>`;
     };
     const escapeHtml = (value) =>
         String(value)
@@ -251,7 +217,7 @@
             .replaceAll('\'', '&#39;');
     const emptyWindowMessage = () => {
         if (selectedWindow === 'active_now') {
-            return 'No clients are actively using data right now.';
+            return 'No clients have recent WAN usage in this view yet.';
         }
         return 'No clients found for this view yet.';
     };
@@ -273,7 +239,7 @@
         ipPrefixHeader.textContent = ipPrefixes.size === 1 ? `${[...ipPrefixes][0]}.` : defaultIpHeader;
 
         if (!clients.length) {
-            connectedBody.innerHTML = `<tr><td colspan="21" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+            connectedBody.innerHTML = `<tr><td colspan="19" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
             return;
         }
 
@@ -294,12 +260,10 @@
                     <td class="num sig-col">${escapeHtml(signal)}</td>
                     <td class="activity-col">${renderRecentActivity(client)}</td>
                     <td class="nowrap-col">${escapeHtml(client.connection_duration || '')}</td>
-                    <td class="num nowrap-col mbps-col">${formatAvgMbps(client.interval_mb)}</td>
-                    ${renderMinuteTotalCell(client)}
+                    <td class="num usage-col usage-first recent-col">${formatWhole(client.recent_total_mb)}</td>
                     <td class="num usage-col today-col">${formatWhole(client.day_total_mb)}</td>
                     <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
                     <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
-                    <td class="num wan-col" title="${escapeHtml(wanTodayTitle(client))}">${formatWhole(client.wan_today_total_mb)}</td>
                     <td class="num usage-col usage-last">${formatCost(costCentsForSelectedWindow(client))}</td>
                     <td class="nowrap-col speed-col speed-first">${escapeHtml(client.speed_limit_name || '')}</td>
                     <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_up_kbps) ? Math.round(client.speed_limit_up_kbps).toLocaleString() : ''}</td>
@@ -319,7 +283,6 @@
         '#475569'
     ];
     const topConsumerColorByType = {
-        unused: '#d1d5db',
         other: '#64748b'
     };
 
@@ -335,10 +298,6 @@
     };
 
     const formatPieDetail = (value) => {
-        if (selectedWindow === 'active_now' || selectedWindow === 'online_now') {
-            const mbps = (value * 8) / 60;
-            return `${formatPieMb(value)} (${mbps.toFixed(3)} Mbps)`;
-        }
         return formatPieMb(value);
     };
 
