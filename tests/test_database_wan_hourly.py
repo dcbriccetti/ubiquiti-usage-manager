@@ -135,6 +135,29 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
 
         self.assertEqual(series[mac], [0.0, 1.0, 2.0, 0.0])
 
+    def test_wan_usage_by_identity_for_periods_reuses_attribution(self) -> None:
+        mac = "aa:bb:cc:dd:ee:20"
+        self.add_identity(datetime(2026, 5, 1, 0, 0), "192.168.1.20", mac, user_id="20")
+        self.add_flow("capture-period-1", datetime(2026, 5, 1, 0, 5), 1_000_000)
+        self.add_flow("capture-period-2", datetime(2026, 5, 1, 0, 45), 2_000_000)
+
+        period_rows = db.get_wan_usage_by_identity_for_periods(
+            {
+                "hour": datetime(2026, 5, 1, 0, 0),
+                "recent": datetime(2026, 5, 1, 0, 30),
+            },
+            period_end=datetime(2026, 5, 1, 1, 0),
+        )
+
+        hour_row = period_rows["hour"][0]
+        recent_row = period_rows["recent"][0]
+        self.assertEqual(hour_row.mac, mac)
+        self.assertEqual(hour_row.download_bytes, 3_000_000)
+        self.assertEqual(hour_row.flow_count, 2)
+        self.assertEqual(recent_row.mac, mac)
+        self.assertEqual(recent_row.download_bytes, 2_000_000)
+        self.assertEqual(recent_row.flow_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -637,6 +637,136 @@ def get_wan_usage_by_identity(
     )
 
 
+def get_wan_usage_by_identity_for_periods(
+    period_starts: dict[str, datetime],
+    period_end: datetime,
+    identity_after_tolerance: timedelta = timedelta(minutes=10),
+) -> dict[str, list[WanIdentityUsageSummary]]:
+    'Return WAN identity totals for multiple periods using one flow/identity pass.'
+    resolved_period_starts = {
+        key: value
+        for key, value in period_starts.items()
+        if key and isinstance(value, datetime)
+    }
+    if not resolved_period_starts:
+        return {}
+
+    earliest_start = min(resolved_period_starts.values())
+    flow_stmt = (
+        select(
+            WanFlowUsage.started_at,
+            WanFlowUsage.client_ip,
+            WanFlowUsage.direction,
+            WanFlowUsage.bytes,
+        )
+        .where(
+            WanFlowUsage.started_at >= earliest_start,
+            WanFlowUsage.started_at <= period_end,
+        )
+        .order_by(WanFlowUsage.started_at.asc(), WanFlowUsage.id.asc())
+    )
+
+    with SessionLocal() as session:
+        flow_rows = session.execute(flow_stmt).all()
+
+    client_ips = sorted({str(client_ip) for _, client_ip, _, _ in flow_rows if client_ip})
+    if not client_ips:
+        return {key: [] for key in resolved_period_starts}
+
+    identity_stmt = (
+        select(ClientIpIdentity)
+        .where(
+            ClientIpIdentity.ip_address.in_(client_ips),
+            ClientIpIdentity.observed_at >= earliest_start - timedelta(days=1),
+            ClientIpIdentity.observed_at <= period_end + identity_after_tolerance,
+        )
+        .order_by(ClientIpIdentity.ip_address.asc(), ClientIpIdentity.observed_at.asc(), ClientIpIdentity.id.asc())
+    )
+
+    identities_by_ip: dict[str, list[ClientIpIdentityRecord]] = {client_ip: [] for client_ip in client_ips}
+    with SessionLocal() as session:
+        for row in session.execute(identity_stmt).scalars():
+            identities_by_ip.setdefault(row.ip_address, []).append(
+                ClientIpIdentityRecord(
+                    observed_at=row.observed_at,
+                    ip_address=row.ip_address,
+                    mac=row.mac,
+                    name=row.name,
+                    user_id=row.user_id,
+                    vlan=row.vlan,
+                )
+            )
+
+    observed_times_by_ip = {
+        client_ip: [identity.observed_at for identity in identities]
+        for client_ip, identities in identities_by_ip.items()
+    }
+    summaries_by_period: dict[str, dict[tuple[str, str, str, str, str], dict[str, Any]]] = {
+        key: {}
+        for key in resolved_period_starts
+    }
+
+    for started_at, client_ip, direction, byte_count in flow_rows:
+        ip_text = str(client_ip)
+        identities = identities_by_ip.get(ip_text, [])
+        observed_times = observed_times_by_ip.get(ip_text, [])
+        identity: ClientIpIdentityRecord | None = None
+        if identities and observed_times:
+            prior_index = bisect_right(observed_times, started_at) - 1
+            if prior_index >= 0:
+                identity = identities[prior_index]
+            elif observed_times[0] <= started_at + identity_after_tolerance:
+                identity = identities[0]
+
+        mac = identity.mac if identity else ''
+        name = identity.name if identity else ''
+        user_id = identity.user_id if identity else ''
+        vlan = identity.vlan if identity else 'Unknown'
+        group_key = (mac or f'ip:{ip_text}', ip_text, name, user_id, vlan)
+        for period_key, period_start in resolved_period_starts.items():
+            if started_at < period_start:
+                continue
+            summary = summaries_by_period[period_key].setdefault(
+                group_key,
+                {
+                    'client_ip': ip_text,
+                    'mac': mac,
+                    'name': name,
+                    'user_id': user_id,
+                    'vlan': vlan,
+                    'upload_bytes': 0,
+                    'download_bytes': 0,
+                    'flow_count': 0,
+                },
+            )
+            if str(direction) == 'upload':
+                summary['upload_bytes'] = int(summary['upload_bytes']) + int(byte_count or 0)
+            else:
+                summary['download_bytes'] = int(summary['download_bytes']) + int(byte_count or 0)
+            summary['flow_count'] = int(summary['flow_count']) + 1
+
+    result: dict[str, list[WanIdentityUsageSummary]] = {}
+    for period_key, summaries in summaries_by_period.items():
+        result[period_key] = sorted(
+            [
+                WanIdentityUsageSummary(
+                    client_ip=str(summary['client_ip']),
+                    mac=str(summary['mac']),
+                    name=str(summary['name']),
+                    user_id=str(summary['user_id']),
+                    vlan=str(summary['vlan']),
+                    upload_bytes=int(summary['upload_bytes']),
+                    download_bytes=int(summary['download_bytes']),
+                    flow_count=int(summary['flow_count']),
+                )
+                for summary in summaries.values()
+            ],
+            key=lambda summary: summary.upload_bytes + summary.download_bytes,
+            reverse=True,
+        )
+    return result
+
+
 def get_total_wan_usage(
     period_start: datetime,
     period_end: datetime,

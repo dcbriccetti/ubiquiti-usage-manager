@@ -16,8 +16,11 @@ The goal is to keep route handlers thin while centralizing dashboard data behavi
 in one place, so UI changes do not require route-level rewrites.
 '''
 
+from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 import re
+import time as monotonic_time
+from threading import Lock
 from typing import Literal, TypedDict, cast
 
 import config as cfg
@@ -46,6 +49,7 @@ ACTIVITY_SPAN_1_HOUR: ActivitySpan = '1h'
 ACTIVITY_SPAN_12_HOUR: ActivitySpan = '12h'
 ACTIVITY_SPAN_12_DAY: ActivitySpan = '12d'
 ALLOWED_ACTIVITY_SPANS: frozenset[ActivitySpan] = frozenset({ACTIVITY_SPAN_1_HOUR, ACTIVITY_SPAN_12_HOUR, ACTIVITY_SPAN_12_DAY})
+DASHBOARD_WAN_CACHE_SECONDS = 30.0
 
 
 class DashboardRow(TypedDict):
@@ -151,6 +155,28 @@ class DashboardPayload(TypedDict):
     top_current_consumers: list[TopCurrentConsumer]
     clients: list[DashboardRow]
     live_update_seconds: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class DashboardWanData:
+    'Cached WAN attribution data shared across dashboard window changes.'
+    recent_rows: list[db.WanIdentityUsageSummary]
+    today_rows: list[db.WanIdentityUsageSummary]
+    seven_day_rows: list[db.WanIdentityUsageSummary]
+    month_rows: list[db.WanIdentityUsageSummary]
+    recent_totals_by_mac: dict[str, float]
+    today_totals_by_mac: dict[str, float]
+    seven_day_totals_by_mac: dict[str, float]
+    month_totals_by_mac: dict[str, float]
+    total_today_mb: float
+    total_last_7_days_mb: float
+    total_calendar_month_mb: float
+    wan_import_status: str
+    wan_import_stale: bool
+
+
+_dashboard_wan_cache_lock = Lock()
+_dashboard_wan_cache_by_activity_span: dict[ActivitySpan, tuple[float, DashboardWanData]] = {}
 
 
 def normalize_window(window_name: str | None) -> WindowName:
@@ -273,12 +299,78 @@ def _wan_totals_by_mac(rows: list[db.WanIdentityUsageSummary]) -> dict[str, floa
     return totals_by_mac
 
 
+def _total_wan_mb(rows: list[db.WanIdentityUsageSummary]) -> float:
+    return sum(_wan_total_mb(row) for row in rows)
+
+
 def _activity_window_seconds(activity_span: ActivitySpan) -> int:
     if activity_span == ACTIVITY_SPAN_12_HOUR:
         return 12 * 3600
     if activity_span == ACTIVITY_SPAN_12_DAY:
         return 12 * 86400
     return 3600
+
+
+def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> DashboardWanData:
+    'Build the WAN attribution slice used by all dashboard views.'
+    today_start = datetime.combine(now.date(), time.min)
+    seven_days_ago = now - timedelta(days=7)
+    month_start = datetime.combine(now.date().replace(day=1), time.min)
+    recent_start = now - timedelta(seconds=_activity_window_seconds(activity_span))
+    period_rows = db.get_wan_usage_by_identity_for_periods(
+        {
+            'recent': recent_start,
+            'today': today_start,
+            'seven_day': seven_days_ago,
+            'month': month_start,
+        },
+        period_end=now,
+    )
+    recent_wan_rows = period_rows.get('recent', [])
+    today_wan_rows = period_rows.get('today', [])
+    seven_day_wan_rows = period_rows.get('seven_day', [])
+    month_wan_rows = period_rows.get('month', [])
+    recent_imports = db.get_recent_flow_imports(limit=1)
+    latest_import = recent_imports[0] if recent_imports else None
+    wan_import_status = 'WAN import: none'
+    wan_import_stale = True
+    if latest_import:
+        age_minutes = int((now - latest_import.imported_at).total_seconds() // 60)
+        wan_import_status = f'WAN import: {age_minutes}m ago ({latest_import.source_file})'
+        wan_import_stale = age_minutes > 15
+
+    return DashboardWanData(
+        recent_rows=recent_wan_rows,
+        today_rows=today_wan_rows,
+        seven_day_rows=seven_day_wan_rows,
+        month_rows=month_wan_rows,
+        recent_totals_by_mac=_wan_totals_by_mac(recent_wan_rows),
+        today_totals_by_mac=_wan_totals_by_mac(today_wan_rows),
+        seven_day_totals_by_mac=_wan_totals_by_mac(seven_day_wan_rows),
+        month_totals_by_mac=_wan_totals_by_mac(month_wan_rows),
+        total_today_mb=_total_wan_mb(today_wan_rows),
+        total_last_7_days_mb=_total_wan_mb(seven_day_wan_rows),
+        total_calendar_month_mb=_total_wan_mb(month_wan_rows),
+        wan_import_status=wan_import_status,
+        wan_import_stale=wan_import_stale,
+    )
+
+
+def get_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> DashboardWanData:
+    'Return cached WAN attribution data so changing dashboard windows is fast.'
+    now_monotonic = monotonic_time.monotonic()
+    with _dashboard_wan_cache_lock:
+        cached = _dashboard_wan_cache_by_activity_span.get(activity_span)
+        if cached and cached[0] > now_monotonic:
+            return cached[1]
+
+    wan_data = _build_dashboard_wan_data(activity_span, now)
+    with _dashboard_wan_cache_lock:
+        _dashboard_wan_cache_by_activity_span[activity_span] = (
+            monotonic_time.monotonic() + DASHBOARD_WAN_CACHE_SECONDS,
+            wan_data,
+        )
+    return wan_data
 
 
 def build_rows_for_online_clients(
@@ -685,53 +777,34 @@ def build_live_dashboard_payload(
     now = datetime.now()
     current_month_label = render_month_label(now)
     connected_snapshots = get_connected_clients()
-    today_start = datetime.combine(now.date(), time.min)
-    seven_days_ago = now - timedelta(days=7)
-    month_start = datetime.combine(now.date().replace(day=1), time.min)
-    recent_start = now - timedelta(seconds=_activity_window_seconds(activity_span))
-    recent_wan_rows = db.get_wan_usage_by_identity(period_start=recent_start, period_end=now)
-    today_wan_rows = db.get_wan_usage_by_identity(period_start=today_start, period_end=now)
-    seven_day_wan_rows = db.get_wan_usage_by_identity(period_start=seven_days_ago, period_end=now)
-    month_wan_rows = db.get_wan_usage_by_identity(period_start=month_start, period_end=now)
-    selected_wan_rows = recent_wan_rows
+    wan_data = get_dashboard_wan_data(activity_span, now)
+    selected_wan_rows = wan_data.recent_rows
     if window_name == WINDOW_TODAY:
-        selected_wan_rows = today_wan_rows
+        selected_wan_rows = wan_data.today_rows
     elif window_name == WINDOW_LAST_7_DAYS:
-        selected_wan_rows = seven_day_wan_rows
+        selected_wan_rows = wan_data.seven_day_rows
     elif window_name == WINDOW_THIS_MONTH:
-        selected_wan_rows = month_wan_rows
+        selected_wan_rows = wan_data.month_rows
 
-    recent_totals_by_mac = _wan_totals_by_mac(recent_wan_rows)
-    today_totals_by_mac = _wan_totals_by_mac(today_wan_rows)
-    seven_day_totals_by_mac = _wan_totals_by_mac(seven_day_wan_rows)
-    month_totals_by_mac = _wan_totals_by_mac(month_wan_rows)
     rows = _build_live_dashboard_rows(
         window_name,
         activity_span,
         connected_snapshots,
         selected_wan_rows,
-        recent_totals_by_mac,
-        today_totals_by_mac,
-        seven_day_totals_by_mac,
-        month_totals_by_mac,
+        wan_data.recent_totals_by_mac,
+        wan_data.today_totals_by_mac,
+        wan_data.seven_day_totals_by_mac,
+        wan_data.month_totals_by_mac,
     )
-    recent_imports = db.get_recent_flow_imports(limit=1)
-    latest_import = recent_imports[0] if recent_imports else None
-    wan_import_status = 'WAN import: none'
-    wan_import_stale = True
-    if latest_import:
-        age_minutes = int((now - latest_import.imported_at).total_seconds() // 60)
-        wan_import_status = f'WAN import: {age_minutes}m ago ({latest_import.source_file})'
-        wan_import_stale = age_minutes > 15
     return {
         'selected_window': window_name,
         'selected_activity_span': activity_span,
         'current_month_label': current_month_label,
-        'total_today_mb': db.get_total_wan_usage(today_start, now),
-        'total_last_7_days_mb': db.get_total_wan_usage(seven_days_ago, now),
-        'total_calendar_month_mb': db.get_total_wan_usage(month_start, now),
-        'wan_import_status': wan_import_status,
-        'wan_import_stale': wan_import_stale,
+        'total_today_mb': wan_data.total_today_mb,
+        'total_last_7_days_mb': wan_data.total_last_7_days_mb,
+        'total_calendar_month_mb': wan_data.total_calendar_month_mb,
+        'wan_import_status': wan_data.wan_import_status,
+        'wan_import_stale': wan_data.wan_import_stale,
         'top_consumers_title': f"Usage Share ({render_dashboard_window_label(window_name, current_month_label)})",
         'top_current_consumers': build_top_consumers_for_window(rows, window_name, now),
         'clients': rows,
