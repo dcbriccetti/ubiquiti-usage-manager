@@ -454,20 +454,17 @@
         const hourlyWanCanvas = document.getElementById("global-hourly-wan-chart");
         if (hourlyWanCanvas) {
             new Chart(hourlyWanCanvas, {
-                type: "line",
+                type: "bar",
                 data: {
                     labels: config.wanHourlyLabels,
                     datasets: [
                         {
                             label: "WAN MB",
                             data: config.wanHourlyMb,
+                            backgroundColor: "rgba(2, 132, 199, 0.72)",
                             borderColor: "rgba(2, 132, 199, 0.92)",
-                            backgroundColor: "rgba(2, 132, 199, 0.14)",
-                            borderWidth: 2,
-                            pointRadius: 0,
-                            pointHitRadius: 8,
-                            tension: 0.18,
-                            fill: true
+                            borderWidth: 1,
+                            maxBarThickness: 8
                         }
                     ]
                 },
@@ -488,7 +485,7 @@
                     },
                     scales: {
                         x: {
-                            offset: false,
+                            offset: true,
                             title: { display: true, text: "Day of month" },
                             grid: { display: false },
                             ticks: {
