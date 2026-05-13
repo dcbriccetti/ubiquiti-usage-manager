@@ -198,6 +198,29 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
         self.assertEqual(rows_by_vlan["Unknown"], [4.0, 0.0])
         self.assertEqual(rows_by_vlan["Basic"], [1.0, 2.0])
 
+    def test_flow_import_times_uses_scalable_source_file_lookup(self) -> None:
+        imported_at = datetime(2026, 5, 1, 12, 0)
+        with db.SessionLocal() as session:
+            session.add_all(
+                [
+                    db.FlowImport(
+                        source_file=f"nfcapd.20260501{index:04d}",
+                        imported_at=imported_at,
+                        record_count=1,
+                        skipped_count=0,
+                    )
+                    for index in range(1100)
+                ]
+            )
+            session.commit()
+
+        import_times = db.get_flow_import_times_by_source_file(
+            {f"nfcapd.20260501{index:04d}" for index in range(1100)}
+        )
+
+        self.assertEqual(len(import_times), 1100)
+        self.assertEqual(import_times["nfcapd.202605010999"], imported_at)
+
 
 if __name__ == "__main__":
     unittest.main()
