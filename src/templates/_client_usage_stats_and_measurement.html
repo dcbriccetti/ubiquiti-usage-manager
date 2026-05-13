@@ -4,7 +4,7 @@
         <span class="value">{{ "{:,.0f}".format(daily_total_mb) }} MB</span>
     </article>
     <article class="panel stat">
-        <span class="label">WAN 7 Days</span>
+        <span class="label">WAN Last 7 Days</span>
         <span class="value">{{ "{:,.0f}".format(last_7_days_total_mb) }} MB</span>
     </article>
     <article class="panel stat">
@@ -12,8 +12,13 @@
         <span class="value">{{ "{:,.0f}".format(calendar_month_total_mb) }} MB</span>
     </article>
     <article class="panel stat">
-        <span class="label">Month Cost</span>
-        <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
+        {% if voucher_usage %}
+            <span class="label">Payment</span>
+            <span class="value">Prepaid</span>
+        {% else %}
+            <span class="label">Estimated {{ current_month_label }} Cost</span>
+            <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
+        {% endif %}
     </article>
 </section>
 
@@ -30,25 +35,24 @@
                     · not activated yet
                 {% endif %}
             </p>
-            <section class="grid stats">
-                <article class="panel stat">
+            <section class="detail-facts">
+                <div>
                     <span class="label">Remaining</span>
-                    <span class="value">{{ "{:,.1f}".format(voucher_usage.remaining_mb / 1000.0) }} GB</span>
-                </article>
-                <article class="panel stat">
+                    <strong>{{ "{:,.1f}".format(voucher_usage.remaining_mb / 1000.0) }} GB</strong>
+                </div>
+                <div>
                     <span class="label">Used</span>
-                    <span class="value">{{ "{:,.1f}".format(voucher_usage.used_mb / 1000.0) }} GB</span>
-                </article>
-                <article class="panel stat">
-                    <span class="label">Allocation</span>
-                    <span class="value">{{ "{:,.0f}".format(voucher_usage.allocation_gb) }} GB</span>
-                </article>
-                <article class="panel stat">
-                    <span class="label">Used</span>
-                    <span class="value{% if voucher_usage.is_over_allocation %} warn-text{% endif %}">
+                    <strong{% if voucher_usage.is_over_allocation %} class="warn-text"{% endif %}>
+                        {{ "{:,.1f}".format(voucher_usage.used_mb / 1000.0) }} GB
+                    </strong>
+                    <span class="detail-note{% if voucher_usage.is_over_allocation %} warn-text{% endif %}">
                         {{ "{:,.0f}".format(voucher_usage.used_pct) }}%
                     </span>
-                </article>
+                </div>
+                <div>
+                    <span class="label">Allocation</span>
+                    <strong>{{ "{:,.0f}".format(voucher_usage.allocation_gb) }} GB</strong>
+                </div>
             </section>
         </div>
     </article>
@@ -57,7 +61,7 @@
 {% if wan_usage_available %}
     <article class="panel">
         <div class="panel-body">
-            <h2>WAN Usage by Client Identity</h2>
+            <h2>WAN Attribution</h2>
             <p class="muted">
                 {% if wan_client_ip %}
                     Latest IP {{ wan_client_ip }}
@@ -68,23 +72,23 @@
                     No latest IP observed
                 {% endif %}
             </p>
-            <section class="grid stats">
-                <article class="panel stat">
-                    <span class="label">WAN Today</span>
-                    <span class="value">{{ "{:,.1f}".format(wan_today_total_mb) }} MB</span>
-                </article>
-                <article class="panel stat">
-                    <span class="label">Today Down / Up</span>
-                    <span class="value">{{ "{:,.1f}".format(wan_today_download_mb) }} / {{ "{:,.1f}".format(wan_today_upload_mb) }}</span>
-                </article>
-                <article class="panel stat">
-                    <span class="label">WAN {{ current_month_label }}</span>
-                    <span class="value">{{ "{:,.1f}".format(wan_month_total_mb) }} MB</span>
-                </article>
-                <article class="panel stat">
-                    <span class="label">{{ current_month_label }} Down / Up</span>
-                    <span class="value">{{ "{:,.1f}".format(wan_month_download_mb) }} / {{ "{:,.1f}".format(wan_month_upload_mb) }}</span>
-                </article>
+            <section class="detail-facts">
+                <div>
+                    <span class="label">Today Down</span>
+                    <strong>{{ "{:,.1f}".format(wan_today_download_mb) }} MB</strong>
+                </div>
+                <div>
+                    <span class="label">Today Up</span>
+                    <strong>{{ "{:,.1f}".format(wan_today_upload_mb) }} MB</strong>
+                </div>
+                <div>
+                    <span class="label">{{ current_month_label }} Down</span>
+                    <strong>{{ "{:,.1f}".format(wan_month_download_mb) }} MB</strong>
+                </div>
+                <div>
+                    <span class="label">{{ current_month_label }} Up</span>
+                    <strong>{{ "{:,.1f}".format(wan_month_upload_mb) }} MB</strong>
+                </div>
             </section>
         </div>
     </article>

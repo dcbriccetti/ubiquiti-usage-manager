@@ -244,7 +244,7 @@
             display: block;
             font-size: 0.78rem;
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: 0;
             color: var(--muted);
         }
 
@@ -252,6 +252,42 @@
             display: block;
             margin-top: var(--space-3);
             font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .detail-facts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+            gap: var(--space-4);
+            margin-top: var(--space-5);
+        }
+
+        .detail-facts > div {
+            min-width: 0;
+            padding-top: var(--space-4);
+            border-top: 1px solid var(--line);
+        }
+
+        .detail-facts .label {
+            display: block;
+            color: var(--muted);
+            font-size: 0.78rem;
+            letter-spacing: 0;
+            text-transform: uppercase;
+        }
+
+        .detail-facts strong {
+            display: block;
+            margin-top: var(--space-2);
+            font-size: 1.45rem;
+            line-height: 1.15;
+        }
+
+        .detail-note {
+            display: block;
+            margin-top: var(--space-1);
+            color: var(--muted);
+            font-size: 0.95rem;
             font-weight: 700;
         }
 
