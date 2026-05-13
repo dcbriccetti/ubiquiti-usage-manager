@@ -30,6 +30,7 @@ ACCESS_MODE_NOTES = {
     'unclassified': 'Missing flow-time identity',
 }
 ACCESS_MODE_ORDER = ('basic', 'plus_paid', 'plus_voucher', 'unclassified')
+TINY_IMPORT_ROW_DISPLAY_MB = 0.05
 SERVICE_LABEL_BY_PROTO_PORT = {
     ('TCP', 80): 'Web browsing',
     ('TCP', 443): 'Secure web and apps',
@@ -484,11 +485,100 @@ def build_wan_import_usage_context(
             }
         )
 
-    return sorted(
+    sorted_rows = sorted(
         rows,
         key=lambda row: (row['imported_at'] or row['last_flow_at'], row['last_flow_at'], row['source_file']),
         reverse=True,
     )[:max(1, limit)]
+    return aggregate_tiny_wan_import_rows(sorted_rows)
+
+
+def aggregate_tiny_wan_import_rows(rows: list[WanImportUsageContext]) -> list[WanImportUsageContext]:
+    'Collapse consecutive recent-usage rows that display as 0.0 MB.'
+    aggregated: list[WanImportUsageContext] = []
+    tiny_run: list[WanImportUsageContext] = []
+
+    def flush_tiny_run() -> None:
+        nonlocal tiny_run
+        if not tiny_run:
+            return
+        if len(tiny_run) == 1:
+            aggregated.append(tiny_run[0])
+        else:
+            aggregated.append(build_tiny_wan_import_row(tiny_run))
+        tiny_run = []
+
+    for row in rows:
+        if 0.0 < row['total_mb'] < TINY_IMPORT_ROW_DISPLAY_MB:
+            tiny_run.append(row)
+            continue
+        flush_tiny_run()
+        aggregated.append(row)
+
+    flush_tiny_run()
+    return aggregated
+
+
+def build_tiny_wan_import_row(rows: list[WanImportUsageContext]) -> WanImportUsageContext:
+    'Return one display row for a consecutive run of tiny Internet usage batches.'
+    first_flow_at = min(row['first_flow_at'] for row in rows)
+    last_flow_at = max(row['last_flow_at'] for row in rows)
+    imported_values = [row['imported_at'] for row in rows if row['imported_at'] is not None]
+    imported_at = max(imported_values) if imported_values else None
+    access_point_labels = [row['access_point_label'] for row in rows if row['access_point_label']]
+    unique_access_point_labels = list(dict.fromkeys(access_point_labels))
+    host_labels = [row['host_label'] for row in rows if row['host_label'] and row['host_label'] != 'Unknown']
+    primary_host_labels = [label.split(' +', 1)[0] for label in host_labels]
+    unique_host_labels = list(dict.fromkeys(primary_host_labels))
+    download_mb = sum(row['download_mb'] for row in rows)
+    upload_mb = sum(row['upload_mb'] for row in rows)
+    total_mb = download_mb + upload_mb
+    flow_count = sum(row['flow_count'] for row in rows)
+
+    if len(unique_access_point_labels) == 1:
+        access_point_label = unique_access_point_labels[0]
+        access_point_detail = rows[0]['access_point_detail']
+    else:
+        access_point_label = 'Multiple'
+        access_point_detail = ', '.join(unique_access_point_labels[:4])
+        if len(unique_access_point_labels) > 4:
+            access_point_detail = f'{access_point_detail}, +{len(unique_access_point_labels) - 4} more'
+
+    if unique_host_labels:
+        host_label = unique_host_labels[0]
+        if len(unique_host_labels) > 1:
+            host_label = f'{host_label} +{len(unique_host_labels) - 1}'
+        host_detail = ', '.join(unique_host_labels[:4])
+        if len(unique_host_labels) > 4:
+            host_detail = f'{host_detail}, +{len(unique_host_labels) - 4} more'
+    else:
+        host_label = 'Small background traffic'
+        host_detail = host_label
+
+    host_detail = (
+        f'{len(rows)} small data batches; {flow_count:,} connection'
+        f'{"s" if flow_count != 1 else ""}; {host_detail}'
+    )
+
+    return {
+        'source_file': rows[0]['source_file'],
+        'source_label': f'{len(rows)} small data batches',
+        'imported_label': render_datetime_label(imported_at) if imported_at else 'Not recorded',
+        'flow_window_label': render_time_range_label(first_flow_at, last_flow_at),
+        'access_point_label': access_point_label,
+        'access_point_detail': access_point_detail,
+        'host_label': host_label,
+        'host_detail': host_detail,
+        'host_ip': '',
+        'host_extra_count': max(0, len(unique_host_labels) - 1),
+        'imported_at': imported_at,
+        'first_flow_at': first_flow_at,
+        'last_flow_at': last_flow_at,
+        'download_mb': download_mb,
+        'upload_mb': upload_mb,
+        'total_mb': total_mb,
+        'flow_count': flow_count,
+    }
 
 
 def build_wan_flow_bucket_totals(
@@ -677,8 +767,7 @@ def build_access_mode_usage_context(
     for mode_key in ACCESS_MODE_ORDER:
         totals = totals_by_mode[mode_key]
         if (
-            mode_key == 'unclassified'
-            and not totals['today_mb']
+            not totals['today_mb']
             and not totals['last_7_days_mb']
             and not totals['month_mb']
         ):

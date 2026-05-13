@@ -33,9 +33,70 @@
             if (typeof window.renderUsageCharts === 'function') {
                 window.renderUsageCharts();
             }
+            initializePaginatedTables();
             refreshReverseDnsLabels();
         })
         .catch(renderError);
+
+    const initializePaginatedTables = () => {
+        container.querySelectorAll('[data-paginated-table]').forEach((table) => {
+            const tableId = table.dataset.paginatedTable || '';
+            const pager = tableId ? container.querySelector(`[data-table-pager="${tableId}"]`) : null;
+            const rows = Array.from(table.querySelectorAll('tbody tr[data-paginated-row]'));
+            if (!tableId || !pager || rows.length <= 10 || table.dataset.paginationReady === 'true') {
+                return;
+            }
+
+            table.dataset.paginationReady = 'true';
+            const pageStatus = pager.querySelector('[data-page-status]');
+            const pageSizeSelect = pager.querySelector('[data-page-size]');
+            const prevButton = pager.querySelector('[data-page-prev]');
+            const nextButton = pager.querySelector('[data-page-next]');
+            let page = 0;
+
+            const selectedPageSize = () => {
+                const value = Number.parseInt(pageSizeSelect?.value || '10', 10);
+                return Number.isFinite(value) && value > 0 ? value : 10;
+            };
+
+            const renderPage = () => {
+                const pageSize = selectedPageSize();
+                const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
+                page = Math.max(0, Math.min(page, pageCount - 1));
+                const start = page * pageSize;
+                const end = Math.min(rows.length, start + pageSize);
+
+                rows.forEach((row, index) => {
+                    row.hidden = index < start || index >= end;
+                });
+
+                if (pageStatus) {
+                    pageStatus.textContent = `${start + 1}-${end} of ${rows.length}`;
+                }
+                if (prevButton) {
+                    prevButton.disabled = page === 0;
+                }
+                if (nextButton) {
+                    nextButton.disabled = page >= pageCount - 1;
+                }
+                pager.hidden = false;
+            };
+
+            pageSizeSelect?.addEventListener('change', () => {
+                page = 0;
+                renderPage();
+            });
+            prevButton?.addEventListener('click', () => {
+                page -= 1;
+                renderPage();
+            });
+            nextButton?.addEventListener('click', () => {
+                page += 1;
+                renderPage();
+            });
+            renderPage();
+        });
+    };
 
     const renderReverseDnsLabel = (element, label) => {
         const ipAddress = element.dataset.rdnsIp || '';

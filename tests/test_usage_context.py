@@ -165,6 +165,53 @@ class ClientUsageContextTests(unittest.TestCase):
         ap_labels.assert_called_once()
         self.assertEqual(len(ap_labels.call_args.args[1]), 3)
 
+    def test_recent_wan_rows_aggregate_consecutive_tiny_batches(self) -> None:
+        def recent_row(
+            minute: int,
+            total_mb: float,
+            host_label: str,
+            access_point_label: str = "Rec Hall Roof",
+        ) -> usage_context.WanImportUsageContext:
+            flow_time = datetime(2026, 5, 12, 22, minute)
+            return {
+                "source_file": f"nfcapd.2026051222{minute:02d}",
+                "source_label": f"Capture {minute}",
+                "imported_label": f"Imported {minute}",
+                "flow_window_label": usage_context.render_time_range_label(flow_time, flow_time),
+                "access_point_label": access_point_label,
+                "access_point_detail": access_point_label,
+                "host_label": host_label,
+                "host_detail": host_label,
+                "host_ip": "",
+                "host_extra_count": 0,
+                "imported_at": flow_time,
+                "first_flow_at": flow_time,
+                "last_flow_at": flow_time,
+                "download_mb": total_mb,
+                "upload_mb": 0.0,
+                "total_mb": total_mb,
+                "flow_count": 1,
+            }
+
+        rows = usage_context.aggregate_tiny_wan_import_rows(
+            [
+                recent_row(23, 0.01, "compute-1.amazonaws.com"),
+                recent_row(22, 0.02, "compute-1.amazonaws.com +1"),
+                recent_row(21, 1.0, "video.example.com"),
+                recent_row(20, 0.03, "cloudfront.net"),
+                recent_row(19, 0.01, "cloudfront.net"),
+            ]
+        )
+
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["source_label"], "2 small data batches")
+        self.assertEqual(rows[0]["flow_window_label"], "May 12, 22:22–22:23")
+        self.assertEqual(rows[0]["host_label"], "compute-1.amazonaws.com")
+        self.assertAlmostEqual(rows[0]["total_mb"], 0.03)
+        self.assertEqual(rows[1]["host_label"], "video.example.com")
+        self.assertEqual(rows[2]["source_label"], "2 small data batches")
+        self.assertEqual(rows[2]["flow_window_label"], "May 12, 22:19–22:20")
+
     def test_client_context_can_skip_deferred_wan_details(self) -> None:
         mac = "42:3e:c1:5d:fc:59"
         with db.SessionLocal() as session:
@@ -366,8 +413,8 @@ class ClientUsageContextTests(unittest.TestCase):
         assert context["voucher_usage"] is not None
         self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 3.0)
         access_modes = {row["key"]: row for row in context["access_mode_usage_rows"]}
-        self.assertAlmostEqual(access_modes["basic"]["month_mb"], 0.0)
-        self.assertAlmostEqual(access_modes["plus_paid"]["month_mb"], 0.0)
+        self.assertNotIn("basic", access_modes)
+        self.assertNotIn("plus_paid", access_modes)
         self.assertAlmostEqual(access_modes["plus_voucher"]["month_mb"], 3.0)
         self.assertEqual(len(context["wan_import_usage_rows"]), 1)
         recent_import = context["wan_import_usage_rows"][0]

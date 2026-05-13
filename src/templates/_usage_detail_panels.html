@@ -1,12 +1,28 @@
+{% set show_access_point_column = latest_record is defined and (latest_record.ap_name|default("", true)|trim) %}
 <section class="grid">
     <article class="panel usage-history-panel">
         <div class="panel-body">
             <h2>Recent Internet Usage</h2>
-            <table>
+            <div class="table-controls" data-table-pager="recent-internet-usage" hidden>
+                <span class="muted" data-page-status></span>
+                <label>
+                    Rows
+                    <select data-page-size>
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </label>
+                <button type="button" data-page-prev>Previous</button>
+                <button type="button" data-page-next>Next</button>
+            </div>
+            <table data-paginated-table="recent-internet-usage">
                 <thead>
                     <tr>
                         <th class="nowrap-col">When</th>
-                        <th class="nowrap-col">Access Point</th>
+                        {% if show_access_point_column %}
+                            <th class="nowrap-col">Access Point</th>
+                        {% endif %}
                         <th class="nowrap-col">Host</th>
                         <th class="num">Total MB</th>
                         <th class="num">Downloaded MB</th>
@@ -15,11 +31,13 @@
                 </thead>
                 <tbody>
                     {% for row in wan_import_usage_rows %}
-                        <tr>
+                        <tr data-paginated-row>
                             <td class="nowrap-col">
                                 {{ row.flow_window_label }}
                             </td>
-                            <td class="nowrap-col" title="{{ row.access_point_detail }}">{{ row.access_point_label }}</td>
+                            {% if show_access_point_column %}
+                                <td class="nowrap-col" title="{{ row.access_point_detail }}">{{ row.access_point_label }}</td>
+                            {% endif %}
                             <td
                                 class="nowrap-col"
                                 title="{{ row.host_detail }}"
@@ -35,7 +53,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="6" class="muted">No recent Internet usage attributed to this client for {{ current_month_label }} yet.</td>
+                            <td colspan="{{ 6 if show_access_point_column else 5 }}" class="muted">No recent Internet usage attributed to this client for {{ current_month_label }} yet.</td>
                         </tr>
                     {% endfor %}
                 </tbody>
