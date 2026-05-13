@@ -19,7 +19,10 @@
         </article>
         <article class="panel stat">
             <span class="label">Today Down / Up</span>
-            <span class="value">{{ "{:,.1f}".format(total_today_download_mb) }} / {{ "{:,.1f}".format(total_today_upload_mb) }}</span>
+            <span class="value stat-combo">
+                {{ "{:,.1f}".format(total_today_download_mb) }} MB down<br>
+                {{ "{:,.1f}".format(total_today_upload_mb) }} MB up
+            </span>
         </article>
         <article class="panel stat">
             <span class="label">WAN Month</span>

@@ -9,7 +9,7 @@
             <p class="muted">
                 Local UniFi RADIUS accounts{% if generated_at %} · Loaded {{ generated_at.strftime("%Y-%m-%d %H:%M:%S") }}{% endif %}
             </p>
-            <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+            <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
         </div>
     </section>
 
@@ -21,9 +21,9 @@
                     <thead>
                     <tr>
                         <th>Username</th>
-                        <th class="num">VLAN</th>
-                        <th class="num">Tunnel Type</th>
-                        <th class="num">Tunnel Medium</th>
+                        <th>VLAN</th>
+                        <th>Tunnel Type</th>
+                        <th>Tunnel Medium</th>
                         <th>ID</th>
                     </tr>
                     </thead>
@@ -31,9 +31,9 @@
                     {% for row in radius_user_rows %}
                         <tr>
                             <td>{{ row.name }}</td>
-                            <td class="num">{{ row.vlan }}</td>
-                            <td class="num">{{ row.tunnel_type }}</td>
-                            <td class="num">{{ row.tunnel_medium_type }}</td>
+                            <td>{{ row.vlan }}</td>
+                            <td>{{ row.tunnel_type }}</td>
+                            <td>{{ row.tunnel_medium_type }}</td>
                             <td class="mono">{{ row.id }}</td>
                         </tr>
                     {% else %}

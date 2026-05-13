@@ -9,7 +9,7 @@
             <p class="muted">
                 Paper login credentials with fixed data allocations · {{ unconsumed_voucher_count }} unconsumed
             </p>
-            <p><a href="{{ url_for('dashboard') }}">Back to Dashboard</a></p>
+            <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
         </div>
     </section>
 
@@ -34,7 +34,7 @@
                     </label>
                     <button type="submit">Generate</button>
                 </form>
-                <p class="muted">50 cents per GB</p>
+                <p class="muted">${{ "{:.2f}".format(voucher_cost_cents(1) / 100.0) }} per GB</p>
                 {% if voucher_form_message %}
                     <p class="muted">{{ voucher_form_message }}</p>
                 {% endif %}
@@ -87,9 +87,9 @@
                         <th>User ID</th>
                         <th>Status</th>
                         <th class="num">Allocation</th>
-                        <th class="num">Used</th>
+                        <th class="num">Used GB</th>
                         <th class="num">Remaining</th>
-                        <th class="num">Used</th>
+                        <th class="num">Used %</th>
                         <th>Created</th>
                         <th>Activated</th>
                     </tr>
