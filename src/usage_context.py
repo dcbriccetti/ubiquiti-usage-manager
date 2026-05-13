@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 import time as monotonic_time
-from typing import TypedDict
+from typing import Literal, TypedDict, cast
 
 import database as db
 import unifi_api as api
@@ -15,8 +15,20 @@ from speedlimit import SpeedLimit
 
 
 SpeedLimitsByName = dict[str, SpeedLimit]
+FlowActivityRange = Literal['today', 'last_7_days', 'this_month']
 SPEED_LIMIT_CACHE_SECONDS = 300.0
 _speed_limits_cache: tuple[float, SpeedLimitsByName] | None = None
+FLOW_ACTIVITY_RANGE_TODAY: FlowActivityRange = 'today'
+FLOW_ACTIVITY_RANGE_LAST_7_DAYS: FlowActivityRange = 'last_7_days'
+FLOW_ACTIVITY_RANGE_THIS_MONTH: FlowActivityRange = 'this_month'
+FLOW_ACTIVITY_RANGE_OPTIONS: tuple[tuple[FlowActivityRange, str], ...] = (
+    (FLOW_ACTIVITY_RANGE_TODAY, 'Today'),
+    (FLOW_ACTIVITY_RANGE_LAST_7_DAYS, 'Last 7 days'),
+    (FLOW_ACTIVITY_RANGE_THIS_MONTH, 'This month'),
+)
+ALLOWED_FLOW_ACTIVITY_RANGES: frozenset[FlowActivityRange] = frozenset(
+    key for key, _label in FLOW_ACTIVITY_RANGE_OPTIONS
+)
 ACCESS_MODE_LABELS = {
     'basic': 'Basic',
     'plus_paid': 'Plus without voucher',
@@ -149,6 +161,13 @@ class FlowActivityContext(TypedDict):
     flow_count: int
 
 
+class FlowActivityRangeOptionContext(TypedDict):
+    'One selectable range for the top Internet activities panel.'
+    key: str
+    label: str
+    selected: bool
+
+
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
     mac: str
@@ -170,6 +189,9 @@ class ClientUsageContext(TypedDict):
     wan_import_usage_rows: list[WanImportUsageContext]
     access_mode_usage_rows: list[AccessModeUsageContext]
     flow_activity_rows: list[FlowActivityContext]
+    flow_activity_range_options: list[FlowActivityRangeOptionContext]
+    selected_flow_activity_range: FlowActivityRange
+    selected_flow_activity_range_label: str
     voucher_usage: VoucherUsageContext | None
     usage_scales: list[UsageScaleContext]
     current_month_label: str
@@ -181,6 +203,19 @@ class ClientWanDetailContext(TypedDict):
     mac: str
     wan_import_usage_rows: list[WanImportUsageContext]
     flow_activity_rows: list[FlowActivityContext]
+    flow_activity_range_options: list[FlowActivityRangeOptionContext]
+    selected_flow_activity_range: FlowActivityRange
+    selected_flow_activity_range_label: str
+    current_month_label: str
+
+
+class ClientFlowActivityContext(TypedDict):
+    'Refreshable top Internet activities panel context.'
+    mac: str
+    flow_activity_rows: list[FlowActivityContext]
+    flow_activity_range_options: list[FlowActivityRangeOptionContext]
+    selected_flow_activity_range: FlowActivityRange
+    selected_flow_activity_range_label: str
     current_month_label: str
 
 
@@ -244,6 +279,48 @@ def render_month_label(now: datetime) -> str:
     if len(full_label) > 5:
         return now.strftime('%b')
     return full_label
+
+
+def normalize_flow_activity_range(flow_activity_range: str | None) -> FlowActivityRange:
+    'Return a safe top-activities range key, defaulting to the current month.'
+    if flow_activity_range in ALLOWED_FLOW_ACTIVITY_RANGES:
+        return cast(FlowActivityRange, flow_activity_range)
+    return FLOW_ACTIVITY_RANGE_THIS_MONTH
+
+
+def flow_activity_range_label(flow_activity_range: FlowActivityRange) -> str:
+    'Return the display label for a top-activities range key.'
+    return next(
+        label
+        for key, label in FLOW_ACTIVITY_RANGE_OPTIONS
+        if key == flow_activity_range
+    )
+
+
+def build_flow_activity_range_options(
+    selected_range: FlowActivityRange,
+) -> list[FlowActivityRangeOptionContext]:
+    'Return selectable top-activities range options for the detail panel.'
+    return [
+        {
+            'key': key,
+            'label': label,
+            'selected': key == selected_range,
+        }
+        for key, label in FLOW_ACTIVITY_RANGE_OPTIONS
+    ]
+
+
+def flow_activity_period_start(
+    flow_activity_range: FlowActivityRange,
+    now: datetime,
+) -> datetime:
+    'Return the earliest flow timestamp included in the selected activities range.'
+    if flow_activity_range == FLOW_ACTIVITY_RANGE_TODAY:
+        return datetime.combine(now.date(), time.min)
+    if flow_activity_range == FLOW_ACTIVITY_RANGE_LAST_7_DAYS:
+        return now - timedelta(days=7)
+    return datetime.combine(now.date().replace(day=1), time.min)
 
 
 def get_speed_limits_by_name() -> SpeedLimitsByName:
@@ -886,11 +963,39 @@ def merge_wan_totals_into_usage_points(
     return merged_points
 
 
-def get_client_wan_detail_context(mac: str, now: datetime | None = None) -> ClientWanDetailContext:
+def get_client_flow_activity_context(
+    mac: str,
+    flow_activity_range: FlowActivityRange = FLOW_ACTIVITY_RANGE_THIS_MONTH,
+    now: datetime | None = None,
+) -> ClientFlowActivityContext:
+    'Build the refreshable top Internet activities panel for one client.'
+    resolved_now = now or datetime.now()
+    period_start = flow_activity_period_start(flow_activity_range, resolved_now)
+    mac_identity_wan_flows = db.get_wan_identity_flow_rows_for_mac(mac, period_start, resolved_now)
+    return {
+        'mac': mac,
+        'flow_activity_rows': build_flow_activity_context(
+            mac_identity_wan_flows,
+            period_start,
+            resolved_now,
+        ),
+        'flow_activity_range_options': build_flow_activity_range_options(flow_activity_range),
+        'selected_flow_activity_range': flow_activity_range,
+        'selected_flow_activity_range_label': flow_activity_range_label(flow_activity_range),
+        'current_month_label': render_month_label(resolved_now),
+    }
+
+
+def get_client_wan_detail_context(
+    mac: str,
+    flow_activity_range: FlowActivityRange = FLOW_ACTIVITY_RANGE_THIS_MONTH,
+    now: datetime | None = None,
+) -> ClientWanDetailContext:
     'Build deferred WAN detail panels for one client.'
     resolved_now = now or datetime.now()
     month_start = datetime.combine(resolved_now.date().replace(day=1), time.min)
     mac_identity_wan_flows = db.get_wan_identity_flow_rows_for_mac(mac, month_start, resolved_now)
+    flow_activity_start = flow_activity_period_start(flow_activity_range, resolved_now)
     return {
         'mac': mac,
         'wan_import_usage_rows': build_wan_import_usage_context(
@@ -899,7 +1004,14 @@ def get_client_wan_detail_context(mac: str, now: datetime | None = None) -> Clie
             month_start,
             resolved_now,
         ),
-        'flow_activity_rows': build_flow_activity_context(mac_identity_wan_flows, month_start, resolved_now),
+        'flow_activity_rows': build_flow_activity_context(
+            mac_identity_wan_flows,
+            flow_activity_start,
+            resolved_now,
+        ),
+        'flow_activity_range_options': build_flow_activity_range_options(flow_activity_range),
+        'selected_flow_activity_range': flow_activity_range,
+        'selected_flow_activity_range_label': flow_activity_range_label(flow_activity_range),
         'current_month_label': render_month_label(resolved_now),
     }
 
@@ -970,6 +1082,9 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
             'wan_import_usage_rows': [],
             'access_mode_usage_rows': [],
             'flow_activity_rows': [],
+            'flow_activity_range_options': build_flow_activity_range_options(FLOW_ACTIVITY_RANGE_THIS_MONTH),
+            'selected_flow_activity_range': FLOW_ACTIVITY_RANGE_THIS_MONTH,
+            'selected_flow_activity_range_label': flow_activity_range_label(FLOW_ACTIVITY_RANGE_THIS_MONTH),
             'voucher_usage': None,
             'usage_scales': [],
             'current_month_label': current_month_label,
@@ -1008,6 +1123,7 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
         month_start,
         now,
     )
+    selected_flow_activity_range = FLOW_ACTIVITY_RANGE_THIS_MONTH
     flow_activity_rows = build_flow_activity_context(mac_identity_wan_flows, month_start, now)
     wan_today_download_mb, wan_today_upload_mb = summarize_wan_flows(
         mac_wan_flows,
@@ -1136,6 +1252,9 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
         'wan_import_usage_rows': wan_import_usage_rows,
         'access_mode_usage_rows': access_mode_usage_rows,
         'flow_activity_rows': flow_activity_rows,
+        'flow_activity_range_options': build_flow_activity_range_options(selected_flow_activity_range),
+        'selected_flow_activity_range': selected_flow_activity_range,
+        'selected_flow_activity_range_label': flow_activity_range_label(selected_flow_activity_range),
         'voucher_usage': build_voucher_usage_context(
             latest_record.user_id,
             voucher=voucher,

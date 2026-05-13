@@ -88,6 +88,27 @@ class ClientUsageContextTests(unittest.TestCase):
             "May 9, 23:59–May 10, 00:01",
         )
 
+    def test_flow_activity_range_normalization_and_periods(self) -> None:
+        now = datetime(2026, 5, 13, 10, 15)
+
+        self.assertEqual(usage_context.normalize_flow_activity_range("today"), "today")
+        self.assertEqual(usage_context.normalize_flow_activity_range("last_7_days"), "last_7_days")
+        self.assertEqual(usage_context.normalize_flow_activity_range("this_month"), "this_month")
+        self.assertEqual(usage_context.normalize_flow_activity_range("unexpected"), "this_month")
+
+        self.assertEqual(
+            usage_context.flow_activity_period_start("today", now),
+            datetime(2026, 5, 13, 0, 0),
+        )
+        self.assertEqual(
+            usage_context.flow_activity_period_start("last_7_days", now),
+            datetime(2026, 5, 6, 10, 15),
+        )
+        self.assertEqual(
+            usage_context.flow_activity_period_start("this_month", now),
+            datetime(2026, 5, 1, 0, 0),
+        )
+
     def test_wan_chart_buckets_use_flow_end_time(self) -> None:
         flow = db.WanMacFlowUsage(
             source_file="nfcapd.202605100000",

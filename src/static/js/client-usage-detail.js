@@ -9,6 +9,7 @@
         return;
     }
     const reverseDnsUrl = container.dataset.reverseDnsUrl || '';
+    const flowActivityUrl = container.dataset.flowActivityUrl || '';
 
     const renderError = () => {
         container.innerHTML = `
@@ -34,9 +35,54 @@
                 window.renderUsageCharts();
             }
             initializePaginatedTables();
+            initializeFlowActivityRangeControls();
             refreshReverseDnsLabels();
         })
         .catch(renderError);
+
+    const initializeFlowActivityRangeControls = () => {
+        container.querySelectorAll('[data-flow-activity-panel]').forEach((panel) => {
+            if (panel.dataset.rangeControlReady === 'true') {
+                return;
+            }
+
+            const rangeSelect = panel.querySelector('[data-flow-activity-range]');
+            const panelUrl = panel.dataset.flowActivityUrl || flowActivityUrl;
+            if (!rangeSelect || !panelUrl) {
+                return;
+            }
+
+            panel.dataset.rangeControlReady = 'true';
+            rangeSelect.addEventListener('change', async () => {
+                const selectedRange = rangeSelect.value || 'this_month';
+                rangeSelect.disabled = true;
+                panel.classList.add('panel-loading');
+
+                try {
+                    const params = new URLSearchParams({ flow_activity_range: selectedRange });
+                    const response = await fetch(`${panelUrl}?${params.toString()}`, { cache: 'no-store' });
+                    if (!response.ok) {
+                        throw new Error(`Internet activity request failed: ${response.status}`);
+                    }
+
+                    const html = await response.text();
+                    const template = document.createElement('template');
+                    template.innerHTML = html.trim();
+                    const nextPanel = template.content.querySelector('[data-flow-activity-panel]');
+                    if (!nextPanel) {
+                        throw new Error('Internet activity response was missing the panel');
+                    }
+
+                    panel.replaceWith(nextPanel);
+                    initializeFlowActivityRangeControls();
+                    refreshReverseDnsLabels();
+                } catch (_error) {
+                    rangeSelect.disabled = false;
+                    panel.classList.remove('panel-loading');
+                }
+            });
+        });
+    };
 
     const initializePaginatedTables = () => {
         container.querySelectorAll('[data-paginated-table]').forEach((table) => {

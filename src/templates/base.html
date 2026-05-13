@@ -236,6 +236,10 @@
             box-shadow: 0 20px 45px rgba(31, 41, 51, 0.08);
         }
 
+        .panel.panel-loading {
+            opacity: 0.72;
+        }
+
         .stat {
             padding: var(--space-5);
         }
@@ -368,6 +372,38 @@
         .panel h2 {
             margin: 0 0 var(--space-4);
             font-size: 1.1rem;
+        }
+
+        .panel-title-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-3);
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-4);
+        }
+
+        .panel-title-row h2 {
+            margin-bottom: 0;
+        }
+
+        .panel-range-control {
+            display: flex;
+            gap: var(--space-2);
+            align-items: center;
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        .panel-range-control select {
+            min-height: 32px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.70);
+            color: var(--ink);
+            font: inherit;
+            font-size: 0.9rem;
+            padding: 5px 30px 5px 10px;
         }
 
         .panel-body {

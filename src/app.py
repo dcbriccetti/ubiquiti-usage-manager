@@ -34,7 +34,12 @@ from lan_identity import find_client_mac_for_ip, get_request_ip
 from logging_config import configure_logging
 from report_periods import build_report_period_context
 from reverse_dns import resolve_host_labels
-from usage_context import get_client_usage_context, speed_limit_option_label
+from usage_context import (
+    get_client_flow_activity_context,
+    get_client_usage_context,
+    normalize_flow_activity_range,
+    speed_limit_option_label,
+)
 from wan_service import (
     build_month_usage_comparison_rows,
     build_wan_attribution_diagnostics,
@@ -611,6 +616,7 @@ def create_app() -> Flask:
                 selected_speed_limit_name="",
                 speed_limit_form_message="",
                 wan_details_url=url_for('client_wan_details', mac=mac),
+                flow_activity_url=url_for('client_flow_activities', mac=mac),
                 **context,
             )
         except LookupError:
@@ -622,9 +628,24 @@ def create_app() -> Flask:
         if not requester_is_plus_admin():
             abort(403)
 
+        context: dict[str, object] = dict(get_client_usage_context(mac))
         return render_template(
             "_client_deferred_usage_panels.html",
-            **get_client_usage_context(mac),
+            flow_activity_url=url_for('client_flow_activities', mac=mac),
+            **context,
+        )
+
+    @flask_app.route("/clients/<mac>/flow-activities")
+    def client_flow_activities(mac: str):
+        'Render the refreshable top Internet activities panel for one client.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        flow_activity_range = normalize_flow_activity_range(request.args.get('flow_activity_range'))
+        return render_template(
+            "_flow_activity_panel.html",
+            flow_activity_url=url_for('client_flow_activities', mac=mac),
+            **get_client_flow_activity_context(mac, flow_activity_range),
         )
 
     @flask_app.route("/api/reverse-dns-labels")
@@ -739,6 +760,7 @@ def create_app() -> Flask:
             selected_speed_limit_name=selected_speed_limit_name,
             speed_limit_form_message=speed_limit_form_message,
             wan_details_url=url_for('my_usage_wan_details'),
+            flow_activity_url=url_for('my_usage_flow_activities'),
             **context,
         )
 
@@ -750,9 +772,26 @@ def create_app() -> Flask:
         if lookup_error or detected_mac is None:
             abort(404)
 
+        context: dict[str, object] = dict(get_client_usage_context(detected_mac))
         return render_template(
             "_client_deferred_usage_panels.html",
-            **get_client_usage_context(detected_mac),
+            flow_activity_url=url_for('my_usage_flow_activities'),
+            **context,
+        )
+
+    @flask_app.route("/my-usage/flow-activities")
+    def my_usage_flow_activities():
+        'Render the refreshable top Internet activities panel for the requesting client.'
+        request_ip = resolve_request_ip()
+        detected_mac, lookup_error = resolve_my_usage_mac(request_ip)
+        if lookup_error or detected_mac is None:
+            abort(404)
+
+        flow_activity_range = normalize_flow_activity_range(request.args.get('flow_activity_range'))
+        return render_template(
+            "_flow_activity_panel.html",
+            flow_activity_url=url_for('my_usage_flow_activities'),
+            **get_client_flow_activity_context(detected_mac, flow_activity_range),
         )
 
     return flask_app

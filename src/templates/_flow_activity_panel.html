@@ -1,10 +1,24 @@
-{% if flow_activity_rows %}
-    <article class="panel">
-        <div class="panel-body">
+<article
+    class="panel"
+    data-flow-activity-panel
+    data-flow-activity-url="{{ flow_activity_url or '' }}"
+>
+    <div class="panel-body">
+        <div class="panel-title-row">
             <h2>Top Internet Activities</h2>
-            <p class="muted">
-                Grouped by connection type for {{ current_month_label }}. Host names use cached reverse DNS when available.
-            </p>
+            <label class="panel-range-control">
+                <span>Range</span>
+                <select data-flow-activity-range>
+                    {% for option in flow_activity_range_options %}
+                        <option value="{{ option.key }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </div>
+        <p class="muted">
+            Shows the connection types that used the most Internet data for {{ selected_flow_activity_range_label|lower }}.
+        </p>
+        {% if flow_activity_rows %}
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -43,6 +57,8 @@
                     </tbody>
                 </table>
             </div>
-        </div>
-    </article>
-{% endif %}
+        {% else %}
+            <p class="muted">No Internet activity in this range.</p>
+        {% endif %}
+    </div>
+</article>
