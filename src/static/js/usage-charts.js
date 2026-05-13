@@ -484,7 +484,7 @@
                     ...sharedStackedOptions,
                     scales: {
                         ...sharedStackedOptions.scales,
-                        y: { ...sharedStackedOptions.scales.y, title: { display: true, text: "WAN MB/day" } }
+                        y: { ...sharedStackedOptions.scales.y, title: { display: true, text: "Internet MB/day" } }
                     }
                 }
             });
@@ -498,7 +498,7 @@
                     labels: config.wanHourlyLabels,
                     datasets: [
                         {
-                            label: "WAN MB",
+                            label: "Internet MB",
                             data: config.wanHourlyMb,
                             backgroundColor: "rgba(2, 132, 199, 0.72)",
                             borderColor: "rgba(2, 132, 199, 0.92)",
@@ -521,7 +521,7 @@
                                 title: titleFor(config.wanHourlyFullLabels || []),
                                 label: (tooltipItem) => {
                                     const value = Math.round(Number(tooltipItem.parsed?.y || 0));
-                                    return `WAN MB: ${value.toLocaleString()}`;
+                                    return `Internet MB: ${value.toLocaleString()}`;
                                 },
                             }
                         }
@@ -539,7 +539,7 @@
                         },
                         y: {
                             beginAtZero: true,
-                            title: { display: true, text: "WAN MB/hour" },
+                            title: { display: true, text: "Internet MB/hour" },
                             grid: { color: "rgba(31, 41, 51, 0.20)" }
                         }
                     }

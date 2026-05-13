@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 
-{% block title %}WAN Usage | UniFi Usage{% endblock %}
+{% block title %}Internet Usage | UniFi Usage{% endblock %}
 {% block page_class %} wide-page{% endblock %}
 
 {% block content %}
     <section class="hero">
         <div>
             <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
-            <h1>WAN Usage</h1>
-            <p>Flow-attributed internet usage from completed NetFlow/IPFIX captures.</p>
+            <h1>Internet Usage</h1>
+            <p>Internet usage attributed to clients from completed router data batches.</p>
         </div>
     </section>
 
     <section class="grid stats">
         <article class="panel stat">
-            <span class="label">WAN Today</span>
+            <span class="label">Internet Today</span>
             <span class="value">{{ "{:,.1f}".format(total_today_download_mb + total_today_upload_mb) }} MB</span>
         </article>
         <article class="panel stat">
@@ -25,11 +25,11 @@
             </span>
         </article>
         <article class="panel stat">
-            <span class="label">WAN Month</span>
+            <span class="label">Internet Month</span>
             <span class="value">{{ "{:,.1f}".format(total_month_download_mb + total_month_upload_mb) }} MB</span>
         </article>
         <article class="panel stat">
-            <span class="label">Latest Import</span>
+            <span class="label">Latest Data</span>
             <span class="value">
                 {% if latest_import %}
                     {{ latest_import_age_minutes }}m ago
@@ -42,18 +42,18 @@
 
     <article class="panel">
         <div class="panel-body">
-            <h2>Flow Import Status</h2>
+            <h2>Internet Data Status</h2>
             {% if latest_import %}
                 <p class="muted">
                     Latest file {{ latest_import.source_file }} · imported {{ latest_import.imported_at.strftime("%Y-%m-%d %H:%M:%S") }} ·
-                    {{ latest_import.record_count }} rows · {{ latest_import.skipped_count }} skipped
+                    {{ latest_import.record_count }} records · {{ latest_import.skipped_count }} skipped
                 </p>
             {% else %}
-                <p class="muted">No completed flow captures have been imported yet.</p>
+                <p class="muted">No completed Internet data batches have been imported yet.</p>
             {% endif %}
             <p class="muted">
                 Internal networks: {{ internal_networks|join(", ") if internal_networks else "none configured" }}.
-                Client and network rows use the identity observed nearest each flow time.
+                Client and network rows use the identity observed nearest each connection time.
                 Top client table hides rows below {{ "{:,.2f}".format(client_display_threshold_mb) }} MB today.
                 {% if hidden_tiny_client_count %}
                     {{ hidden_tiny_client_count }} tiny client{% if hidden_tiny_client_count != 1 %}s{% endif %} hidden.
@@ -64,9 +64,9 @@
 
     <article class="panel">
         <div class="panel-body">
-            <h2>WAN / UniFi Reconciliation</h2>
+            <h2>Internet and UniFi Comparison</h2>
             <p class="muted">
-                UniFi MB is the existing client station counter. WAN MB is imported internet flow usage.
+                UniFi MB is the existing client station counter. Internet MB is imported Internet usage.
             </p>
             <div class="table-wrap">
                 <table class="fit-content-table">
@@ -74,9 +74,9 @@
                     <tr>
                         <th>Period</th>
                         <th class="num">UniFi MB</th>
-                        <th class="num">WAN MB</th>
-                        <th class="num">WAN / UniFi</th>
-                        <th class="num">WAN - UniFi</th>
+                        <th class="num">Internet MB</th>
+                        <th class="num">Internet / UniFi</th>
+                        <th class="num">Internet - UniFi</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -97,9 +97,9 @@
 
     <article class="panel">
         <div class="panel-body">
-            <h2>WAN Attribution Diagnostics</h2>
+            <h2>Internet Attribution Health</h2>
             <p class="muted">
-                Month-to-date identity coverage for deciding when WAN can become the primary billing source.
+                Month-to-date identity coverage for deciding when Internet data can become the primary billing source.
             </p>
             <p>
                 Billing readiness:
@@ -114,7 +114,7 @@
                     <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.attributed_pct) }}%</span>
                 </article>
                 <article class="panel stat">
-                    <span class="label">Month Fallback</span>
+                    <span class="label">Month Approximate</span>
                     <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.fallback_pct) }}%</span>
                 </article>
                 <article class="panel stat">
@@ -122,7 +122,7 @@
                     <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.unattributed_pct) }}%</span>
                 </article>
                 <article class="panel stat">
-                    <span class="label">Total WAN</span>
+                    <span class="label">Total Internet</span>
                     <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.total_mb) }} MB</span>
                 </article>
             </section>
@@ -132,7 +132,7 @@
                     <tr>
                         <th>Period</th>
                         <th class="num">Confident %</th>
-                        <th class="num">Fallback %</th>
+                        <th class="num">Approximate %</th>
                         <th class="num">Unknown %</th>
                         <th class="num">Unknown MB</th>
                         <th class="num">Unknown Clients</th>
@@ -156,15 +156,15 @@
             </div>
             <section class="grid">
                 <section>
-                    <h3>Top Unidentified WAN Rows</h3>
+                    <h3>Top Unidentified Internet Usage</h3>
                     <div class="table-wrap">
                         <table class="fit-content-table">
                             <thead>
                             <tr>
                                 <th>Client IP</th>
                                 <th>Network</th>
-                                <th class="num">WAN MB</th>
-                                <th class="num">Flows</th>
+                                <th class="num">Internet MB</th>
+                                <th class="num">Connections</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -177,7 +177,7 @@
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td colspan="4" class="muted">No unidentified WAN rows this month.</td>
+                                    <td colspan="4" class="muted">No unidentified Internet usage this month.</td>
                                 </tr>
                             {% endfor %}
                             </tbody>
@@ -185,7 +185,7 @@
                     </div>
                 </section>
                 <section>
-                    <h3>Top Fallback WAN Rows</h3>
+                    <h3>Top Approximate Identity Matches</h3>
                     <div class="table-wrap">
                         <table class="fit-content-table">
                             <thead>
@@ -193,8 +193,8 @@
                                 <th>Name</th>
                                 <th>Client IP</th>
                                 <th>MAC</th>
-                                <th class="num">WAN MB</th>
-                                <th class="num">Flows</th>
+                                <th class="num">Internet MB</th>
+                                <th class="num">Connections</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -218,7 +218,7 @@
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td colspan="5" class="muted">No latest-identity fallback rows this month.</td>
+                                    <td colspan="5" class="muted">No approximate identity matches this month.</td>
                                 </tr>
                             {% endfor %}
                             </tbody>
@@ -233,8 +233,8 @@
         <div class="panel-body">
             <h2>Month Usage Comparison</h2>
             <p class="muted">
-                UniFi MB is the existing client counter. WAN MB is internet-only flow usage attributed by client identity.
-                This table compares the overlapping WAN-covered period beginning {{ month_comparison_start.strftime("%Y-%m-%d %H:%M") }}.
+                UniFi MB is the existing client counter. Internet MB is Internet-only usage attributed by client identity.
+                This table compares the overlapping Internet-covered period beginning {{ month_comparison_start.strftime("%Y-%m-%d %H:%M") }}.
             </p>
             <div class="table-wrap">
                 <table class="fit-content-table">
@@ -246,9 +246,9 @@
                         <th>MAC</th>
                         <th>Client IP</th>
                         <th class="num">UniFi MB</th>
-                        <th class="num">WAN MB</th>
-                        <th class="num">WAN - UniFi</th>
-                        <th class="num">Flows</th>
+                        <th class="num">Internet MB</th>
+                        <th class="num">Internet - UniFi</th>
+                        <th class="num">Connections</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -261,7 +261,7 @@
                                     {{ row.name or "" }}
                                 {% endif %}
                                 {% if row.identity_is_fallback %}
-                                    <span class="muted" title="Latest identity fallback; not observed at flow time">*</span>
+                                    <span class="muted" title="Matched to latest known identity; not observed at connection time">*</span>
                                 {% endif %}
                             </td>
                             <td class="mono">{{ row.user_id or "" }}</td>
@@ -291,7 +291,7 @@
     <section class="grid">
         <article class="panel">
             <div class="panel-body">
-                <h2>WAN by Network Today</h2>
+                <h2>Internet by Network Today</h2>
                 <div class="table-wrap">
                     <table class="fit-content-table">
                         <thead>
@@ -301,7 +301,7 @@
                             <th class="num">Upload MB</th>
                             <th class="num">Total MB</th>
                             <th class="num">Clients</th>
-                            <th class="num">Flows</th>
+                            <th class="num">Connections</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -318,7 +318,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="6" class="muted">No WAN flow usage imported for today yet.</td>
+                                <td colspan="6" class="muted">No Internet usage imported for today yet.</td>
                             </tr>
                         {% endfor %}
                         </tbody>
@@ -329,7 +329,7 @@
 
         <article class="panel">
             <div class="panel-body">
-                <h2>Top WAN Clients Today</h2>
+                <h2>Top Internet Clients Today</h2>
                 <div class="table-wrap">
                     <table class="fit-content-table">
                         <thead>
@@ -342,7 +342,7 @@
                             <th class="num">Download MB</th>
                             <th class="num">Upload MB</th>
                             <th class="num">Total MB</th>
-                            <th class="num">Flows</th>
+                            <th class="num">Connections</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -358,7 +358,7 @@
                                         {{ row.name or "" }}
                                     {% endif %}
                                     {% if row.identity_is_fallback %}
-                                        <span class="muted" title="Latest identity fallback; not observed at flow time">*</span>
+                                    <span class="muted" title="Matched to latest known identity; not observed at connection time">*</span>
                                     {% endif %}
                                 </td>
                                 <td class="mono">{{ row.user_id or "" }}</td>
@@ -375,7 +375,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="9" class="muted">No WAN flow usage imported for today yet.</td>
+                                <td colspan="9" class="muted">No Internet usage imported for today yet.</td>
                             </tr>
                         {% endfor %}
                         </tbody>
@@ -386,12 +386,12 @@
 
         <article class="panel">
             <div class="panel-body">
-                <h2>Recent Flow Imports</h2>
+                <h2>Recent Internet Data Imports</h2>
                 <div class="table-wrap">
                     <table class="fit-content-table">
                         <thead>
                         <tr>
-                            <th>Capture File</th>
+                            <th>Data File</th>
                             <th>Imported</th>
                             <th class="num">Rows</th>
                             <th class="num">Skipped</th>
@@ -407,7 +407,7 @@
                             </tr>
                         {% else %}
                             <tr>
-                                <td colspan="4" class="muted">No flow imports recorded yet.</td>
+                                <td colspan="4" class="muted">No Internet data imports recorded yet.</td>
                             </tr>
                         {% endfor %}
                         </tbody>

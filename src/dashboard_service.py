@@ -359,11 +359,11 @@ def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> Das
     month_wan_rows = period_rows.get('month', [])
     recent_imports = db.get_recent_flow_imports(limit=1)
     latest_import = recent_imports[0] if recent_imports else None
-    wan_import_status = 'WAN import: none'
+    wan_import_status = 'Internet data: none yet'
     wan_import_stale = True
     if latest_import:
         age_minutes = int((now - latest_import.imported_at).total_seconds() // 60)
-        wan_import_status = f'WAN import: {age_minutes}m ago ({latest_import.source_file})'
+        wan_import_status = f'Internet data updated {age_minutes}m ago'
         wan_import_stale = age_minutes > 15
 
     return DashboardWanData(
@@ -644,7 +644,7 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
 def render_dashboard_window_label(window_name: WindowName, current_month_label: str) -> str:
     'Return a short display label for a dashboard window.'
     if window_name == WINDOW_ACTIVE_NOW:
-        return 'Recent WAN'
+        return 'Recent Internet'
     if window_name == WINDOW_ONLINE_NOW:
         return 'Online Now'
     if window_name == WINDOW_TODAY:
@@ -1023,9 +1023,9 @@ def build_insights_data(
         'daily_network_basic_minutes': [row.basic_minutes for row in daily_network_usage],
         'daily_network_plus_minutes': [row.plus_minutes for row in daily_network_usage],
         'wan_hourly_title': (
-            'Hourly WAN Usage (Month to Date)'
+            'Hourly Internet Usage (Month to Date)'
             if include_live_organization_paid_clients
-            else f'Hourly WAN Usage ({selected_report_label})'
+            else f'Hourly Internet Usage ({selected_report_label})'
         ),
         'wan_hourly_labels': [f'{row.bucket_start.day} {row.bucket_start:%H}:00' for row in wan_hourly_usage],
         'wan_hourly_tick_labels': [

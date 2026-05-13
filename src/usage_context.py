@@ -976,7 +976,7 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
             'x_axis_title': 'Hour of day',
             'mb_axis_title': 'MB/hour',
             'minutes_axis_title': 'minutes/hour',
-            'summary_text': 'Chart: attributed WAN MB/hour stacked by down/up direction.',
+            'summary_text': 'Chart: attributed Internet MB/hour stacked by down/up direction.',
             'points': daily_hourly_usage,
             'usage_device_series': build_wan_flow_direction_series(
                 mac_wan_flows,
@@ -1000,7 +1000,7 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
             'x_axis_title': 'Day of month',
             'mb_axis_title': 'MB/day',
             'minutes_axis_title': 'minutes/day',
-            'summary_text': 'Chart: attributed WAN MB/day stacked by down/up direction.',
+            'summary_text': 'Chart: attributed Internet MB/day stacked by down/up direction.',
             'points': month_daily_usage,
             'usage_device_series': build_wan_flow_direction_series(
                 mac_wan_flows,

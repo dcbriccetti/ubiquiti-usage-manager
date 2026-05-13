@@ -11,10 +11,10 @@
             <div>
                 <h1>Network Usage Controller</h1>
                 <p>
-                    WAN usage and management dashboard for UniFi clients, with switchable views
-                    for recent WAN, online now, today, 7 days, and this month.
+                    Internet usage and management dashboard for UniFi clients, with switchable views
+                    for recent Internet use, online now, today, 7 days, and this month.
                     <a href="{{ url_for('insights') }}">Open Insights</a>.
-                    <a href="{{ url_for('wan_usage') }}">Open WAN usage</a>.
+                    <a href="{{ url_for('wan_usage') }}">Open Internet usage</a>.
                     <a href="{{ url_for('plus_vouchers') }}">Open Plus vouchers</a>.
                     <a href="{{ url_for('radius_users') }}">Open RADIUS users</a>.
                 </p>
@@ -27,15 +27,15 @@
             </div>
             <section class="grid stats dashboard-stats">
                 <article class="panel stat">
-                    <span class="label">WAN Today</span>
+                    <span class="label">Internet Today</span>
                     <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(payload.total_today_mb) }} MB</span>
                 </article>
                 <article class="panel stat">
-                    <span class="label">WAN Last 7&nbsp;Days</span>
+                    <span class="label">Internet Last 7&nbsp;Days</span>
                     <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(payload.total_last_7_days_mb) }} MB</span>
                 </article>
                 <article class="panel stat">
-                    <span class="label" id="stat-usage-month-label">WAN {{ payload.current_month_label }}</span>
+                    <span class="label" id="stat-usage-month-label">Internet {{ payload.current_month_label }}</span>
                     <span class="value" id="stat-usage-this-month">{{ "{:,.0f}".format(payload.total_calendar_month_mb) }} MB</span>
                 </article>
             </section>
@@ -59,7 +59,7 @@
                 <div class="control-row">
                     <label for="window-select" class="muted">Show:</label>
                     <select id="window-select">
-                        <option value="active_now">Recent WAN</option>
+                        <option value="active_now">Recent Internet</option>
                         <option value="online_now">Online Now</option>
                         <option value="today">Today</option>
                         <option value="last_7_days">7 Days</option>
@@ -89,7 +89,7 @@
                                 colspan="4"
                                 class="usage-group"
                             >
-                                WAN Usage (MB)
+                                Internet Usage (MB)
                             </th>
                             <th class="cost-group" id="cost-group-header">Cost</th>
                             <th colspan="3" class="speed-group">Speed Limit (kbps)</th>

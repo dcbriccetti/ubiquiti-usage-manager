@@ -218,36 +218,36 @@ def build_wan_billing_readiness(
         return {
             'label': 'No imports',
             'class': 'warn-text',
-            'detail': 'WAN capture import has not produced any completed data yet.',
+            'detail': 'Internet data import has not produced any completed data yet.',
         }
     if latest_import_age_minutes > 15:
         return {
             'label': 'Import stale',
             'class': 'warn-text',
-            'detail': 'WAN capture data is old enough that billing comparisons may be incomplete.',
+            'detail': 'Internet data is old enough that billing comparisons may be incomplete.',
         }
     if total_mb < 100.0:
         return {
             'label': 'Collecting',
             'class': 'muted',
-            'detail': 'WAN volume is still low; wait for a busy period before switching billing.',
+            'detail': 'Internet volume is still low; wait for a busy period before switching billing.',
         }
     if unattributed_pct <= 2.0 and fallback_pct <= 10.0:
         return {
             'label': 'Strong',
             'class': '',
-            'detail': 'Most WAN usage is confidently attributed to client identities.',
+            'detail': 'Most Internet usage is confidently attributed to client identities.',
         }
     if unattributed_pct <= 10.0:
         return {
             'label': 'Watch',
             'class': '',
-            'detail': 'WAN attribution is usable for comparison, but fallback or unknown rows still need review.',
+            'detail': 'Internet attribution is usable for comparison, but approximate or unknown matches still need review.',
         }
     return {
         'label': 'Needs identity work',
         'class': 'warn-text',
-        'detail': 'Too much WAN usage is still unidentified to use as the billing source.',
+        'detail': 'Too much Internet usage is still unidentified to use as the billing source.',
     }
 
 

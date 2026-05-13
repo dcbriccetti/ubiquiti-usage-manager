@@ -65,9 +65,9 @@
         <article class="panel">
             <div class="panel-body">
                 <h2>Traffic & Concurrency</h2>
-                <h3>Daily WAN MB by VLAN</h3>
+                <h3>Daily Internet MB by VLAN</h3>
                 <div class="month-chart-wrap">
-                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily WAN MB stacked by VLAN"></canvas>
+                    <canvas id="global-daily-mb-chart" class="month-chart-canvas" role="img" aria-label="Daily Internet MB stacked by VLAN"></canvas>
                 </div>
                 <h3>{{ wan_hourly_title }}</h3>
                 <div class="month-chart-wrap">
@@ -140,7 +140,7 @@
                             <thead>
                                 <tr>
                                     <th>Category</th>
-                                    <th class="num">WAN MB</th>
+                                    <th class="num">Internet MB</th>
                                     <th class="num">Allocated</th>
                                     <th class="num">%</th>
                                     <th class="num">Minutes</th>
@@ -206,7 +206,7 @@
                                     <th>Name</th>
                                     <th class="mac-col">MAC</th>
                                     <th class="network-col">VLAN</th>
-                                    <th class="num">WAN MB</th>
+                                    <th class="num">Internet MB</th>
                                     <th class="num">Minutes</th>
                                     <th class="num">Cost</th>
                                 </tr>
@@ -239,12 +239,12 @@
                         </table>
                     </article>
                     <article>
-                        <h3>Top Users by {{ current_month_label }} WAN MB</h3>
+                        <h3>Top Users by {{ current_month_label }} Internet MB</h3>
                         <table class="insights-table">
                             <thead>
                                 <tr>
                                     <th>User</th>
-                                    <th class="num">WAN MB</th>
+                                    <th class="num">Internet MB</th>
                                     <th class="num">Minutes</th>
                                     <th class="num">Cost</th>
                                 </tr>

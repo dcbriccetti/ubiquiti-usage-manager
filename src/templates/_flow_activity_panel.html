@@ -1,21 +1,21 @@
 {% if flow_activity_rows %}
     <article class="panel">
         <div class="panel-body">
-            <h2>Top WAN Activities</h2>
+            <h2>Top Internet Activities</h2>
             <p class="muted">
-                Grouped by protocol and service port for {{ current_month_label }}. Remote names use cached reverse DNS when available.
+                Grouped by connection type for {{ current_month_label }}. Host names use cached reverse DNS when available.
             </p>
             <div class="table-wrap">
                 <table>
                     <thead>
                         <tr>
                             <th>Activity</th>
-                            <th>Remote endpoints</th>
-                            <th class="num">WAN MB</th>
+                            <th>Hosts</th>
+                            <th class="num">Internet MB</th>
                             <th class="num">Down</th>
                             <th class="num">Up</th>
                             <th class="num">Share</th>
-                            <th class="num">Flows</th>
+                            <th class="num">Connections</th>
                         </tr>
                     </thead>
                     <tbody>

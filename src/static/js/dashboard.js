@@ -80,7 +80,7 @@
         this_month: 'Month Cost'
     };
     const windowLabelByWindow = {
-        active_now: 'Recent WAN',
+        active_now: 'Recent Internet',
         online_now: 'Online Now',
         today: 'Today',
         last_7_days: '7 Days',
@@ -206,7 +206,7 @@
         const values = (client && Array.isArray(client.recent_activity)) ? client.recent_activity : [];
         if (!values.length) return '';
         const sharedScale = getCurrentActivityScale();
-        const bucketLabel = selectedActivitySpan === '12d' ? 'WAN MB/day' : (selectedActivitySpan === '12h' ? 'WAN MB/hour' : 'WAN MB/5 min');
+        const bucketLabel = selectedActivitySpan === '12d' ? 'Internet MB/day' : (selectedActivitySpan === '12h' ? 'Internet MB/hour' : 'Internet MB/5 min');
         const bars = values.map((value) => {
             const numeric = Number(value) || 0;
             const isCapped = numeric > sharedScale;
@@ -215,7 +215,7 @@
             const tip = `${numeric.toFixed(3)} ${bucketLabel}${isCapped ? ` (capped at ${sharedScale.toFixed(3)})` : ''}`;
             return `<span class="${klass}" data-bar-height="${height.toFixed(1)}" title="${escapeHtml(tip)}"></span>`;
         }).join('');
-        return `<div class="sparkline" title="Recent WAN activity (${bucketLabel}, completed captures, shared scale ${sharedScale.toFixed(3)})">${bars}</div>`;
+        return `<div class="sparkline" title="Recent Internet activity (${bucketLabel}, completed data batches, shared scale ${sharedScale.toFixed(3)})">${bars}</div>`;
     };
     const escapeHtml = (value) =>
         String(value)
@@ -226,7 +226,7 @@
             .replaceAll('\'', '&#39;');
     const emptyWindowMessage = () => {
         if (selectedWindow === 'active_now') {
-            return 'No clients have recent WAN usage in this view yet.';
+            return 'No clients have recent Internet usage in this view yet.';
         }
         return 'No clients found for this view yet.';
     };
@@ -452,7 +452,7 @@
         statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
         statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
         if (data.current_month_label) {
-            statUsageMonthLabel.textContent = `WAN ${data.current_month_label}`;
+            statUsageMonthLabel.textContent = `Internet ${data.current_month_label}`;
             usageMonthHeader.textContent = data.current_month_label;
             const monthOption = windowSelect.querySelector('option[value="this_month"]');
             if (monthOption) {
@@ -472,7 +472,7 @@
         updateActivityScale(data.clients);
         applyWindowColumnVisibility();
         topConsumersTitle.textContent = String(data.top_consumers_title || 'Usage Share');
-        wanImportStatus.textContent = String(data.wan_import_status || 'WAN import: unknown');
+        wanImportStatus.textContent = String(data.wan_import_status || 'Internet data: unknown');
         wanImportStatus.classList.toggle('warn-text', Boolean(data.wan_import_stale));
         dashboardLoadingStatus.hidden = true;
         renderTopCurrentConsumers(data.top_current_consumers);
