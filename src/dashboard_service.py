@@ -31,7 +31,7 @@ from speedlimit import SpeedLimit
 from unifi_time import normalize_epoch_seconds, normalize_online_seconds
 
 WindowName = Literal['active_now', 'online_now', 'today', 'last_7_days', 'this_month']
-ActivitySpan = Literal['1h', '12h', '12d']
+ActivitySpan = Literal['1h', '6h', '24h', '7d']
 
 WINDOW_ACTIVE_NOW: WindowName = 'active_now'
 WINDOW_ONLINE_NOW: WindowName = 'online_now'
@@ -46,9 +46,15 @@ ALLOWED_WINDOWS: frozenset[WindowName] = frozenset({
     WINDOW_THIS_MONTH,
 })
 ACTIVITY_SPAN_1_HOUR: ActivitySpan = '1h'
-ACTIVITY_SPAN_12_HOUR: ActivitySpan = '12h'
-ACTIVITY_SPAN_12_DAY: ActivitySpan = '12d'
-ALLOWED_ACTIVITY_SPANS: frozenset[ActivitySpan] = frozenset({ACTIVITY_SPAN_1_HOUR, ACTIVITY_SPAN_12_HOUR, ACTIVITY_SPAN_12_DAY})
+ACTIVITY_SPAN_6_HOUR: ActivitySpan = '6h'
+ACTIVITY_SPAN_24_HOUR: ActivitySpan = '24h'
+ACTIVITY_SPAN_7_DAY: ActivitySpan = '7d'
+ALLOWED_ACTIVITY_SPANS: frozenset[ActivitySpan] = frozenset({
+    ACTIVITY_SPAN_1_HOUR,
+    ACTIVITY_SPAN_6_HOUR,
+    ACTIVITY_SPAN_24_HOUR,
+    ACTIVITY_SPAN_7_DAY,
+})
 DASHBOARD_WAN_CACHE_SECONDS = 30.0
 
 
@@ -199,6 +205,10 @@ def normalize_activity_span(activity_span: str | None) -> ActivitySpan:
     'Return a safe activity-span key, defaulting to a one-hour WAN sparkline.'
     if activity_span == '12m':
         return ACTIVITY_SPAN_1_HOUR
+    if activity_span == '12h':
+        return ACTIVITY_SPAN_24_HOUR
+    if activity_span == '12d':
+        return ACTIVITY_SPAN_7_DAY
     if isinstance(activity_span, str) and activity_span in ALLOWED_ACTIVITY_SPANS:
         return cast(ActivitySpan, activity_span)
     return ACTIVITY_SPAN_1_HOUR
@@ -331,10 +341,12 @@ def _total_wan_mb(rows: list[db.WanIdentityUsageSummary]) -> float:
 
 
 def _activity_window_seconds(activity_span: ActivitySpan) -> int:
-    if activity_span == ACTIVITY_SPAN_12_HOUR:
-        return 12 * 3600
-    if activity_span == ACTIVITY_SPAN_12_DAY:
-        return 12 * 86400
+    if activity_span == ACTIVITY_SPAN_6_HOUR:
+        return 6 * 3600
+    if activity_span == ACTIVITY_SPAN_24_HOUR:
+        return 24 * 3600
+    if activity_span == ACTIVITY_SPAN_7_DAY:
+        return 7 * 86400
     return 3600
 
 
@@ -624,13 +636,18 @@ def add_current_connection_minutes(
 
 def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -> None:
     'Attach recent WAN activity series to each dashboard row in-place.'
-    buckets = 12
     if activity_span == ACTIVITY_SPAN_1_HOUR:
+        buckets = 12
         bucket_seconds = 300
-    elif activity_span == ACTIVITY_SPAN_12_HOUR:
+    elif activity_span == ACTIVITY_SPAN_6_HOUR:
+        buckets = 12
+        bucket_seconds = 1800
+    elif activity_span == ACTIVITY_SPAN_24_HOUR:
+        buckets = 24
         bucket_seconds = 3600
     else:
-        bucket_seconds = 86400
+        buckets = 14
+        bucket_seconds = 12 * 3600
     macs = [row['mac'] for row in rows if row.get('mac')]
     series_by_mac: dict[str, list[float]] = db.get_wan_activity_series_by_mac(macs, buckets=buckets, bucket_seconds=bucket_seconds)
     default_series = [0.0] * buckets

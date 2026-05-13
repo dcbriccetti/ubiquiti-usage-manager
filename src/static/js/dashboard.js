@@ -206,7 +206,13 @@
         const values = (client && Array.isArray(client.recent_activity)) ? client.recent_activity : [];
         if (!values.length) return '';
         const sharedScale = getCurrentActivityScale();
-        const bucketLabel = selectedActivitySpan === '12d' ? 'Internet MB/day' : (selectedActivitySpan === '12h' ? 'Internet MB/hour' : 'Internet MB/5 min');
+        const bucketLabelBySpan = {
+            '1h': 'Internet MB/5 min',
+            '6h': 'Internet MB/30 min',
+            '24h': 'Internet MB/hour',
+            '7d': 'Internet MB/12 hours',
+        };
+        const bucketLabel = bucketLabelBySpan[selectedActivitySpan] || 'Internet MB/5 min';
         const bars = values.map((value) => {
             const numeric = Number(value) || 0;
             const isCapped = numeric > sharedScale;
