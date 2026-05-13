@@ -2095,13 +2095,15 @@ def summarize_access_point_counts(ap_counts: dict[str, int]) -> tuple[str, str] 
 def get_access_point_labels_for_windows(
     mac: str,
     window_bounds_by_key: dict[str, tuple[datetime, datetime]],
+    tolerance_seconds: int = 180,
 ) -> dict[str, tuple[str, str]]:
     'Return compact access point labels and detailed rollups for each time window.'
     if not window_bounds_by_key:
         return {}
 
-    period_start = min(bounds[0] for bounds in window_bounds_by_key.values())
-    period_end = max(bounds[1] for bounds in window_bounds_by_key.values())
+    tolerance = timedelta(seconds=max(0, tolerance_seconds))
+    period_start = min(bounds[0] for bounds in window_bounds_by_key.values()) - tolerance
+    period_end = max(bounds[1] for bounds in window_bounds_by_key.values()) + tolerance
     stmt = (
         select(UsageRecord.timestamp, UsageRecord.ap_name)
         .where(
@@ -2115,7 +2117,8 @@ def get_access_point_labels_for_windows(
     with SessionLocal() as session:
         rows = session.execute(stmt).all()
 
-    counts_by_key: dict[str, dict[str, int]] = {key: {} for key in window_bounds_by_key}
+    exact_counts_by_key: dict[str, dict[str, int]] = {key: {} for key in window_bounds_by_key}
+    nearby_counts_by_key: dict[str, dict[str, int]] = {key: {} for key in window_bounds_by_key}
     for row_timestamp, row_ap_name in rows:
         if not hasattr(row_timestamp, 'date'):
             continue
@@ -2124,11 +2127,15 @@ def get_access_point_labels_for_windows(
         ap_name = normalize_access_point_name(row_ap_name)
         for key, (window_start, window_end) in window_bounds_by_key.items():
             if window_start <= sample_at <= window_end:
-                ap_counts = counts_by_key[key]
+                ap_counts = exact_counts_by_key[key]
+                ap_counts[ap_name] = ap_counts.get(ap_name, 0) + 1
+            elif window_start - tolerance <= sample_at <= window_end + tolerance:
+                ap_counts = nearby_counts_by_key[key]
                 ap_counts[ap_name] = ap_counts.get(ap_name, 0) + 1
 
     labels_by_key: dict[str, tuple[str, str]] = {}
-    for key, ap_counts in counts_by_key.items():
+    for key, exact_counts in exact_counts_by_key.items():
+        ap_counts = exact_counts or nearby_counts_by_key[key]
         if label_and_detail := summarize_access_point_counts(ap_counts):
             labels_by_key[key] = label_and_detail
 

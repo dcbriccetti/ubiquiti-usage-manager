@@ -66,6 +66,23 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
             )
             session.commit()
 
+    def add_usage_record(self, observed_at: datetime, mac: str, ap_name: str) -> None:
+        with db.SessionLocal() as session:
+            session.add(
+                db.UsageRecord(
+                    timestamp=observed_at,
+                    mac=mac,
+                    user_id="",
+                    name="Test client",
+                    vlan="Plus",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name=ap_name,
+                    signal=-50,
+                )
+            )
+            session.commit()
+
     def test_global_wan_hourly_usage_aggregates_and_fills_empty_hours(self) -> None:
         self.add_flow("capture-1", datetime(2026, 5, 1, 1, 5), 1_000_000)
         self.add_flow("capture-2", datetime(2026, 5, 1, 1, 45), 2_000_000)
@@ -220,6 +237,18 @@ class GlobalWanHourlyUsageTests(unittest.TestCase):
 
         self.assertEqual(len(import_times), 1100)
         self.assertEqual(import_times["nfcapd.202605010999"], imported_at)
+
+    def test_access_point_window_labels_fall_back_to_nearby_samples(self) -> None:
+        mac = "aa:bb:cc:dd:ee:20"
+        self.add_usage_record(datetime(2026, 5, 1, 12, 4), mac, "Office AP")
+
+        labels = db.get_access_point_labels_for_windows(
+            mac,
+            {"capture": (datetime(2026, 5, 1, 12, 5), datetime(2026, 5, 1, 12, 5))},
+            tolerance_seconds=90,
+        )
+
+        self.assertEqual(labels["capture"], ("Office", "Office (1m)"))
 
 
 if __name__ == "__main__":

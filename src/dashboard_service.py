@@ -182,6 +182,12 @@ _dashboard_wan_cache_lock = Lock()
 _dashboard_wan_cache_by_activity_span: dict[ActivitySpan, tuple[float, DashboardWanData]] = {}
 
 
+def clear_dashboard_wan_cache() -> None:
+    'Clear cached WAN attribution data after new flow imports arrive.'
+    with _dashboard_wan_cache_lock:
+        _dashboard_wan_cache_by_activity_span.clear()
+
+
 def normalize_window(window_name: str | None) -> WindowName:
     'Return a safe dashboard window key, defaulting to active_now.'
     if isinstance(window_name, str) and window_name in ALLOWED_WINDOWS:

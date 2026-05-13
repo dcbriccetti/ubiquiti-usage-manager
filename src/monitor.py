@@ -4,12 +4,14 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from threading import Event, Lock, Thread
 
 import config as cfg
 import database as db
 import unifi_api as api
 from clientinfo import ClientInfo
-from flow_import import import_completed_captures, parse_internal_networks
+from dashboard_events import notify_dashboard_data_changed
+from flow_import import completed_capture_files, import_completed_captures, parse_internal_networks
 from logging_config import configure_logging
 from speedlimit import SpeedLimit
 from throttling_policy import target_profile_name_for_usage
@@ -80,6 +82,9 @@ class UsageMonitor:
         self.throttling_limit_ids: set[str] = set()
         self.throttleable_vlan_ids: list[str] = []
         self.last_flow_import_monotonic = 0.0
+        self._flow_import_lock = Lock()
+        self._flow_watch_stop = Event()
+        self._flow_watch_thread: Thread | None = None
         self.refresh_runtime_state()
 
         startup_release_limit_ids = self.throttling_limit_ids
@@ -87,6 +92,7 @@ class UsageMonitor:
             startup_release_limit_ids = self._configured_throttling_limit_ids_for_release()
             logger.info("Throttling disabled: releasing configured throttle limits at startup only")
         release_configured_limits(startup_release_limit_ids, "startup")
+        self._start_flow_import_watcher()
 
     def refresh_runtime_state(self) -> None:
         'Reload speed-limit groups and throttleable VLAN IDs from the controller.'
@@ -186,11 +192,21 @@ class UsageMonitor:
             return
         self.last_flow_import_monotonic = now_monotonic
 
+        self._import_flows_now('scheduled')
+
+    def _import_flows_now(self, reason: str) -> tuple[int, int, int]:
+        'Import completed nfdump captures immediately and notify dashboards.'
+        if not getattr(cfg, 'FLOW_IMPORT_ENABLED', True):
+            return 0, 0, 0
+
+        if not self._flow_import_lock.acquire(blocking=False):
+            return 0, 0, 0
+
         try:
             internal_networks = parse_internal_networks(getattr(cfg, 'INTERNAL_NETWORKS', set()))
             if not internal_networks:
                 logger.warning('Flow import skipped: no valid INTERNAL_NETWORKS configured')
-                return
+                return 0, 0, 0
 
             files, rows, skipped = import_completed_captures(
                 capture_dir=Path(str(getattr(cfg, 'NFDUMP_DIR', '/var/cache/nfdump'))),
@@ -199,13 +215,62 @@ class UsageMonitor:
             )
             if files or rows or skipped:
                 logger.info(
-                    'Flow import complete: files=%s imported_rows=%s skipped_rows=%s',
+                    'Flow import complete (%s): files=%s imported_rows=%s skipped_rows=%s',
+                    reason,
                     files,
                     rows,
                     skipped,
                 )
+                notify_dashboard_data_changed()
+            return files, rows, skipped
         except Exception as exc:
             logger.exception('Flow import failed: %s', exc)
+            return 0, 0, 0
+        finally:
+            self._flow_import_lock.release()
+
+    def _start_flow_import_watcher(self) -> None:
+        'Start a lightweight poll watcher for newly completed nfcapd files.'
+        if not getattr(cfg, 'FLOW_IMPORT_ENABLED', True):
+            return
+        if not getattr(cfg, 'FLOW_IMPORT_WATCH_ENABLED', True):
+            return
+        if self._flow_watch_thread is not None:
+            return
+
+        self._flow_watch_thread = Thread(
+            target=self._watch_flow_import_dir,
+            name='flow-import-watch',
+            daemon=True,
+        )
+        self._flow_watch_thread.start()
+
+    def _watch_flow_import_dir(self) -> None:
+        'Import shortly after a new completed nfcapd capture appears.'
+        capture_dir = Path(str(getattr(cfg, 'NFDUMP_DIR', '/var/cache/nfdump')))
+        poll_seconds = float(getattr(cfg, 'FLOW_IMPORT_WATCH_POLL_SECONDS', 1.0) or 1.0)
+        settle_seconds = float(getattr(cfg, 'FLOW_IMPORT_SETTLE_SECONDS', 1.0) or 0.0)
+        known_files = self._completed_capture_file_names(capture_dir)
+        while not self._flow_watch_stop.wait(max(0.1, poll_seconds)):
+            current_files = self._completed_capture_file_names(capture_dir)
+            if not current_files.difference(known_files):
+                known_files = current_files
+                continue
+
+            known_files = current_files
+            if settle_seconds > 0:
+                self._flow_watch_stop.wait(settle_seconds)
+            self.last_flow_import_monotonic = time.monotonic()
+            self._import_flows_now('watch')
+
+    @staticmethod
+    def _completed_capture_file_names(capture_dir: Path) -> set[str]:
+        'Return completed nfcapd capture filenames currently visible.'
+        try:
+            return {path.name for path in completed_capture_files(capture_dir)}
+        except OSError as exc:
+            logger.warning('Flow import watch skipped directory scan: %s', exc)
+            return set()
 
     def _update_client_usage(self, client: ClientInfo) -> float:
         previous_total = self.last_totals_by_client_mac.get(client.mac, client.mb_used_since_connection)

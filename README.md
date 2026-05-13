@@ -73,6 +73,9 @@ Config values:
 - `INTERNAL_NETWORKS` (CIDR ranges treated as LAN clients for WAN flow attribution)
 - `FLOW_IMPORT_ENABLED`
 - `FLOW_IMPORT_INTERVAL_SECONDS`
+- `FLOW_IMPORT_WATCH_ENABLED`
+- `FLOW_IMPORT_WATCH_POLL_SECONDS`
+- `FLOW_IMPORT_SETTLE_SECONDS`
 - `ORGANIZATION_PAID_DEVICE_MACS`
 - `ORGANIZATION_PAID_USER_IDS`
 - `ORGANIZATION_PAID_VLAN_NAMES`
@@ -122,7 +125,7 @@ LOG_LEVEL=DEBUG DEV_REQUEST_IP=<ip> python3 src/app.py
 
 ## WAN Flow Import
 
-If UniFi exports NetFlow/IPFIX to this host and `nfcapd` writes completed capture files, the monitor imports completed captures every `FLOW_IMPORT_INTERVAL_SECONDS`. You can also import manually with:
+If UniFi exports NetFlow/IPFIX to this host and `nfcapd` writes completed capture files, the monitor imports newly completed captures shortly after they appear when `FLOW_IMPORT_WATCH_ENABLED` is enabled. It also performs a fallback scan every `FLOW_IMPORT_INTERVAL_SECONDS`. You can import manually with:
 
 ```bash
 python3 src/flow_import.py
