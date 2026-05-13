@@ -122,6 +122,11 @@ class ClientUsageContextTests(unittest.TestCase):
                 )
         self.assertEqual(usage_context.service_label_for_flow("TCP", 22067), "TCP/22067")
 
+    def test_service_label_names_vpn_protocols_explicitly(self) -> None:
+        self.assertEqual(usage_context.service_label_for_flow("UDP", 500), "IPsec VPN")
+        self.assertEqual(usage_context.service_label_for_flow("UDP", 4500), "IPsec VPN")
+        self.assertEqual(usage_context.service_label_for_flow("UDP", 51820), "WireGuard VPN")
+
     def test_wan_chart_buckets_use_flow_end_time(self) -> None:
         flow = db.WanMacFlowUsage(
             source_file="nfcapd.202605100000",

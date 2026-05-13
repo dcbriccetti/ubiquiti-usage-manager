@@ -61,8 +61,8 @@ SERVICE_LABEL_BY_PROTO_PORT = {
     ('TCP', 5230): 'Google push notifications',
     ('TCP', 22): 'SSH / remote login',
     ('TCP', 3389): 'Remote desktop',
-    ('UDP', 500): 'VPN',
-    ('UDP', 4500): 'VPN',
+    ('UDP', 500): 'IPsec VPN',
+    ('UDP', 4500): 'IPsec VPN',
     ('UDP', 51820): 'WireGuard VPN',
 }
 
