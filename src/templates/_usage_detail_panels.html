@@ -1,39 +1,31 @@
 <section class="grid">
     <article class="panel usage-history-panel">
         <div class="panel-body">
-            <h2>Recent WAN Capture Batches</h2>
+            <h2>Recent WAN Usage</h2>
             <table>
                 <thead>
                     <tr>
-                        <th class="nowrap-col">Added</th>
-                        <th class="nowrap-col">Capture</th>
-                        <th class="nowrap-col">Activity Time</th>
-                        <th class="num">WAN MB</th>
-                        <th class="num">Down MB</th>
-                        <th class="num">Up MB</th>
-                        <th class="num">Connections</th>
+                        <th class="nowrap-col">When</th>
+                        <th class="nowrap-col">Access Point</th>
+                        <th class="num">Total MB</th>
+                        <th class="num">Downloaded MB</th>
+                        <th class="num">Uploaded MB</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in wan_import_usage_rows %}
                         <tr>
                             <td class="nowrap-col">
-                                {{ row.imported_label }}
-                            </td>
-                            <td class="nowrap-col" title="{{ row.source_file }}">
-                                {{ row.source_label }}
-                            </td>
-                            <td class="nowrap-col">
                                 {{ row.flow_window_label }}
                             </td>
+                            <td class="nowrap-col" title="{{ row.access_point_detail }}">{{ row.access_point_label }}</td>
                             <td class="num">{{ "{:,.1f}".format(row.total_mb) }}</td>
                             <td class="num">{{ "{:,.1f}".format(row.download_mb) }}</td>
                             <td class="num">{{ "{:,.1f}".format(row.upload_mb) }}</td>
-                            <td class="num">{{ "{:,.0f}".format(row.flow_count) }}</td>
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="7" class="muted">No non-zero WAN capture batches attributed to this client for {{ current_month_label }} yet.</td>
+                            <td colspan="5" class="muted">No recent WAN usage attributed to this client for {{ current_month_label }} yet.</td>
                         </tr>
                     {% endfor %}
                 </tbody>

@@ -2074,6 +2074,67 @@ def normalize_access_point_name(ap_name: object) -> str:
     return normalized_name
 
 
+def summarize_access_point_counts(ap_counts: dict[str, int]) -> tuple[str, str] | None:
+    'Return visible and tooltip labels for access point count rollups.'
+    if not ap_counts:
+        return None
+
+    ordered_counts = sorted(
+        ap_counts.items(),
+        key=lambda item: (-item[1], item[0].lower()),
+    )
+    primary_ap_name = ordered_counts[0][0]
+    extra_count = max(0, len(ordered_counts) - 1)
+    label = f'{primary_ap_name} +{extra_count}' if extra_count else primary_ap_name
+    detail = ', '.join(f'{ap_name} ({minutes}m)' for ap_name, minutes in ordered_counts[:4])
+    if len(ordered_counts) > 4:
+        detail = f'{detail}, +{len(ordered_counts) - 4} more'
+    return label, detail
+
+
+def get_access_point_labels_for_windows(
+    mac: str,
+    window_bounds_by_key: dict[str, tuple[datetime, datetime]],
+) -> dict[str, tuple[str, str]]:
+    'Return compact access point labels and detailed rollups for each time window.'
+    if not window_bounds_by_key:
+        return {}
+
+    period_start = min(bounds[0] for bounds in window_bounds_by_key.values())
+    period_end = max(bounds[1] for bounds in window_bounds_by_key.values())
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.ap_name)
+        .where(
+            UsageRecord.mac == mac,
+            UsageRecord.timestamp >= period_start,
+            UsageRecord.timestamp <= period_end,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    counts_by_key: dict[str, dict[str, int]] = {key: {} for key in window_bounds_by_key}
+    for row_timestamp, row_ap_name in rows:
+        if not hasattr(row_timestamp, 'date'):
+            continue
+
+        sample_at = cast(datetime, row_timestamp)
+        ap_name = normalize_access_point_name(row_ap_name)
+        for key, (window_start, window_end) in window_bounds_by_key.items():
+            if window_start <= sample_at <= window_end:
+                ap_counts = counts_by_key[key]
+                ap_counts[ap_name] = ap_counts.get(ap_name, 0) + 1
+
+    labels_by_key: dict[str, tuple[str, str]] = {}
+    for key, ap_counts in counts_by_key.items():
+        if label_and_detail := summarize_access_point_counts(ap_counts):
+            labels_by_key[key] = label_and_detail
+
+    return labels_by_key
+
+
 def get_calendar_month_daily_access_point_minutes(mac: str) -> list[tuple[date, dict[str, int]]]:
     'Return per-day active-minute counts grouped by access point for current month.'
     now = datetime.now()

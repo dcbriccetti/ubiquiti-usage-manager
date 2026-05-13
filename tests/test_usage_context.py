@@ -149,6 +149,45 @@ class ClientUsageContextTests(unittest.TestCase):
                 )
             )
             session.add(
+                db.UsageRecord(
+                    timestamp=datetime(2026, 5, 9, 22, 5),
+                    mac=mac,
+                    user_id="2119",
+                    name="iPad",
+                    vlan="Plus",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name="Office AP",
+                    signal=-50,
+                )
+            )
+            session.add(
+                db.UsageRecord(
+                    timestamp=datetime(2026, 5, 9, 22, 6),
+                    mac=mac,
+                    user_id="2119",
+                    name="iPad",
+                    vlan="Plus",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name="Office AP",
+                    signal=-50,
+                )
+            )
+            session.add(
+                db.UsageRecord(
+                    timestamp=datetime(2026, 5, 9, 22, 7),
+                    mac=mac,
+                    user_id="2119",
+                    name="iPad",
+                    vlan="Plus",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name="Lawn AP",
+                    signal=-50,
+                )
+            )
+            session.add(
                 db.ClientIpIdentity(
                     observed_at=observed_at,
                     ip_address="192.168.6.143",
@@ -258,6 +297,8 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(recent_import["source_label"], "Capture May 9, 22:05")
         self.assertEqual(recent_import["imported_label"], "May 9, 22:10")
         self.assertEqual(recent_import["flow_window_label"], "May 9, 22:05–22:07")
+        self.assertEqual(recent_import["access_point_label"], "Office +1")
+        self.assertEqual(recent_import["access_point_detail"], "Office (2m), Lawn (1m)")
         self.assertEqual(recent_import["imported_at"], observed_at + timedelta(minutes=10))
         self.assertEqual(recent_import["first_flow_at"], observed_at + timedelta(minutes=5))
         self.assertEqual(recent_import["last_flow_at"], observed_at + timedelta(minutes=7))
