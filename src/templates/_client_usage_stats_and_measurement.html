@@ -11,15 +11,12 @@
         <span class="label">WAN {{ current_month_label }}</span>
         <span class="value">{{ "{:,.0f}".format(calendar_month_total_mb) }} MB</span>
     </article>
-    <article class="panel stat">
-        {% if voucher_usage %}
-            <span class="label">Payment</span>
-            <span class="value">Prepaid</span>
-        {% else %}
+    {% if not voucher_usage %}
+        <article class="panel stat">
             <span class="label">Estimated {{ current_month_label }} Cost</span>
             <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
-        {% endif %}
-    </article>
+        </article>
+    {% endif %}
 </section>
 
 {% if voucher_usage %}
