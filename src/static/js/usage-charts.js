@@ -547,27 +547,6 @@
             });
         }
 
-        const minutesCanvas = document.getElementById("global-daily-minutes-chart");
-        if (minutesCanvas) {
-            new Chart(minutesCanvas, {
-                type: "bar",
-                data: {
-                    labels: config.xLabels,
-                    datasets: [
-                        { label: "Basic", data: config.basicMinutes, backgroundColor: "rgba(15, 118, 110, 0.72)" },
-                        { label: "Plus", data: config.plusMinutes, backgroundColor: "rgba(194, 65, 12, 0.82)" }
-                    ]
-                },
-                options: {
-                    ...sharedStackedOptions,
-                    scales: {
-                        ...sharedStackedOptions.scales,
-                        y: { ...sharedStackedOptions.scales.y, title: { display: true, text: "Active minutes/day" } }
-                    }
-                }
-            });
-        }
-
         const peakConcurrencyCanvas = document.getElementById("global-peak-concurrency-chart");
         if (peakConcurrencyCanvas) {
             new Chart(peakConcurrencyCanvas, {
@@ -599,31 +578,6 @@
                             title: { display: true, text: "Peak concurrent users" },
                             grid: { color: "rgba(31, 41, 51, 0.20)" }
                         }
-                    }
-                }
-            });
-        }
-
-        const profileMinutesCanvas = document.getElementById("global-throttling-profile-minutes-chart");
-        if (profileMinutesCanvas && config.throttlingProfileLabels?.length) {
-            new Chart(profileMinutesCanvas, {
-                type: "bar",
-                data: {
-                    labels: config.throttlingProfileLabels,
-                    datasets: [{ label: "Minutes", data: config.throttlingProfileMinutes, backgroundColor: "rgba(194, 65, 12, 0.72)" }]
-                },
-                options: {
-                    indexAxis: "y",
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: {
-                            beginAtZero: true,
-                            title: { display: true, text: "Active minutes this month" },
-                            grid: { color: "rgba(31, 41, 51, 0.20)" }
-                        },
-                        y: { grid: { display: false } }
                     }
                 }
             });

@@ -73,10 +73,6 @@
                 <div class="month-chart-wrap">
                     <canvas id="global-hourly-wan-chart" class="month-chart-canvas" role="img" aria-label="{{ wan_hourly_title }}"></canvas>
                 </div>
-                <h3>Daily Active Minutes (Stacked Basic/Plus)</h3>
-                <div class="month-chart-wrap">
-                    <canvas id="global-daily-minutes-chart" class="month-chart-canvas" role="img" aria-label="Daily active minutes stacked by Basic and Plus"></canvas>
-                </div>
 
                 <h3>Concurrency</h3>
                 <h4>Peak Simultaneous Users by Day</h4>
@@ -96,32 +92,8 @@
 
         <article class="panel">
             <div class="panel-body">
-                <h2>Throttling</h2>
-                <h3>Coverage & Impact</h3>
-                <section class="insights-kpis">
-                    <div class="insight-kpi">
-                        <span class="label">Minutes Throttled</span>
-                        <span class="value">{{ "{:,.0f}".format(throttling_minutes) }}</span>
-                    </div>
-                    <div class="insight-kpi">
-                        <span class="label">Total Active Minutes</span>
-                        <span class="value">{{ "{:,.0f}".format(throttling_total_active_minutes) }}</span>
-                    </div>
-                    <div class="insight-kpi">
-                        <span class="label">% Time Throttled</span>
-                        <span class="value">{{ "{:.1f}%".format(throttling_pct) }}</span>
-                    </div>
-                </section>
-                <div class="month-chart-wrap">
-                    <canvas id="global-throttling-profile-minutes-chart" class="month-chart-canvas" role="img" aria-label="Minutes spent at each throttling profile"></canvas>
-                </div>
-            </div>
-        </article>
-
-        <article class="panel">
-            <div class="panel-body">
                 <h2>Payer & Infrastructure</h2>
-                <section class="grid columns insights-tables">
+                <section class="insights-summary-grid">
                     <article class="insights-summary">
                         <h3>Usage Split ({{ current_month_label }})</h3>
                         {% set total_split_mb = organization_paid_total_mb + user_paid_total_mb %}
@@ -190,7 +162,7 @@
                 </section>
 
                 <h3>User Detail</h3>
-                <section class="grid columns insights-org-top-users">
+                <section class="insights-user-detail-grid">
                     <article>
                         <h3>Organization-paid Clients</h3>
                         <p class="muted">
@@ -286,8 +258,6 @@
             "fullLabels": daily_network_full_labels,
             "dailyWanVlanLabels": daily_wan_vlan_labels,
             "dailyWanVlanMb": daily_wan_vlan_mb,
-            "basicMinutes": daily_network_basic_minutes,
-            "plusMinutes": daily_network_plus_minutes,
             "wanHourlyLabels": wan_hourly_labels,
             "wanHourlyTickLabels": wan_hourly_tick_labels,
             "wanHourlyFullLabels": wan_hourly_full_labels,
@@ -299,9 +269,7 @@
             "heatmapDayLabels": concurrency_heatmap_day_labels,
             "heatmapHourLabels": concurrency_heatmap_hour_labels,
             "heatmapValues": concurrency_heatmap_values,
-            "heatmapSampleCounts": concurrency_heatmap_sample_counts,
-            "throttlingProfileLabels": throttling_profile_labels,
-            "throttlingProfileMinutes": throttling_profile_minutes
+            "heatmapSampleCounts": concurrency_heatmap_sample_counts
         } | tojson }}
     </script>
     <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>

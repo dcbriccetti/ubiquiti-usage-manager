@@ -941,28 +941,25 @@
             margin: 0;
         }
 
-        .insights-tables {
-            grid-template-columns: 1fr;
-            justify-content: start;
+        .insights-summary-grid {
+            display: grid;
+            grid-template-columns: minmax(540px, 0.9fr) minmax(260px, 0.42fr);
             align-items: start;
-            gap: var(--space-4);
+            gap: var(--space-6);
+            margin-bottom: var(--space-6);
         }
 
-        .insights-tables article {
+        .insights-summary-grid article {
             width: 100%;
             max-width: none;
         }
 
-        .insights-summary {
-            grid-column: 1;
-        }
-
-        .insights-ap-hotspots {
-            grid-column: 1;
+        .insights-summary .muted {
+            max-width: 1000px;
         }
 
         table.insights-table {
-            width: auto;
+            width: 100%;
             min-width: 0;
             table-layout: fixed;
         }
@@ -1017,20 +1014,23 @@
             padding-right: var(--space-2);
         }
 
-        .insights-org-top-users {
-            grid-template-columns: minmax(640px, 1.45fr) minmax(360px, 1fr);
+        .insights-user-detail-grid {
+            display: grid;
+            grid-template-columns: minmax(720px, 1fr) minmax(360px, 0.58fr);
             align-items: start;
-            gap: var(--space-4);
+            gap: var(--space-6);
             margin-top: var(--space-3);
         }
 
-        .insights-org-top-users article {
+        .insights-user-detail-grid article {
             width: 100%;
             max-width: none;
+            min-width: 0;
         }
 
         @media (max-width: 1200px) {
-            .insights-org-top-users {
+            .insights-summary-grid,
+            .insights-user-detail-grid {
                 grid-template-columns: 1fr;
             }
         }

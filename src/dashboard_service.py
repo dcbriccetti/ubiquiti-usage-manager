@@ -56,6 +56,10 @@ ALLOWED_ACTIVITY_SPANS: frozenset[ActivitySpan] = frozenset({
     ACTIVITY_SPAN_7_DAY,
 })
 DASHBOARD_WAN_CACHE_SECONDS = 30.0
+SPEED_LIMIT_CACHE_SECONDS = 300.0
+INSIGHTS_CACHE_SECONDS_CURRENT = 30.0
+INSIGHTS_CACHE_SECONDS_HISTORICAL = 600.0
+InsightsCacheKey = tuple[str, str, str, str, bool]
 
 
 class DashboardRow(TypedDict):
@@ -118,8 +122,6 @@ class InsightsData(TypedDict):
     daily_network_full_labels: list[str]
     daily_wan_vlan_labels: list[str]
     daily_wan_vlan_mb: list[list[float]]
-    daily_network_basic_minutes: list[int]
-    daily_network_plus_minutes: list[int]
     wan_hourly_title: str
     wan_hourly_labels: list[str]
     wan_hourly_tick_labels: list[str]
@@ -143,11 +145,6 @@ class InsightsData(TypedDict):
     concurrency_heatmap_hour_labels: list[str]
     concurrency_heatmap_values: list[list[float]]
     concurrency_heatmap_sample_counts: list[list[int]]
-    throttling_profile_labels: list[str]
-    throttling_profile_minutes: list[int]
-    throttling_total_active_minutes: int
-    throttling_minutes: int
-    throttling_pct: float
 
 
 class DashboardPayload(TypedDict):
@@ -186,12 +183,32 @@ class DashboardWanData:
 
 _dashboard_wan_cache_lock = Lock()
 _dashboard_wan_cache_by_activity_span: dict[ActivitySpan, tuple[float, DashboardWanData]] = {}
+_speed_limits_cache_lock = Lock()
+_speed_limits_cache: tuple[float, dict[str, SpeedLimit]] | None = None
+_insights_cache_lock = Lock()
+_insights_cache_by_key: dict[InsightsCacheKey, tuple[float, InsightsData]] = {}
 
 
 def clear_dashboard_wan_cache() -> None:
     'Clear cached WAN attribution data after new flow imports arrive.'
     with _dashboard_wan_cache_lock:
         _dashboard_wan_cache_by_activity_span.clear()
+    with _insights_cache_lock:
+        _insights_cache_by_key.clear()
+
+
+def get_speed_limits_by_name_cached() -> dict[str, SpeedLimit]:
+    'Return UniFi speed-limit profiles without blocking every dashboard render on the controller.'
+    global _speed_limits_cache
+    now_monotonic = monotonic_time.monotonic()
+    with _speed_limits_cache_lock:
+        if _speed_limits_cache and _speed_limits_cache[0] > now_monotonic:
+            return _speed_limits_cache[1]
+
+    speed_limits_by_name = {limit.name: limit for limit in api.get_speed_limits()}
+    with _speed_limits_cache_lock:
+        _speed_limits_cache = (now_monotonic + SPEED_LIMIT_CACHE_SECONDS, speed_limits_by_name)
+    return speed_limits_by_name
 
 
 def normalize_window(window_name: str | None) -> WindowName:
@@ -786,7 +803,7 @@ def _build_live_dashboard_rows(
             month_totals_by_mac=month_totals_by_mac,
         )
     else:
-        speed_limits_by_name = {limit.name: limit for limit in api.get_speed_limits()}
+        speed_limits_by_name = get_speed_limits_by_name_cached()
         rows = build_rows_for_historical_window(
             window_name,
             speed_limits_by_name,
@@ -874,13 +891,28 @@ def build_insights_data(
     selected_report_label = report_period_label or datetime.now().strftime('%B %Y')
     resolved_period_end = period_end or datetime.now()
     resolved_period_start = period_start or datetime.combine(resolved_period_end.date().replace(day=1), time.min)
-
-    connected_snapshots: list[ClientSnapshot] = []
-    if (
-        include_live_organization_paid_clients
-        and (organization_paid_vlan_criteria or organization_paid_mac_criteria or organization_paid_user_id_criteria)
-    ):
-        connected_snapshots = get_connected_clients()
+    cache_period_end = (
+        resolved_period_end.replace(second=0, microsecond=0)
+        if include_live_organization_paid_clients
+        else resolved_period_end
+    )
+    cache_key: InsightsCacheKey = (
+        resolved_period_start.isoformat(),
+        cache_period_end.isoformat(),
+        selected_month_label,
+        selected_report_label,
+        include_live_organization_paid_clients,
+    )
+    cache_seconds = (
+        INSIGHTS_CACHE_SECONDS_CURRENT
+        if include_live_organization_paid_clients
+        else INSIGHTS_CACHE_SECONDS_HISTORICAL
+    )
+    now_monotonic = monotonic_time.monotonic()
+    with _insights_cache_lock:
+        cached = _insights_cache_by_key.get(cache_key)
+        if cached and cached[0] > now_monotonic:
+            return cached[1]
 
     def is_organization_paid_identity(mac: str, user_id: str | None, vlan_name: str | None) -> bool:
         return (
@@ -965,25 +997,6 @@ def build_insights_data(
         _global_top_user_from_wan_row(row, organization_paid_metadata_by_mac)
         for row in organization_paid_wan_rows
     ]
-    organization_paid_clients_by_mac = {entry.mac.lower(): entry for entry in organization_paid_clients}
-    for snapshot in connected_snapshots:
-        client = snapshot.client
-        if not is_organization_paid_identity(client.mac, client.user_id, client.vlan_name):
-            continue
-        mac_key = client.mac.lower()
-        if mac_key in organization_paid_clients_by_mac:
-            continue
-        organization_paid_clients.append(
-            db.GlobalTopUser(
-                mac=client.mac,
-                name=client.name or client.mac,
-                user_id=client.user_id or '',
-                vlan_name=client.vlan_name or '',
-                total_mb=0.0,
-                active_minutes=0,
-            )
-        )
-
     organization_paid_clients = sorted(
         organization_paid_clients,
         key=lambda entry: (entry.total_mb, entry.active_minutes, entry.name.lower()),
@@ -994,27 +1007,12 @@ def build_insights_data(
         key=lambda entry: (entry.active_minutes, entry.ap_name.lower()),
         reverse=True,
     )[:6]
-    speed_limits_by_name = {limit.name: limit for limit in api.get_speed_limits()}
     concurrency_insights = db.get_global_concurrency_insights_current_month(
         period_start=period_start,
         period_end=period_end,
     )
-    throttling_effectiveness = db.get_global_throttling_effectiveness_current_month(
-        period_start=period_start,
-        period_end=period_end,
-    )
-    allowed_throttling_profiles = {level.profile_name for level in cfg.THROTTLING_LEVELS}
-    throttling_profile_totals = sorted(
-        (
-            (profile_key, minutes)
-            for profile_key, minutes in throttling_effectiveness.profile_minutes.items()
-            if profile_key in allowed_throttling_profiles
-        ),
-        key=lambda pair: pair[1],
-        reverse=True,
-    )
 
-    return {
+    result: InsightsData = {
         'current_month_label': selected_month_label,
         'report_period_label': selected_report_label,
         'active_users_terminal_label': 'Active Users Today' if include_live_organization_paid_clients else 'Active Users Final Day',
@@ -1037,8 +1035,6 @@ def build_insights_data(
         'daily_network_full_labels': [f'{row.usage_day.strftime("%b")} {row.usage_day.day}' for row in daily_network_usage],
         'daily_wan_vlan_labels': [row.vlan for row in daily_wan_vlan_usage],
         'daily_wan_vlan_mb': [row.daily_mb for row in daily_wan_vlan_usage],
-        'daily_network_basic_minutes': [row.basic_minutes for row in daily_network_usage],
-        'daily_network_plus_minutes': [row.plus_minutes for row in daily_network_usage],
         'wan_hourly_title': (
             'Hourly Internet Usage (Month to Date)'
             if include_live_organization_paid_clients
@@ -1075,12 +1071,7 @@ def build_insights_data(
         'concurrency_heatmap_hour_labels': concurrency_insights.heatmap_hour_labels,
         'concurrency_heatmap_values': concurrency_insights.heatmap_values,
         'concurrency_heatmap_sample_counts': concurrency_insights.heatmap_sample_counts,
-        'throttling_profile_labels': [
-            profile_display_label(profile_key, speed_limits_by_name)
-            for profile_key, _ in throttling_profile_totals
-        ],
-        'throttling_profile_minutes': [minutes for _, minutes in throttling_profile_totals],
-        'throttling_total_active_minutes': throttling_effectiveness.total_active_minutes,
-        'throttling_minutes': throttling_effectiveness.throttled_minutes,
-        'throttling_pct': throttling_effectiveness.throttled_pct,
     }
+    with _insights_cache_lock:
+        _insights_cache_by_key[cache_key] = (now_monotonic + cache_seconds, result)
+    return result
