@@ -88,20 +88,6 @@ class WanAttributionDiagnostics(TypedDict):
     top_fallback_rows: list[WanDiagnosticRow]
 
 
-class UsageComparisonRow(TypedDict):
-    'Comparison row for sampled UniFi usage and WAN flow usage.'
-    client_ip: str
-    name: str
-    user_id: str
-    vlan: str
-    mac: str
-    identity_is_fallback: bool
-    unifi_period_mb: float
-    wan_period_mb: float
-    wan_flow_count: int
-    difference_mb: float
-
-
 def summarize_wan_by_network(rows: list[WanIdentityRow]) -> list[NetworkSummary]:
     'Aggregate decorated WAN rows by latest-known network/VLAN label.'
     summary_by_network: dict[str, NetworkSummary] = {}
@@ -224,7 +210,7 @@ def build_wan_billing_readiness(
         return {
             'label': 'Import stale',
             'class': 'warn-text',
-            'detail': 'Internet data is old enough that billing comparisons may be incomplete.',
+            'detail': 'Internet data is old enough that diagnostics and reports may be incomplete.',
         }
     if total_mb < 100.0:
         return {
@@ -242,80 +228,13 @@ def build_wan_billing_readiness(
         return {
             'label': 'Watch',
             'class': '',
-            'detail': 'Internet attribution is usable for comparison, but approximate or unknown matches still need review.',
+            'detail': 'Internet attribution is usable for reporting, but approximate or unknown matches still need review.',
         }
     return {
         'label': 'Needs identity work',
         'class': 'warn-text',
         'detail': 'Too much Internet usage is still unidentified to use as the billing source.',
     }
-
-
-def build_month_usage_comparison_rows(
-    month_wan_rows: list[WanIdentityRow],
-    period_start: datetime | None = None,
-    period_end: datetime | None = None,
-) -> list[UsageComparisonRow]:
-    'Compare sampled UniFi usage with WAN flow-attributed usage for the same period.'
-    comparison_by_key: dict[str, UsageComparisonRow] = {}
-
-    if period_start is not None and period_end is not None:
-        unifi_rows = db.get_usage_summary_for_period(period_start, period_end)
-    else:
-        unifi_rows = db.get_usage_window_summary('this_month')
-
-    for unifi_row in unifi_rows:
-        key = unifi_row.mac.lower()
-        comparison_by_key[key] = {
-            'client_ip': '',
-            'name': unifi_row.name or '',
-            'user_id': unifi_row.user_id or '',
-            'vlan': unifi_row.vlan or '',
-            'mac': unifi_row.mac,
-            'identity_is_fallback': False,
-            'unifi_period_mb': unifi_row.calendar_month_total_mb,
-            'wan_period_mb': 0.0,
-            'wan_flow_count': 0,
-            'difference_mb': 0.0,
-        }
-
-    for wan_row in month_wan_rows:
-        mac = wan_row['mac']
-        client_ip = wan_row['client_ip']
-        key = mac.lower() if mac else f'ip:{client_ip}'
-        comparison = comparison_by_key.setdefault(
-            key,
-            {
-                'client_ip': client_ip,
-                'name': '',
-                'user_id': '',
-                'vlan': '',
-                'mac': mac,
-                'identity_is_fallback': False,
-                'unifi_period_mb': 0.0,
-                'wan_period_mb': 0.0,
-                'wan_flow_count': 0,
-                'difference_mb': 0.0,
-            },
-        )
-        comparison['client_ip'] = comparison['client_ip'] or client_ip
-        comparison['name'] = comparison['name'] or wan_row['name']
-        comparison['user_id'] = comparison['user_id'] or wan_row['user_id']
-        comparison['vlan'] = comparison['vlan'] or wan_row['vlan']
-        comparison['mac'] = comparison['mac'] or mac
-        comparison['identity_is_fallback'] = comparison['identity_is_fallback'] or wan_row['identity_is_fallback']
-        comparison['wan_period_mb'] += total_wan_mb(wan_row)
-        comparison['wan_flow_count'] += wan_row['flow_count']
-
-    comparison_rows = list(comparison_by_key.values())
-    for comparison_row in comparison_rows:
-        comparison_row['difference_mb'] = comparison_row['wan_period_mb'] - comparison_row['unifi_period_mb']
-
-    return sorted(
-        comparison_rows,
-        key=lambda row: max(row['unifi_period_mb'], row['wan_period_mb']),
-        reverse=True,
-    )
 
 
 def summarize_wan_identity_rows_for_mac(

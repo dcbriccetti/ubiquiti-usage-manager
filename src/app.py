@@ -41,7 +41,6 @@ from usage_context import (
     speed_limit_option_label,
 )
 from wan_service import (
-    build_month_usage_comparison_rows,
     build_wan_attribution_diagnostics,
     build_wan_attribution_period_rows,
     build_wan_billing_readiness,
@@ -364,7 +363,7 @@ def create_app() -> Flask:
 
     @flask_app.route("/wan")
     def wan_usage():
-        'Render WAN flow usage imported from nfdump/IPFIX captures.'
+        'Render Internet import and attribution diagnostics.'
         if not requester_is_plus_admin():
             abort(403)
 
@@ -375,8 +374,6 @@ def create_app() -> Flask:
         month_rows = db.get_wan_usage_by_identity(period_start=month_start, period_end=now)
         decorated_today_rows = serialize_wan_identity_rows(today_rows)
         decorated_month_rows = serialize_wan_identity_rows(month_rows)
-        first_wan_flow_at = db.get_first_wan_flow_time()
-        month_comparison_start = max(month_start, first_wan_flow_at) if first_wan_flow_at else month_start
         recent_imports = db.get_recent_flow_imports(limit=12)
         latest_import = recent_imports[0] if recent_imports else None
         latest_import_age_minutes = (
@@ -396,30 +393,6 @@ def create_app() -> Flask:
         total_today_upload_bytes = sum(row.upload_bytes for row in today_rows)
         total_month_download_bytes = sum(row.download_bytes for row in month_rows)
         total_month_upload_bytes = sum(row.upload_bytes for row in month_rows)
-        total_today_wan_mb = bytes_to_mb(total_today_download_bytes + total_today_upload_bytes)
-        total_month_wan_mb = bytes_to_mb(total_month_download_bytes + total_month_upload_bytes)
-        total_today_unifi_mb = db.get_total_today_usage()
-        total_month_unifi_mb = db.get_total_calendar_month_usage()
-        reconciliation_rows = [
-            {
-                'label': 'Today',
-                'unifi_mb': total_today_unifi_mb,
-                'wan_mb': total_today_wan_mb,
-                'difference_mb': total_today_wan_mb - total_today_unifi_mb,
-                'wan_pct_of_unifi': (total_today_wan_mb / total_today_unifi_mb * 100.0)
-                if total_today_unifi_mb
-                else 0.0,
-            },
-            {
-                'label': now.strftime('%b'),
-                'unifi_mb': total_month_unifi_mb,
-                'wan_mb': total_month_wan_mb,
-                'difference_mb': total_month_wan_mb - total_month_unifi_mb,
-                'wan_pct_of_unifi': (total_month_wan_mb / total_month_unifi_mb * 100.0)
-                if total_month_unifi_mb
-                else 0.0,
-            },
-        ]
         today_attribution_diagnostics = build_wan_attribution_diagnostics(decorated_today_rows)
         month_attribution_diagnostics = build_wan_attribution_diagnostics(decorated_month_rows)
 
@@ -428,13 +401,6 @@ def create_app() -> Flask:
             generated_at=now,
             today_rows=visible_today_rows,
             month_rows=decorated_month_rows,
-            month_usage_comparison_rows=build_month_usage_comparison_rows(
-                decorated_month_rows,
-                period_start=month_comparison_start,
-                period_end=now,
-            ),
-            month_comparison_start=month_comparison_start,
-            month_comparison_end=now,
             today_attribution_diagnostics=today_attribution_diagnostics,
             month_attribution_diagnostics=month_attribution_diagnostics,
             attribution_period_rows=build_wan_attribution_period_rows(
@@ -453,7 +419,6 @@ def create_app() -> Flask:
             internal_networks=sorted(str(network) for network in getattr(cfg, 'INTERNAL_NETWORKS', set())),
             client_display_threshold_mb=client_display_threshold_mb,
             hidden_tiny_client_count=hidden_tiny_client_count,
-            reconciliation_rows=reconciliation_rows,
             bytes_to_mb=bytes_to_mb,
             total_today_download_mb=bytes_to_mb(total_today_download_bytes),
             total_today_upload_mb=bytes_to_mb(total_today_upload_bytes),
