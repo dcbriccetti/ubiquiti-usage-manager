@@ -105,6 +105,8 @@ class WanImportUsageContext(TypedDict):
     flow_window_label: str
     access_point_label: str
     access_point_detail: str
+    host_label: str
+    host_detail: str
     imported_at: datetime | None
     first_flow_at: datetime
     last_flow_at: datetime
@@ -172,6 +174,7 @@ class WanImportUsageAccumulator:
     download_bytes: int = 0
     upload_bytes: int = 0
     flow_count: int = 0
+    endpoint_bytes: dict[str, int] | None = None
 
 
 @dataclass
@@ -340,9 +343,39 @@ def summarize_wan_flows(
     return download_bytes / 1_000_000.0, upload_bytes / 1_000_000.0
 
 
+def summarize_remote_endpoint_counts(endpoint_bytes: dict[str, int]) -> tuple[str, str] | None:
+    'Return visible and tooltip labels for remote endpoint byte rollups.'
+    if not endpoint_bytes:
+        return None
+
+    ordered_endpoints = sorted(
+        endpoint_bytes.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    host_labels = resolve_host_labels([endpoint for endpoint, _ in ordered_endpoints[:4]])
+
+    def render_endpoint(endpoint: str) -> str:
+        if endpoint in host_labels:
+            return host_labels[endpoint]
+        return endpoint
+
+    primary_endpoint = ordered_endpoints[0][0]
+    primary_label = render_endpoint(primary_endpoint)
+    extra_count = max(0, len(ordered_endpoints) - 1)
+    label = f'{primary_label} +{extra_count}' if extra_count else primary_label
+    detail_parts = []
+    for endpoint, byte_count in ordered_endpoints[:4]:
+        endpoint_label = render_endpoint(endpoint)
+        endpoint_detail = f'{endpoint_label} ({endpoint})' if endpoint_label != endpoint else endpoint
+        detail_parts.append(f'{endpoint_detail}: {byte_count / 1_000_000.0:.1f} MB')
+    if len(ordered_endpoints) > 4:
+        detail_parts.append(f'+{len(ordered_endpoints) - 4} more')
+    return label, ', '.join(detail_parts)
+
+
 def build_wan_import_usage_context(
     mac: str,
-    flows: list[db.WanMacFlowUsage],
+    flows: list[db.WanMacIdentityFlowUsage],
     period_start: datetime,
     period_end: datetime,
     limit: int = 40,
@@ -370,6 +403,10 @@ def build_wan_import_usage_context(
         else:
             summary.download_bytes += flow.bytes
         summary.flow_count += 1
+        remote_ip, _service_port = remote_endpoint_for_flow(flow)
+        endpoint_bytes = summary.endpoint_bytes or {}
+        endpoint_bytes[remote_ip] = endpoint_bytes.get(remote_ip, 0) + flow.bytes
+        summary.endpoint_bytes = endpoint_bytes
 
     imported_at_by_source = db.get_flow_import_times_by_source_file(set(summaries_by_source))
     access_point_by_source = db.get_access_point_labels_for_windows(
@@ -388,6 +425,10 @@ def build_wan_import_usage_context(
             summary.source_file,
             ('Unknown', 'Unknown'),
         )
+        host_label, host_detail = summarize_remote_endpoint_counts(summary.endpoint_bytes or {}) or (
+            'Unknown',
+            'Unknown',
+        )
         rows.append(
             {
                 'source_file': summary.source_file,
@@ -400,6 +441,8 @@ def build_wan_import_usage_context(
                 'flow_window_label': render_time_range_label(summary.first_flow_at, summary.last_flow_at),
                 'access_point_label': access_point_label,
                 'access_point_detail': access_point_detail,
+                'host_label': host_label,
+                'host_detail': host_detail,
                 'imported_at': imported_at_by_source.get(summary.source_file),
                 'first_flow_at': summary.first_flow_at,
                 'last_flow_at': summary.last_flow_at,
@@ -776,7 +819,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         (row['month_mb'] for row in access_mode_usage_rows if row['key'] == 'plus_paid'),
         0.0,
     )
-    wan_import_usage_rows = build_wan_import_usage_context(mac, mac_wan_flows, month_start, now)
+    wan_import_usage_rows = build_wan_import_usage_context(mac, mac_identity_wan_flows, month_start, now)
     wan_today_download_mb, wan_today_upload_mb = summarize_wan_flows(
         mac_wan_flows,
         today_start,

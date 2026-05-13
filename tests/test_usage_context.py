@@ -299,6 +299,8 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(recent_import["flow_window_label"], "May 9, 22:05–22:07")
         self.assertEqual(recent_import["access_point_label"], "Office +1")
         self.assertEqual(recent_import["access_point_detail"], "Office (2m), Lawn (1m)")
+        self.assertEqual(recent_import["host_label"], "8.8.8.8")
+        self.assertEqual(recent_import["host_detail"], "8.8.8.8: 3.0 MB")
         self.assertEqual(recent_import["imported_at"], observed_at + timedelta(minutes=10))
         self.assertEqual(recent_import["first_flow_at"], observed_at + timedelta(minutes=5))
         self.assertEqual(recent_import["last_flow_at"], observed_at + timedelta(minutes=7))
