@@ -25,9 +25,9 @@
                             <th class="nowrap-col">Access Point</th>
                         {% endif %}
                         <th class="nowrap-col">Host</th>
-                        <th class="num">Total MB</th>
-                        <th class="num">Downloaded MB</th>
-                        <th class="num">Uploaded MB</th>
+                        <th class="num">Total KB</th>
+                        <th class="num">Downloaded KB</th>
+                        <th class="num">Uploaded KB</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -48,9 +48,9 @@
                                     data-rdns-extra-count="{{ row.host_extra_count }}"
                                 {% endif %}
                             >{{ row.host_label }}</td>
-                            <td class="num">{{ "{:,.1f}".format(row.total_mb) }}</td>
-                            <td class="num">{{ "{:,.1f}".format(row.download_mb) }}</td>
-                            <td class="num">{{ "{:,.1f}".format(row.upload_mb) }}</td>
+                            <td class="num">{{ "{:,.0f}".format(row.total_mb * 1000.0) }}</td>
+                            <td class="num">{{ "{:,.0f}".format(row.download_mb * 1000.0) }}</td>
+                            <td class="num">{{ "{:,.0f}".format(row.upload_mb * 1000.0) }}</td>
                         </tr>
                     {% else %}
                         <tr>
