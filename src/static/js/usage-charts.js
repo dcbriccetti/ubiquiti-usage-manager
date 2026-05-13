@@ -383,32 +383,12 @@
             fallbackLabel: "Usage",
             totalLabel: "Total"
         });
-        const accessPointColorByLabel = colorMapFromLabels(config.apLabels || [], accessPointPalette);
-        renderThrottleChart({
-            canvasId: config.minutesCanvasId,
-            labels: config.labels,
-            fullLabels: config.fullLabels,
-            throttleLabels: config.throttleLabels,
-            rawDatasets: config.throttleDatasets,
-            xAxisTitle: config.xAxisTitle,
-            yAxisTitle: config.minutesAxisTitle,
-            colorLabels: config.apLabels,
-            colorPalette: accessPointPalette
-        });
         renderPie(
             config.wanDirectionPieCanvasId,
             config.wanDirectionLabels,
             config.wanDirectionMbValues,
             "MB",
             directionPalette
-        );
-        renderPie(
-            config.minutesApPieCanvasId,
-            config.apLabels,
-            config.apMinutesValues,
-            "minutes",
-            accessPointPalette,
-            accessPointColorByLabel
         );
     };
 

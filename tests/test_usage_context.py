@@ -259,12 +259,9 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertIsInstance(up_series, list)
         self.assertAlmostEqual(down_series[day_9_index], 2.0)
         self.assertAlmostEqual(up_series[day_9_index], 1.0)
-        self.assertEqual(
-            [series["label"] for series in monthly_scale["throttle_datasets"]],
-            ["AP"],
-        )
-        ap_series = monthly_scale["throttle_datasets"][0]["data"]
-        self.assertEqual(ap_series[day_9_index], 1)
+        self.assertEqual(monthly_scale["throttle_datasets"], [])
+        self.assertFalse(monthly_scale["show_access_point_activity"])
+        self.assertNotIn("active minutes", monthly_scale["summary_text"].lower())
 
     def test_wired_client_hides_access_point_activity_charts(self) -> None:
         mac = "aa:bb:cc:dd:ee:40"

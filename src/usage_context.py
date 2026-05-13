@@ -639,11 +639,6 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
     ]
     month_wan_totals_by_day = build_wan_flow_bucket_totals(mac_wan_flows, month_start, now, 'day')
     month_daily_usage = merge_wan_totals_into_usage_points(month_daily_usage, month_wan_totals_by_day)
-    month_access_point_rows = [
-        (usage_day.day, daily_counts)
-        for usage_day, daily_counts in db.get_calendar_month_daily_access_point_minutes(mac)
-    ]
-    month_access_point_datasets = build_active_minutes_datasets(month_access_point_rows)
 
     daily_hourly_usage: list[UsageScalePoint] = [
         {
@@ -658,23 +653,8 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         daily_hourly_usage,
         build_wan_flow_bucket_totals(mac_wan_flows, today_start, now, 'hour'),
     )
-    daily_access_point_rows = db.get_today_hourly_access_point_minutes(mac)
-    daily_access_point_datasets = build_active_minutes_datasets(daily_access_point_rows)
-    daily_access_points = db.get_today_access_point_totals(mac)
-    monthly_access_points = db.get_calendar_month_access_point_totals(mac)
     daily_hour_values = [point['bucket_value'] for point in daily_hourly_usage]
     month_day_values = [point['bucket_value'] for point in month_daily_usage]
-    show_access_point_activity = has_wireless_access_point(latest_record)
-    active_minutes_summary = (
-        ' Bottom chart: sampled active minutes/hour stacked by access point.'
-        if show_access_point_activity
-        else ''
-    )
-    month_active_minutes_summary = (
-        ' Bottom chart: sampled active minutes/day stacked by access point.'
-        if show_access_point_activity
-        else ''
-    )
 
     usage_scales: list[UsageScaleContext] = [
         {
@@ -683,7 +663,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Hour of day',
             'mb_axis_title': 'MB/hour',
             'minutes_axis_title': 'minutes/hour',
-            'summary_text': f'Top chart: attributed WAN MB/hour stacked by down/up direction.{active_minutes_summary}',
+            'summary_text': 'Chart: attributed WAN MB/hour stacked by down/up direction.',
             'points': daily_hourly_usage,
             'usage_device_series': build_wan_flow_direction_series(
                 mac_wan_flows,
@@ -694,12 +674,12 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             ),
             'wan_direction_labels': ['Down', 'Up'],
             'wan_direction_mb_values': [wan_today_download_mb, wan_today_upload_mb],
-            'access_point_labels': [ap_name for ap_name, _, _ in daily_access_points],
+            'access_point_labels': [],
             'access_point_mb_values': [],
-            'access_point_minutes_values': [active_minutes for _, _, active_minutes in daily_access_points],
+            'access_point_minutes_values': [],
             'throttle_x_values': daily_hour_values,
-            'throttle_datasets': daily_access_point_datasets,
-            'show_access_point_activity': show_access_point_activity,
+            'throttle_datasets': [],
+            'show_access_point_activity': False,
         },
         {
             'key': 'monthly',
@@ -707,7 +687,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Day of month',
             'mb_axis_title': 'MB/day',
             'minutes_axis_title': 'minutes/day',
-            'summary_text': f'Top chart: attributed WAN MB/day stacked by down/up direction.{month_active_minutes_summary}',
+            'summary_text': 'Chart: attributed WAN MB/day stacked by down/up direction.',
             'points': month_daily_usage,
             'usage_device_series': build_wan_flow_direction_series(
                 mac_wan_flows,
@@ -718,12 +698,12 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             ),
             'wan_direction_labels': ['Down', 'Up'],
             'wan_direction_mb_values': [wan_month_download_mb, wan_month_upload_mb],
-            'access_point_labels': [ap_name for ap_name, _, _ in monthly_access_points],
+            'access_point_labels': [],
             'access_point_mb_values': [],
-            'access_point_minutes_values': [active_minutes for _, _, active_minutes in monthly_access_points],
+            'access_point_minutes_values': [],
             'throttle_x_values': month_day_values,
-            'throttle_datasets': month_access_point_datasets,
-            'show_access_point_activity': show_access_point_activity,
+            'throttle_datasets': [],
+            'show_access_point_activity': False,
         },
     ]
 

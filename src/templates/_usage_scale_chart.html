@@ -2,9 +2,7 @@
 {% if usage_points %}
     {% set chart_id_prefix = "usage-scale-chart-" ~ (mac or "client")|replace(":", "") ~ "-" ~ usage_scale.key %}
     {% set mb_chart_id = chart_id_prefix ~ "-mb" %}
-    {% set minutes_chart_id = chart_id_prefix ~ "-minutes" %}
     {% set wan_direction_pie_id = chart_id_prefix ~ "-wan-direction" %}
-    {% set minutes_ap_pie_id = chart_id_prefix ~ "-minutes-ap" %}
     {% set labels = usage_points | map(attribute='bucket_value') | list %}
     {% set full_labels = usage_points | map(attribute='bucket_label') | list %}
     {% set mb_series = usage_points | map(attribute='total_mb') | list %}
@@ -20,26 +18,11 @@
         </aside>
     </div>
 
-    {% if usage_scale.show_access_point_activity %}
-        <div class="usage-scale-row">
-            <div class="usage-scale-primary month-chart-wrap" style="height: 220px;">
-                <canvas id="{{ minutes_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} active minutes"></canvas>
-            </div>
-            <aside class="usage-scale-side month-chart-wrap usage-scale-pie-wrap" style="height: 220px;">
-                <h3>Active Time by Access Point</h3>
-                <canvas id="{{ minutes_ap_pie_id }}" class="usage-scale-pie-canvas" role="img" aria-label="Minutes by access point"></canvas>
-                <p class="muted usage-scale-empty" data-empty-for="{{ minutes_ap_pie_id }}" hidden>No access-point usage data.</p>
-            </aside>
-        </div>
-    {% endif %}
-
     <script id="{{ chart_id_prefix }}-config" type="application/json" data-usage-chart-config>
         {{ {
             "type": "usage-scale",
             "mbCanvasId": mb_chart_id,
-            "minutesCanvasId": minutes_chart_id,
             "wanDirectionPieCanvasId": wan_direction_pie_id,
-            "minutesApPieCanvasId": minutes_ap_pie_id,
             "labels": labels,
             "mbSeries": mb_series,
             "fullLabels": full_labels,
