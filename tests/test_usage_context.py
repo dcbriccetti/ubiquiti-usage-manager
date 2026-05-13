@@ -187,6 +187,7 @@ class ClientUsageContextTests(unittest.TestCase):
             patch.object(usage_context, "datetime", FixedDateTime),
             patch.object(db, "datetime", FixedDateTime),
             patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+            patch.object(db, "get_wan_identity_flow_rows_for_mac") as flow_rows,
             patch.object(usage_context, "build_wan_import_usage_context") as import_rows,
             patch.object(usage_context, "build_flow_activity_context") as activity_rows,
         ):
@@ -194,6 +195,7 @@ class ClientUsageContextTests(unittest.TestCase):
 
         self.assertEqual(context["wan_import_usage_rows"], [])
         self.assertEqual(context["flow_activity_rows"], [])
+        flow_rows.assert_not_called()
         import_rows.assert_not_called()
         activity_rows.assert_not_called()
 

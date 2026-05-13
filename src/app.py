@@ -33,11 +33,7 @@ from display_format import format_voucher_data_amount, format_voucher_percent
 from lan_identity import find_client_mac_for_ip, get_request_ip
 from logging_config import configure_logging
 from report_periods import build_report_period_context
-from usage_context import (
-    get_client_wan_detail_context,
-    get_client_usage_context,
-    speed_limit_option_label,
-)
+from usage_context import get_client_usage_context, speed_limit_option_label
 from wan_service import (
     build_month_usage_comparison_rows,
     build_wan_attribution_diagnostics,
@@ -626,8 +622,8 @@ def create_app() -> Flask:
             abort(403)
 
         return render_template(
-            "_client_wan_detail_panels.html",
-            **get_client_wan_detail_context(mac),
+            "_client_deferred_usage_panels.html",
+            **get_client_usage_context(mac),
         )
 
     @flask_app.route("/clients/<mac>/usage-today-embed")
@@ -637,7 +633,7 @@ def create_app() -> Flask:
             abort(403)
 
         try:
-            context = get_client_usage_context(mac, include_wan_details=False)
+            context = get_client_usage_context(mac)
         except LookupError:
             abort(404)
 
@@ -742,8 +738,8 @@ def create_app() -> Flask:
             abort(404)
 
         return render_template(
-            "_client_wan_detail_panels.html",
-            **get_client_wan_detail_context(detected_mac),
+            "_client_deferred_usage_panels.html",
+            **get_client_usage_context(detected_mac),
         )
 
     return flask_app

@@ -824,9 +824,36 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
     month_start = datetime.combine(now.date().replace(day=1), time.min)
     month_wan_rows: list[db.WanIdentityUsageSummary] = []
     hydrate_usage_record_identity(latest_record, latest_ip_identity, month_wan_rows, mac)
-    if needs_identity_hydration(latest_record):
+    if include_wan_details and needs_identity_hydration(latest_record):
         month_wan_rows = db.get_wan_usage_by_identity(period_start=month_start, period_end=now)
         hydrate_usage_record_identity(latest_record, latest_ip_identity, month_wan_rows, mac)
+
+    if not include_wan_details:
+        return {
+            'mac': mac,
+            'latest_record': latest_record,
+            'usage_history': usage_history,
+            'daily_total_mb': 0.0,
+            'last_7_days_total_mb': 0.0,
+            'calendar_month_total_mb': 0.0,
+            'month_cost_cents': 0.0,
+            'wan_client_ip': wan_client_ip,
+            'wan_usage_available': bool(wan_client_ip),
+            'wan_identity_observed_at': latest_ip_identity.observed_at if latest_ip_identity else None,
+            'wan_today_download_mb': 0.0,
+            'wan_today_upload_mb': 0.0,
+            'wan_today_total_mb': 0.0,
+            'wan_month_download_mb': 0.0,
+            'wan_month_upload_mb': 0.0,
+            'wan_month_total_mb': 0.0,
+            'wan_import_usage_rows': [],
+            'access_mode_usage_rows': [],
+            'flow_activity_rows': [],
+            'voucher_usage': None,
+            'usage_scales': [],
+            'current_month_label': current_month_label,
+            'speed_limits_by_name': speed_limits_by_name,
+        }
 
     voucher = db.get_active_plus_voucher_for_user_id(latest_record.user_id)
     mac_identity_wan_flows = db.get_wan_identity_flow_rows_for_mac(mac, month_start, now)
@@ -854,15 +881,13 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
         (row['month_mb'] for row in access_mode_usage_rows if row['key'] == 'plus_paid'),
         0.0,
     )
-    wan_import_usage_rows: list[WanImportUsageContext] = []
-    if include_wan_details:
-        wan_import_usage_rows = build_wan_import_usage_context(
-            mac,
-            mac_identity_wan_flows,
-            month_start,
-            now,
-        )
-        flow_activity_rows = build_flow_activity_context(mac_identity_wan_flows, month_start, now)
+    wan_import_usage_rows = build_wan_import_usage_context(
+        mac,
+        mac_identity_wan_flows,
+        month_start,
+        now,
+    )
+    flow_activity_rows = build_flow_activity_context(mac_identity_wan_flows, month_start, now)
     wan_today_download_mb, wan_today_upload_mb = summarize_wan_flows(
         mac_wan_flows,
         today_start,

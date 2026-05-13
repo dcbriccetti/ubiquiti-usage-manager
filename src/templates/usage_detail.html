@@ -28,7 +28,19 @@
             </div>
         </article>
     {% else %}
-        {% include "_client_usage_stats_and_measurement.html" %}
+        {% if wan_details_url %}
+            <section id="wan-detail-panels" data-wan-details-url="{{ wan_details_url }}">
+                <article class="panel">
+                    <div class="panel-body">
+                        <h2>WAN Usage</h2>
+                        <p class="muted">Loading WAN totals, charts, and recent activity…</p>
+                    </div>
+                </article>
+            </section>
+            <script src="{{ url_for('static', filename='js/client-usage-detail.js') }}"></script>
+        {% else %}
+            {% include "_client_deferred_usage_panels.html" %}
+        {% endif %}
 
         {% if can_set_speed_limit %}
             <article class="panel">
@@ -50,20 +62,6 @@
                     {% endif %}
                 </div>
             </article>
-        {% endif %}
-
-        {% if wan_details_url %}
-            <section id="wan-detail-panels" data-wan-details-url="{{ wan_details_url }}">
-                <article class="panel">
-                    <div class="panel-body">
-                        <h2>WAN Details</h2>
-                        <p class="muted">Loading recent WAN usage and activity details…</p>
-                    </div>
-                </article>
-            </section>
-            <script src="{{ url_for('static', filename='js/client-usage-detail.js') }}"></script>
-        {% else %}
-            {% include "_client_wan_detail_panels.html" %}
         {% endif %}
     {% endif %}
 {% endblock %}
