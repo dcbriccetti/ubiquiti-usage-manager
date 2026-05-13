@@ -212,6 +212,10 @@ class ClientUsageContextTests(unittest.TestCase):
         day_9_point = next(point for point in monthly_scale["points"] if point["bucket_value"] == 9)
         self.assertAlmostEqual(day_9_point["total_mb"], 3.0)
         self.assertEqual(
+            monthly_scale["throttle_x_values"],
+            [point["bucket_value"] for point in monthly_scale["points"]],
+        )
+        self.assertEqual(
             [series["label"] for series in monthly_scale["usage_device_series"]],
             ["Down", "Up"],
         )

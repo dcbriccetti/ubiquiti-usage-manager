@@ -75,7 +75,7 @@
         }
     };
 
-    const xAxis = (title, offset = true) => ({
+    const xAxis = (title, offset = true, autoSkip = true) => ({
         offset,
         title: {
             display: true,
@@ -86,8 +86,14 @@
         },
         ticks: {
             maxRotation: 0,
-            autoSkip: true,
+            autoSkip,
             maxTicksLimit: 12
+        }
+    });
+
+    const fixedYAxisWidth = (width) => ({
+        afterFit: (scale) => {
+            scale.width = width;
         }
     });
 
@@ -170,6 +176,7 @@
         }
         const labels = config.labels || [];
         const fullLabels = config.fullLabels || [];
+        const autoSkipXTicks = labels.length > (config.showAllTickLimit || 12);
         const { datasets, stackedMode, hasNamedSeries } = deviceDatasets(
             labels,
             config.mbSeries || [],
@@ -209,10 +216,11 @@
                 scales: {
                     x: {
                         stacked: stackedMode,
-                        ...xAxis(config.xAxisTitle || "Day of month")
+                        ...xAxis(config.xAxisTitle || "Day of month", true, autoSkipXTicks)
                     },
                     y: {
                         stacked: stackedMode,
+                        ...fixedYAxisWidth(config.yAxisWidth || 78),
                         beginAtZero: true,
                         title: {
                             display: true,
@@ -234,6 +242,7 @@
         }
         const labels = config.labels || [];
         const fullLabels = config.fullLabels || [];
+        const autoSkipXTicks = labels.length > (config.showAllTickLimit || 12);
         const colorByLabel = colorMapFromLabels(config.colorLabels || [], config.colorPalette || accessPointPalette);
         const datasets = config.alignToLabels === false
             ? (config.rawDatasets || []).map((series, idx) => ({
@@ -276,10 +285,11 @@
                 scales: {
                     x: {
                         stacked: true,
-                        ...xAxis(config.xAxisTitle || "Day of month", config.xOffset !== false)
+                        ...xAxis(config.xAxisTitle || "Day of month", config.xOffset !== false, autoSkipXTicks)
                     },
                     y: {
                         stacked: true,
+                        ...fixedYAxisWidth(config.yAxisWidth || 78),
                         beginAtZero: true,
                         title: {
                             display: true,

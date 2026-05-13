@@ -10,7 +10,7 @@
     {% set mb_series = usage_points | map(attribute='total_mb') | list %}
 
     <div class="usage-scale-row">
-        <div class="month-chart-wrap" style="height: 220px;">
+        <div class="usage-scale-primary month-chart-wrap" style="height: 220px;">
             <canvas id="{{ mb_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} MB usage"></canvas>
         </div>
         <aside class="usage-scale-side month-chart-wrap usage-scale-pie-wrap" style="height: 220px;">
