@@ -121,6 +121,82 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(hourly_totals, {0: 2.0})
         self.assertEqual(direction_series[0]["data"], [0.0, 2.0])
 
+    def test_recent_wan_rows_enrich_only_displayed_limit(self) -> None:
+        mac = "aa:bb:cc:dd:ee:20"
+        flows = [
+            db.WanMacIdentityFlowUsage(
+                source_file=f"nfcapd.20260509{minute:04d}",
+                started_at=datetime(2026, 5, 9, 12, minute),
+                ended_at=datetime(2026, 5, 9, 12, minute),
+                proto="TCP",
+                src_ip="8.8.8.8",
+                src_port=443,
+                dst_ip="192.168.1.20",
+                dst_port=50000 + minute,
+                packets=1,
+                bytes=1_000_000,
+                direction="download",
+                client_ip="192.168.1.20",
+                mac=mac,
+                name="Test client",
+                user_id="",
+                vlan="Plus",
+            )
+            for minute in range(10)
+        ]
+
+        with (
+            patch.object(db, "get_access_point_labels_for_windows", return_value={}) as ap_labels,
+            patch.object(usage_context, "resolve_host_labels", return_value={}),
+        ):
+            rows = usage_context.build_wan_import_usage_context(
+                mac,
+                flows,
+                datetime(2026, 5, 9, 12, 0),
+                datetime(2026, 5, 9, 12, 59),
+                limit=3,
+            )
+
+        self.assertEqual([row["source_file"] for row in rows], [
+            "nfcapd.202605090009",
+            "nfcapd.202605090008",
+            "nfcapd.202605090007",
+        ])
+        ap_labels.assert_called_once()
+        self.assertEqual(len(ap_labels.call_args.args[1]), 3)
+
+    def test_client_context_can_skip_deferred_wan_details(self) -> None:
+        mac = "42:3e:c1:5d:fc:59"
+        with db.SessionLocal() as session:
+            session.add(
+                db.UsageRecord(
+                    timestamp=datetime(2026, 5, 9, 22, 1),
+                    mac=mac,
+                    user_id="",
+                    name="iPad",
+                    vlan="Plus",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name="Office AP",
+                    signal=-50,
+                )
+            )
+            session.commit()
+
+        with (
+            patch.object(usage_context, "datetime", FixedDateTime),
+            patch.object(db, "datetime", FixedDateTime),
+            patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+            patch.object(usage_context, "build_wan_import_usage_context") as import_rows,
+            patch.object(usage_context, "build_flow_activity_context") as activity_rows,
+        ):
+            context = usage_context.get_client_usage_context(mac, include_wan_details=False)
+
+        self.assertEqual(context["wan_import_usage_rows"], [])
+        self.assertEqual(context["flow_activity_rows"], [])
+        import_rows.assert_not_called()
+        activity_rows.assert_not_called()
+
     def test_wan_usage_fills_zero_sampled_usage_and_voucher_identity(self) -> None:
         mac = "42:3e:c1:5d:fc:59"
         generated_at = datetime(2026, 5, 6, 13, 32)

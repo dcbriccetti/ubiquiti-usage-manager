@@ -128,45 +128,6 @@
     </article>
 {% endif %}
 
-{% if flow_activity_rows %}
-    <article class="panel">
-        <div class="panel-body">
-            <h2>Top WAN Activities</h2>
-            <p class="muted">
-                Grouped by protocol and service port for {{ current_month_label }}. Remote names use cached reverse DNS when available.
-            </p>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Activity</th>
-                            <th>Remote endpoints</th>
-                            <th class="num">WAN MB</th>
-                            <th class="num">Down</th>
-                            <th class="num">Up</th>
-                            <th class="num">Share</th>
-                            <th class="num">Flows</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in flow_activity_rows %}
-                            <tr>
-                                <td>{{ row.label }}</td>
-                                <td class="mono">{{ row.detail }}</td>
-                                <td class="num">{{ "{:,.0f}".format(row.total_mb) }}</td>
-                                <td class="num">{{ "{:,.0f}".format(row.download_mb) }}</td>
-                                <td class="num">{{ "{:,.0f}".format(row.upload_mb) }}</td>
-                                <td class="num">{{ "{:,.0f}".format(row.pct) }}%</td>
-                                <td class="num">{{ "{:,}".format(row.flow_count) }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </article>
-{% endif %}
-
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
 
 {% for usage_scale in usage_scales %}

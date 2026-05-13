@@ -165,6 +165,14 @@ class ClientUsageContext(TypedDict):
     speed_limits_by_name: SpeedLimitsByName
 
 
+class ClientWanDetailContext(TypedDict):
+    'Deferred client WAN detail panels.'
+    mac: str
+    wan_import_usage_rows: list[WanImportUsageContext]
+    flow_activity_rows: list[FlowActivityContext]
+    current_month_label: str
+
+
 @dataclass
 class WanImportUsageAccumulator:
     'Mutable accumulator for one client/source-file WAN import row.'
@@ -352,7 +360,7 @@ def summarize_remote_endpoint_counts(endpoint_bytes: dict[str, int]) -> tuple[st
         endpoint_bytes.items(),
         key=lambda item: (-item[1], item[0]),
     )
-    host_labels = resolve_host_labels([endpoint for endpoint, _ in ordered_endpoints[:4]])
+    host_labels = resolve_host_labels([endpoint for endpoint, _ in ordered_endpoints[:4]], wait=False)
 
     def render_endpoint(endpoint: str) -> str:
         if endpoint in host_labels:
@@ -409,15 +417,24 @@ def build_wan_import_usage_context(
         summary.endpoint_bytes = endpoint_bytes
 
     imported_at_by_source = db.get_flow_import_times_by_source_file(set(summaries_by_source))
+    selected_summaries = sorted(
+        summaries_by_source.values(),
+        key=lambda summary: (
+            imported_at_by_source.get(summary.source_file) or summary.last_flow_at,
+            summary.last_flow_at,
+            summary.source_file,
+        ),
+        reverse=True,
+    )[:max(1, limit)]
     access_point_by_source = db.get_access_point_labels_for_windows(
         mac,
         {
-            source_file: (summary.first_flow_at, summary.last_flow_at)
-            for source_file, summary in summaries_by_source.items()
+            summary.source_file: (summary.first_flow_at, summary.last_flow_at)
+            for summary in selected_summaries
         },
     )
     rows: list[WanImportUsageContext] = []
-    for summary in summaries_by_source.values():
+    for summary in selected_summaries:
         total_bytes = summary.download_bytes + summary.upload_bytes
         if total_bytes <= 0:
             continue
@@ -585,7 +602,7 @@ def build_flow_activity_context(
         activity_total_bytes = download_bytes + upload_bytes
         endpoint_bytes = activity.endpoint_bytes or {}
         top_endpoints = sorted(endpoint_bytes.items(), key=lambda item: item[1], reverse=True)[:3]
-        host_labels = resolve_host_labels([endpoint for endpoint, _ in top_endpoints])
+        host_labels = resolve_host_labels([endpoint for endpoint, _ in top_endpoints], wait=False)
         rendered_endpoints = [
             f'{host_labels[endpoint]} ({endpoint})' if endpoint in host_labels else endpoint
             for endpoint, _ in top_endpoints
@@ -748,7 +765,25 @@ def merge_wan_totals_into_usage_points(
     return merged_points
 
 
-def get_client_usage_context(mac: str) -> ClientUsageContext:
+def get_client_wan_detail_context(mac: str, now: datetime | None = None) -> ClientWanDetailContext:
+    'Build deferred WAN detail panels for one client.'
+    resolved_now = now or datetime.now()
+    month_start = datetime.combine(resolved_now.date().replace(day=1), time.min)
+    mac_identity_wan_flows = db.get_wan_identity_flow_rows_for_mac(mac, month_start, resolved_now)
+    return {
+        'mac': mac,
+        'wan_import_usage_rows': build_wan_import_usage_context(
+            mac,
+            mac_identity_wan_flows,
+            month_start,
+            resolved_now,
+        ),
+        'flow_activity_rows': build_flow_activity_context(mac_identity_wan_flows, month_start, resolved_now),
+        'current_month_label': render_month_label(resolved_now),
+    }
+
+
+def get_client_usage_context(mac: str, include_wan_details: bool = True) -> ClientUsageContext:
     'Build shared usage/detail context used by both admin and self-service pages.'
     if usage_history := db.get_usage_history(mac):
         latest_record = usage_history[0]
@@ -814,12 +849,20 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         today_start,
         seven_days_ago,
     )
-    flow_activity_rows = build_flow_activity_context(mac_identity_wan_flows, month_start, now)
+    flow_activity_rows: list[FlowActivityContext] = []
     paid_plus_month_mb = next(
         (row['month_mb'] for row in access_mode_usage_rows if row['key'] == 'plus_paid'),
         0.0,
     )
-    wan_import_usage_rows = build_wan_import_usage_context(mac, mac_identity_wan_flows, month_start, now)
+    wan_import_usage_rows: list[WanImportUsageContext] = []
+    if include_wan_details:
+        wan_import_usage_rows = build_wan_import_usage_context(
+            mac,
+            mac_identity_wan_flows,
+            month_start,
+            now,
+        )
+        flow_activity_rows = build_flow_activity_context(mac_identity_wan_flows, month_start, now)
     wan_today_download_mb, wan_today_upload_mb = summarize_wan_flows(
         mac_wan_flows,
         today_start,

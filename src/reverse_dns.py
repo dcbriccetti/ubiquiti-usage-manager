@@ -72,7 +72,7 @@ def _schedule_lookup(ip_address: str) -> Future[str | None] | None:
     return future
 
 
-def resolve_host_labels(ip_addresses: list[str]) -> dict[str, str]:
+def resolve_host_labels(ip_addresses: list[str], wait: bool = True) -> dict[str, str]:
     'Return cached reverse-DNS labels and queue missing lookups.'
     if not bool(getattr(cfg, 'ENABLE_REVERSE_DNS', True)):
         return {}
@@ -94,6 +94,9 @@ def resolve_host_labels(ip_addresses: list[str]) -> dict[str, str]:
         future = _schedule_lookup(ip_address)
         if future is not None:
             futures.append((ip_address, future))
+
+    if not wait:
+        return labels
 
     deadline = datetime.now() + timedelta(seconds=timeout_seconds)
     for ip_address, future in futures:
