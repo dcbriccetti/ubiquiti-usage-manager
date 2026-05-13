@@ -39,13 +39,13 @@ def shorten_hostname(hostname: str) -> str:
     return '.'.join(parts[-3:])
 
 
-def safe_hostname_label(hostname: str) -> str:
-    'Return a report-safe hostname label without exposing the raw hostname.'
+def safe_hostname_label(hostname: str) -> str | None:
+    'Return a report-safe hostname label, or None to keep the IP visible.'
     normalized = shorten_hostname(hostname).lower()
     for suffixes, label in HOSTNAME_CATEGORY_LABELS:
         if any(normalized == suffix or normalized.endswith(f'.{suffix}') for suffix in suffixes):
             return label
-    return 'Named Internet host'
+    return None
 
 
 def _lookup_hostname(ip_address: str) -> str | None:
@@ -117,7 +117,8 @@ def resolve_host_labels(ip_addresses: list[str], wait: bool = True) -> dict[str,
         for ip_address in unique_ips:
             cached = _cache.get(ip_address)
             if cached and cached[0] > now and cached[1]:
-                labels[ip_address] = safe_hostname_label(cached[1])
+                if label := safe_hostname_label(cached[1]):
+                    labels[ip_address] = label
 
     for ip_address in unique_ips:
         if ip_address in labels:
@@ -140,6 +141,6 @@ def resolve_host_labels(ip_addresses: list[str], wait: bool = True) -> dict[str,
             continue
         except Exception:
             continue
-        if hostname:
-            labels[ip_address] = safe_hostname_label(hostname)
+        if hostname and (label := safe_hostname_label(hostname)):
+            labels[ip_address] = label
     return labels

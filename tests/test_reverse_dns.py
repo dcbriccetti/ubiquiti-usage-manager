@@ -45,7 +45,7 @@ class ReverseDnsTests(unittest.TestCase):
         )
         self.assertEqual(
             safe_hostname_label("potentially-sensitive.example.net"),
-            "Named Internet host",
+            None,
         )
 
 
