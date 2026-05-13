@@ -344,7 +344,9 @@ def create_app() -> Flask:
             report_args['month'] = month_value
 
         return render_template(
-            "insights_loading.html",
+            "loading.html",
+            loading_title="Loading Insights",
+            loading_message="Preparing analytics...",
             target_url=url_for("insights_report", **report_args),
         )
 
@@ -378,6 +380,19 @@ def create_app() -> Flask:
 
     @flask_app.route("/wan")
     def wan_usage():
+        'Render a fast loading screen before Internet diagnostics.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        return render_template(
+            "loading.html",
+            loading_title="Loading Internet Data Health",
+            loading_message="Checking import freshness and device matching...",
+            target_url=url_for("wan_usage_report"),
+        )
+
+    @flask_app.route("/wan/report")
+    def wan_usage_report():
         'Render Internet import and attribution diagnostics.'
         if not requester_is_plus_admin():
             abort(403)

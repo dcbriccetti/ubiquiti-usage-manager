@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Loading Insights | UniFi Usage{% endblock %}
+{% block title %}{{ loading_title }} | UniFi Usage{% endblock %}
 
 {% block content %}
     <section class="loading-stage">
         <article class="panel loading-panel" aria-live="polite">
             <div class="loading-spinner" aria-hidden="true"></div>
-            <h1>Loading Insights</h1>
-            <p>Preparing analytics...</p>
+            <h1>{{ loading_title }}</h1>
+            <p>{{ loading_message }}</p>
             <noscript>
                 <p><a href="{{ target_url }}">Continue</a></p>
             </noscript>
