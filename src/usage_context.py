@@ -29,6 +29,24 @@ ACCESS_MODE_NOTES = {
     'unclassified': 'Missing flow-time identity',
 }
 ACCESS_MODE_ORDER = ('basic', 'plus_paid', 'plus_voucher', 'unclassified')
+SERVICE_LABEL_BY_PROTO_PORT = {
+    ('TCP', 80): 'Web browsing',
+    ('TCP', 443): 'Secure web and apps',
+    ('UDP', 443): 'QUIC web and streaming',
+    ('UDP', 53): 'DNS lookups',
+    ('TCP', 53): 'DNS lookups',
+    ('UDP', 123): 'Time sync',
+    ('TCP', 25): 'Email sending',
+    ('TCP', 465): 'Email sending',
+    ('TCP', 587): 'Email sending',
+    ('TCP', 993): 'Email reading',
+    ('TCP', 995): 'Email reading',
+    ('TCP', 22): 'SSH / remote login',
+    ('TCP', 3389): 'Remote desktop',
+    ('UDP', 500): 'VPN',
+    ('UDP', 4500): 'VPN',
+    ('UDP', 51820): 'WireGuard VPN',
+}
 
 
 class ThrottleChartDataset(TypedDict):
@@ -102,6 +120,17 @@ class AccessModeUsageContext(TypedDict):
     month_cost_cents: float
 
 
+class FlowActivityContext(TypedDict):
+    'Client WAN usage grouped by likely network activity.'
+    label: str
+    detail: str
+    download_mb: float
+    upload_mb: float
+    total_mb: float
+    pct: float
+    flow_count: int
+
+
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
     mac: str
@@ -122,6 +151,7 @@ class ClientUsageContext(TypedDict):
     wan_usage_available: bool
     wan_import_usage_rows: list[WanImportUsageContext]
     access_mode_usage_rows: list[AccessModeUsageContext]
+    flow_activity_rows: list[FlowActivityContext]
     voucher_usage: VoucherUsageContext | None
     usage_scales: list[UsageScaleContext]
     current_month_label: str
@@ -137,6 +167,16 @@ class WanImportUsageAccumulator:
     download_bytes: int = 0
     upload_bytes: int = 0
     flow_count: int = 0
+
+
+@dataclass
+class FlowActivityAccumulator:
+    'Mutable accumulator for one protocol/port activity row.'
+    label: str
+    download_bytes: int = 0
+    upload_bytes: int = 0
+    flow_count: int = 0
+    endpoint_bytes: dict[str, int] | None = None
 
 
 def wan_flow_usage_at(flow: db.WanMacFlowUsage | db.WanMacIdentityFlowUsage) -> datetime:
@@ -390,6 +430,84 @@ def access_mode_key_for_flow(
     return 'unclassified'
 
 
+def remote_endpoint_for_flow(flow: db.WanMacIdentityFlowUsage) -> tuple[str, int | None]:
+    'Return the external endpoint IP and service-side port for an attributed flow.'
+    if flow.src_ip == flow.client_ip:
+        return flow.dst_ip, flow.dst_port
+    return flow.src_ip, flow.src_port
+
+
+def service_label_for_flow(proto: str, port: int | None) -> str:
+    'Return a conservative user-facing label for protocol/port traffic.'
+    normalized_proto = proto.strip().upper()
+    if port is None:
+        return normalized_proto or 'Unknown traffic'
+    label = SERVICE_LABEL_BY_PROTO_PORT.get((normalized_proto, port))
+    if label:
+        return label
+    if normalized_proto == 'TCP':
+        return f'TCP/{port}'
+    if normalized_proto == 'UDP':
+        return f'UDP/{port}'
+    return f'{normalized_proto}/{port}' if normalized_proto else f'Port {port}'
+
+
+def build_flow_activity_context(
+    flows: list[db.WanMacIdentityFlowUsage],
+    period_start: datetime,
+    period_end: datetime,
+    limit: int = 8,
+) -> list[FlowActivityContext]:
+    'Return top client WAN activity groups for one period.'
+    activity_by_key: dict[tuple[str, int | None], FlowActivityAccumulator] = {}
+    total_bytes = 0
+    for flow in flows:
+        usage_at = wan_flow_usage_at(flow)
+        if usage_at < period_start or usage_at > period_end or flow.bytes <= 0:
+            continue
+
+        remote_ip, service_port = remote_endpoint_for_flow(flow)
+        proto = flow.proto.strip().upper()
+        key = (proto, service_port)
+        activity = activity_by_key.setdefault(
+            key,
+            FlowActivityAccumulator(label=service_label_for_flow(proto, service_port), endpoint_bytes={}),
+        )
+        if flow.direction == 'upload':
+            activity.upload_bytes += flow.bytes
+        else:
+            activity.download_bytes += flow.bytes
+        activity.flow_count += 1
+        endpoint_bytes = activity.endpoint_bytes or {}
+        endpoint_bytes[remote_ip] = endpoint_bytes.get(remote_ip, 0) + flow.bytes
+        activity.endpoint_bytes = endpoint_bytes
+        total_bytes += flow.bytes
+
+    rows: list[FlowActivityContext] = []
+    for activity in activity_by_key.values():
+        download_bytes = activity.download_bytes
+        upload_bytes = activity.upload_bytes
+        activity_total_bytes = download_bytes + upload_bytes
+        endpoint_bytes = activity.endpoint_bytes or {}
+        top_endpoints = sorted(endpoint_bytes.items(), key=lambda item: item[1], reverse=True)[:3]
+        endpoint_text = ', '.join(endpoint for endpoint, _ in top_endpoints if endpoint)
+        if len(endpoint_bytes) > len(top_endpoints):
+            endpoint_text = f'{endpoint_text}, +{len(endpoint_bytes) - len(top_endpoints)} more'
+        rows.append(
+            {
+                'label': activity.label,
+                'detail': endpoint_text or 'No remote endpoint',
+                'download_mb': download_bytes / 1_000_000.0,
+                'upload_mb': upload_bytes / 1_000_000.0,
+                'total_mb': activity_total_bytes / 1_000_000.0,
+                'pct': (activity_total_bytes / total_bytes * 100.0) if total_bytes else 0.0,
+                'flow_count': activity.flow_count,
+            }
+        )
+
+    return sorted(rows, key=lambda row: row['total_mb'], reverse=True)[:max(1, limit)]
+
+
 def build_access_mode_usage_context(
     flows: list[db.WanMacIdentityFlowUsage],
     vouchers_by_user_id: dict[str, db.PlusVoucherRecord],
@@ -595,6 +713,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         today_start,
         seven_days_ago,
     )
+    flow_activity_rows = build_flow_activity_context(mac_identity_wan_flows, month_start, now)
     paid_plus_month_mb = next(
         (row['month_mb'] for row in access_mode_usage_rows if row['key'] == 'plus_paid'),
         0.0,
@@ -726,6 +845,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'wan_month_total_mb': wan_month_total_mb,
         'wan_import_usage_rows': wan_import_usage_rows,
         'access_mode_usage_rows': access_mode_usage_rows,
+        'flow_activity_rows': flow_activity_rows,
         'voucher_usage': build_voucher_usage_context(
             latest_record.user_id,
             voucher=voucher,

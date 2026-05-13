@@ -222,6 +222,12 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertAlmostEqual(context["last_7_days_total_mb"], 3.0)
         self.assertAlmostEqual(context["calendar_month_total_mb"], 3.0)
         self.assertAlmostEqual(context["wan_today_total_mb"], 3.0)
+        self.assertEqual(len(context["flow_activity_rows"]), 1)
+        self.assertEqual(context["flow_activity_rows"][0]["label"], "Secure web and apps")
+        self.assertEqual(context["flow_activity_rows"][0]["detail"], "8.8.8.8")
+        self.assertAlmostEqual(context["flow_activity_rows"][0]["total_mb"], 3.0)
+        self.assertAlmostEqual(context["flow_activity_rows"][0]["download_mb"], 2.0)
+        self.assertAlmostEqual(context["flow_activity_rows"][0]["upload_mb"], 1.0)
         self.assertIsNotNone(context["voucher_usage"])
         assert context["voucher_usage"] is not None
         self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 3.0)

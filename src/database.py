@@ -306,6 +306,12 @@ class WanMacIdentityFlowUsage:
     source_file: str
     started_at: datetime
     ended_at: datetime
+    proto: str
+    src_ip: str
+    src_port: int | None
+    dst_ip: str
+    dst_port: int | None
+    packets: int
     bytes: int
     direction: str
     client_ip: str
@@ -1175,6 +1181,12 @@ def get_wan_identity_flow_rows_for_mac(
             WanFlowUsage.source_file,
             WanFlowUsage.started_at,
             WanFlowUsage.ended_at,
+            WanFlowUsage.proto,
+            WanFlowUsage.src_ip,
+            WanFlowUsage.src_port,
+            WanFlowUsage.dst_ip,
+            WanFlowUsage.dst_port,
+            WanFlowUsage.packets,
             WanFlowUsage.client_ip,
             WanFlowUsage.direction,
             WanFlowUsage.bytes,
@@ -1220,7 +1232,20 @@ def get_wan_identity_flow_rows_for_mac(
     }
 
     attributed_rows: list[WanMacIdentityFlowUsage] = []
-    for source_file, started_at, ended_at, client_ip, direction, byte_count in flow_rows:
+    for (
+        source_file,
+        started_at,
+        ended_at,
+        proto,
+        src_ip,
+        src_port,
+        dst_ip,
+        dst_port,
+        packets,
+        client_ip,
+        direction,
+        byte_count,
+    ) in flow_rows:
         ip_text = str(client_ip)
         identities = identities_by_ip.get(ip_text, [])
         observed_times = observed_times_by_ip.get(ip_text, [])
@@ -1240,6 +1265,12 @@ def get_wan_identity_flow_rows_for_mac(
                 source_file=str(source_file),
                 started_at=started_at,
                 ended_at=ended_at,
+                proto=str(proto or ''),
+                src_ip=str(src_ip or ''),
+                src_port=src_port,
+                dst_ip=str(dst_ip or ''),
+                dst_port=dst_port,
+                packets=int(packets or 0),
                 bytes=int(byte_count or 0),
                 direction=str(direction or ''),
                 client_ip=ip_text,
