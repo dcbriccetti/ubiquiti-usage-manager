@@ -27,6 +27,17 @@ HOSTNAME_CATEGORY_LABELS = (
     (('apple.com', 'icloud.com'), 'Apple host'),
     (('nflxvideo.net', 'netflix.com'), 'Streaming service host'),
 )
+IP_NETWORK_CATEGORY_LABELS = (
+    (ipaddress.ip_network('17.0.0.0/8'), 'Apple host'),
+    (ipaddress.ip_network('1.0.0.0/24'), 'Cloudflare DNS'),
+    (ipaddress.ip_network('1.1.1.0/24'), 'Cloudflare DNS'),
+    (ipaddress.ip_network('8.8.4.0/24'), 'Google DNS'),
+    (ipaddress.ip_network('8.8.8.0/24'), 'Google DNS'),
+    (ipaddress.ip_network('9.9.9.0/24'), 'Quad9 DNS'),
+    (ipaddress.ip_network('149.112.112.0/24'), 'Quad9 DNS'),
+    (ipaddress.ip_network('208.67.220.0/24'), 'Cisco DNS'),
+    (ipaddress.ip_network('208.67.222.0/24'), 'Cisco DNS'),
+)
 
 
 def shorten_hostname(hostname: str) -> str:
@@ -44,6 +55,19 @@ def safe_hostname_label(hostname: str) -> str | None:
     normalized = shorten_hostname(hostname).lower()
     for suffixes, label in HOSTNAME_CATEGORY_LABELS:
         if any(normalized == suffix or normalized.endswith(f'.{suffix}') for suffix in suffixes):
+            return label
+    return None
+
+
+def safe_ip_label(ip_address: str) -> str | None:
+    'Return a report-safe provider label for known public IP ranges.'
+    try:
+        parsed_ip = ipaddress.ip_address(ip_address)
+    except ValueError:
+        return None
+
+    for network, label in IP_NETWORK_CATEGORY_LABELS:
+        if parsed_ip in network:
             return label
     return None
 
@@ -105,16 +129,22 @@ def _schedule_lookup(ip_address: str) -> Future[str | None] | None:
 
 def resolve_host_labels(ip_addresses: list[str], wait: bool = True) -> dict[str, str]:
     'Return cached reverse-DNS labels and queue missing lookups.'
-    if not bool(getattr(cfg, 'ENABLE_REVERSE_DNS', True)):
-        return {}
-
     timeout_seconds = float(getattr(cfg, 'REVERSE_DNS_LOOKUP_TIMEOUT_SECONDS', 0.05))
     labels: dict[str, str] = {}
     futures: list[tuple[str, Future[str | None]]] = []
     now = datetime.now()
     unique_ips = list(dict.fromkeys(ip for ip in ip_addresses if ip))
+    for ip_address in unique_ips:
+        if label := safe_ip_label(ip_address):
+            labels[ip_address] = label
+
+    if not bool(getattr(cfg, 'ENABLE_REVERSE_DNS', True)):
+        return labels
+
     with _cache_lock:
         for ip_address in unique_ips:
+            if ip_address in labels:
+                continue
             cached = _cache.get(ip_address)
             if cached and cached[0] > now and cached[1]:
                 if label := safe_hostname_label(cached[1]):
