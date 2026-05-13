@@ -114,6 +114,12 @@ class ClientUsageContextTests(unittest.TestCase):
             usage_context.service_label_for_flow("TCP", 5223),
             "Apple push notifications",
         )
+        for port in (5228, 5229, 5230):
+            with self.subTest(port=port):
+                self.assertEqual(
+                    usage_context.service_label_for_flow("TCP", port),
+                    "Google push notifications",
+                )
         self.assertEqual(usage_context.service_label_for_flow("TCP", 22067), "TCP/22067")
 
     def test_wan_chart_buckets_use_flow_end_time(self) -> None:

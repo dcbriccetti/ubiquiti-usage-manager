@@ -43,6 +43,10 @@ class ReverseDnsTests(unittest.TestCase):
             safe_hostname_label("ec2-203-0-113-10.compute-1.amazonaws.com"),
             "Amazon cloud host",
         )
+        self.assertEqual(safe_hostname_label("edge-star-mini-shv-01-sjc3.facebook.com"), "Meta host")
+        self.assertEqual(safe_hostname_label("scontent-sjc3-1.xx.fbcdn.net"), "Meta host")
+        self.assertEqual(safe_hostname_label("instagram.com"), "Meta host")
+        self.assertEqual(safe_hostname_label("whatsapp.net"), "Meta host")
         self.assertEqual(
             safe_hostname_label("potentially-sensitive.example.net"),
             None,

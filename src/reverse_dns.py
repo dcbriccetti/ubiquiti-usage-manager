@@ -25,6 +25,7 @@ HOSTNAME_CATEGORY_LABELS = (
     (('azure.com', 'azureedge.net', 'trafficmanager.net', 'windows.net'), 'Microsoft cloud host'),
     (('microsoft.com', 'msn.com', 'office.com'), 'Microsoft host'),
     (('apple.com', 'icloud.com'), 'Apple host'),
+    (('facebook.com', 'fbcdn.net', 'instagram.com', 'whatsapp.net', 'messenger.com'), 'Meta host'),
     (('nflxvideo.net', 'netflix.com'), 'Streaming service host'),
 )
 IP_NETWORK_CATEGORY_LABELS = (
