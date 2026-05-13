@@ -53,6 +53,18 @@
         "rgba(15, 118, 110, 0.86)",
         "rgba(37, 99, 235, 0.78)"
     ];
+    const colorMapFromLabels = (labels, palette = accessPointPalette) => {
+        const colorByLabel = new Map();
+        (labels || []).forEach((label, idx) => {
+            colorByLabel.set(String(label), palette[idx % palette.length]);
+        });
+        return colorByLabel;
+    };
+
+    const colorForLabel = (colorByLabel, label, idx, palette = accessPointPalette) => {
+        const key = String(label || "");
+        return colorByLabel?.get(key) || palette[idx % palette.length];
+    };
 
     const parseConfig = (script) => {
         try {
@@ -128,7 +140,7 @@
         return { datasets, stackedMode, hasNamedSeries };
     };
 
-    const throttleDatasets = (labels, throttleLabels, rawDatasets) => {
+    const throttleDatasets = (labels, throttleLabels, rawDatasets, colorByLabel = null) => {
         const labelToIndex = new Map(
             (throttleLabels || []).map((bucketLabel, idx) => [Number(bucketLabel), idx])
         );
@@ -144,7 +156,7 @@
             }),
             backgroundColor: series.label === "Default"
                 ? "rgba(107, 114, 128, 0.38)"
-                : throttleColors[idx % throttleColors.length],
+                : colorForLabel(colorByLabel, series.label, idx, throttleColors),
             borderRadius: 2,
             stack: "throttle",
             ...commonBarStyle
@@ -222,18 +234,19 @@
         }
         const labels = config.labels || [];
         const fullLabels = config.fullLabels || [];
+        const colorByLabel = colorMapFromLabels(config.colorLabels || [], config.colorPalette || accessPointPalette);
         const datasets = config.alignToLabels === false
             ? (config.rawDatasets || []).map((series, idx) => ({
                 label: series.label,
                 data: series.data,
                 backgroundColor: series.label === "Default"
                     ? "rgba(107, 114, 128, 0.38)"
-                    : throttleColors[idx % throttleColors.length],
+                    : colorForLabel(colorByLabel, series.label, idx, throttleColors),
                 borderRadius: 2,
                 ...commonBarStyle,
                 stack: "throttle"
             }))
-            : throttleDatasets(labels, config.throttleLabels || labels, config.rawDatasets || []);
+            : throttleDatasets(labels, config.throttleLabels || labels, config.rawDatasets || [], colorByLabel);
 
         new Chart(canvas, {
             type: "bar",
@@ -281,7 +294,7 @@
         });
     };
 
-    const renderPie = (canvasId, labels, values, valueLabel, palette = accessPointPalette) => {
+    const renderPie = (canvasId, labels, values, valueLabel, palette = accessPointPalette, colorByLabel = null) => {
         const canvas = document.getElementById(canvasId);
         if (!canvas) {
             return;
@@ -314,7 +327,7 @@
                 datasets: [
                     {
                         data: series.map((row) => row.value),
-                        backgroundColor: series.map((_, idx) => palette[idx % palette.length]),
+                        backgroundColor: series.map((row, idx) => colorForLabel(colorByLabel, row.label, idx, palette)),
                         borderColor: "rgba(255, 255, 255, 0.85)",
                         borderWidth: 1,
                     }
@@ -360,6 +373,7 @@
             fallbackLabel: "Usage",
             totalLabel: "Total"
         });
+        const accessPointColorByLabel = colorMapFromLabels(config.apLabels || [], accessPointPalette);
         renderThrottleChart({
             canvasId: config.minutesCanvasId,
             labels: config.labels,
@@ -367,7 +381,9 @@
             throttleLabels: config.throttleLabels,
             rawDatasets: config.throttleDatasets,
             xAxisTitle: config.xAxisTitle,
-            yAxisTitle: config.minutesAxisTitle
+            yAxisTitle: config.minutesAxisTitle,
+            colorLabels: config.apLabels,
+            colorPalette: accessPointPalette
         });
         renderPie(
             config.wanDirectionPieCanvasId,
@@ -376,7 +392,14 @@
             "MB",
             directionPalette
         );
-        renderPie(config.minutesApPieCanvasId, config.apLabels, config.apMinutesValues, "minutes");
+        renderPie(
+            config.minutesApPieCanvasId,
+            config.apLabels,
+            config.apMinutesValues,
+            "minutes",
+            accessPointPalette,
+            accessPointColorByLabel
+        );
     };
 
     const renderInsights = (config) => {

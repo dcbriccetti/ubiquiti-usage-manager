@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
-from sqlalchemy import UniqueConstraint, case, create_engine, String, func, select, event
+from sqlalchemy import UniqueConstraint, case, create_engine, String, func, or_, select, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from clientinfo import ClientInfo
@@ -1223,9 +1223,10 @@ def get_flow_import_times_by_source_file(source_files: set[str]) -> dict[str, da
     if not normalized_sources:
         return {}
 
-    flow_import_columns = FlowImport.__table__.c
-    stmt = select(flow_import_columns.source_file, flow_import_columns.imported_at).where(
-        flow_import_columns.source_file.in_(normalized_sources)
+    source_file_column = FlowImport.__table__.columns['source_file']
+    imported_at_column = FlowImport.__table__.columns['imported_at']
+    stmt = select(source_file_column, imported_at_column).where(
+        or_(*(source_file_column == source_file for source_file in normalized_sources))
     )
     with SessionLocal() as session:
         return {
