@@ -295,6 +295,7 @@ class WanMacFlowUsage:
     'One WAN flow attributed to a specific client MAC.'
     source_file: str
     started_at: datetime
+    ended_at: datetime
     bytes: int
     direction: str
 
@@ -304,6 +305,7 @@ class WanMacIdentityFlowUsage:
     'One WAN flow attributed to a specific client MAC with flow-time identity.'
     source_file: str
     started_at: datetime
+    ended_at: datetime
     bytes: int
     direction: str
     client_ip: str
@@ -1125,6 +1127,7 @@ def get_wan_flow_rows_for_mac(
         WanMacFlowUsage(
             source_file=row.source_file,
             started_at=row.started_at,
+            ended_at=row.ended_at,
             bytes=row.bytes,
             direction=row.direction,
         )
@@ -1171,16 +1174,17 @@ def get_wan_identity_flow_rows_for_mac(
         select(
             WanFlowUsage.source_file,
             WanFlowUsage.started_at,
+            WanFlowUsage.ended_at,
             WanFlowUsage.client_ip,
             WanFlowUsage.direction,
             WanFlowUsage.bytes,
         )
         .where(
             WanFlowUsage.client_ip.in_(client_ips),
-            WanFlowUsage.started_at >= period_start,
-            WanFlowUsage.started_at <= period_end,
+            WanFlowUsage.ended_at >= period_start,
+            WanFlowUsage.ended_at <= period_end,
         )
-        .order_by(WanFlowUsage.started_at.asc(), WanFlowUsage.id.asc())
+        .order_by(WanFlowUsage.ended_at.asc(), WanFlowUsage.id.asc())
     )
 
     with SessionLocal() as session:
@@ -1216,7 +1220,7 @@ def get_wan_identity_flow_rows_for_mac(
     }
 
     attributed_rows: list[WanMacIdentityFlowUsage] = []
-    for source_file, started_at, client_ip, direction, byte_count in flow_rows:
+    for source_file, started_at, ended_at, client_ip, direction, byte_count in flow_rows:
         ip_text = str(client_ip)
         identities = identities_by_ip.get(ip_text, [])
         observed_times = observed_times_by_ip.get(ip_text, [])
@@ -1235,6 +1239,7 @@ def get_wan_identity_flow_rows_for_mac(
             WanMacIdentityFlowUsage(
                 source_file=str(source_file),
                 started_at=started_at,
+                ended_at=ended_at,
                 bytes=int(byte_count or 0),
                 direction=str(direction or ''),
                 client_ip=ip_text,
@@ -1256,7 +1261,7 @@ def get_wan_daily_totals_for_mac(
     'Return WAN-attributed MB totals by day for one client MAC.'
     totals_by_day: dict[date, float] = {}
     for flow in get_wan_flow_rows_for_mac(mac, period_start, period_end):
-        usage_day = flow.started_at.date()
+        usage_day = flow.ended_at.date()
         totals_by_day[usage_day] = totals_by_day.get(usage_day, 0.0) + flow.bytes / 1_000_000.0
     return totals_by_day
 
@@ -1269,7 +1274,7 @@ def get_wan_hourly_totals_for_mac(
     'Return WAN-attributed MB totals by hour for one client MAC.'
     totals_by_hour: dict[int, float] = {}
     for flow in get_wan_flow_rows_for_mac(mac, period_start, period_end):
-        usage_hour = flow.started_at.hour
+        usage_hour = flow.ended_at.hour
         totals_by_hour[usage_hour] = totals_by_hour.get(usage_hour, 0.0) + flow.bytes / 1_000_000.0
     return totals_by_hour
 
@@ -1285,7 +1290,7 @@ def get_wan_usage_summary_for_mac(
     if not flow_rows:
         return None, 0.0
 
-    first_usage_at = min(flow.started_at for flow in flow_rows)
+    first_usage_at = min(flow.ended_at for flow in flow_rows)
     total_bytes = sum(flow.bytes for flow in flow_rows)
     return first_usage_at, total_bytes / 1_000_000.0
 

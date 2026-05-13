@@ -139,6 +139,11 @@ class WanImportUsageAccumulator:
     flow_count: int = 0
 
 
+def wan_flow_usage_at(flow: db.WanMacFlowUsage | db.WanMacIdentityFlowUsage) -> datetime:
+    'Return the timestamp used to place WAN bytes in reporting buckets.'
+    return flow.ended_at
+
+
 def render_month_label(now: datetime) -> str:
     'Return full month name unless it is long, then use abbreviation.'
     full_label = now.strftime('%B')
@@ -253,7 +258,8 @@ def summarize_wan_flows(
     download_bytes = 0
     upload_bytes = 0
     for flow in flows:
-        if flow.started_at < period_start or flow.started_at > period_end:
+        usage_at = wan_flow_usage_at(flow)
+        if usage_at < period_start or usage_at > period_end:
             continue
         if flow.direction == 'upload':
             upload_bytes += flow.bytes
@@ -271,7 +277,8 @@ def build_wan_import_usage_context(
     'Return client-detail rows grouped by non-zero WAN capture import.'
     summaries_by_source: dict[str, WanImportUsageAccumulator] = {}
     for flow in flows:
-        if flow.started_at < period_start or flow.started_at > period_end or flow.bytes <= 0:
+        usage_at = wan_flow_usage_at(flow)
+        if usage_at < period_start or usage_at > period_end or flow.bytes <= 0:
             continue
 
         summary = summaries_by_source.get(flow.source_file)
@@ -279,12 +286,12 @@ def build_wan_import_usage_context(
             summary = WanImportUsageAccumulator(
                 source_file=flow.source_file,
                 first_flow_at=flow.started_at,
-                last_flow_at=flow.started_at,
+                last_flow_at=flow.ended_at,
             )
             summaries_by_source[flow.source_file] = summary
 
         summary.first_flow_at = min(summary.first_flow_at, flow.started_at)
-        summary.last_flow_at = max(summary.last_flow_at, flow.started_at)
+        summary.last_flow_at = max(summary.last_flow_at, flow.ended_at)
         if flow.direction == 'upload':
             summary.upload_bytes += flow.bytes
         else:
@@ -327,9 +334,10 @@ def build_wan_flow_bucket_totals(
     'Return WAN-attributed MB totals by day or hour bucket.'
     totals_by_bucket: dict[int, float] = {}
     for flow in flows:
-        if flow.started_at < period_start or flow.started_at > period_end:
+        usage_at = wan_flow_usage_at(flow)
+        if usage_at < period_start or usage_at > period_end:
             continue
-        bucket_value = flow.started_at.day if bucket == 'day' else flow.started_at.hour
+        bucket_value = usage_at.day if bucket == 'day' else usage_at.hour
         totals_by_bucket[bucket_value] = totals_by_bucket.get(bucket_value, 0.0) + flow.bytes / 1_000_000.0
     return totals_by_bucket
 
@@ -345,9 +353,10 @@ def build_wan_flow_direction_series(
     download_totals: dict[int, float] = {}
     upload_totals: dict[int, float] = {}
     for flow in flows:
-        if flow.started_at < period_start or flow.started_at > period_end:
+        usage_at = wan_flow_usage_at(flow)
+        if usage_at < period_start or usage_at > period_end:
             continue
-        bucket_value = flow.started_at.day if bucket == 'day' else flow.started_at.hour
+        bucket_value = usage_at.day if bucket == 'day' else usage_at.hour
         totals = upload_totals if flow.direction == 'upload' else download_totals
         totals[bucket_value] = totals.get(bucket_value, 0.0) + flow.bytes / 1_000_000.0
 
@@ -395,11 +404,12 @@ def build_access_mode_usage_context(
 
     for flow in flows:
         mode_key = access_mode_key_for_flow(flow, vouchers_by_user_id)
+        usage_at = wan_flow_usage_at(flow)
         total_mb = flow.bytes / 1_000_000.0
         totals_by_mode[mode_key]['month_mb'] += total_mb
-        if flow.started_at >= seven_days_ago:
+        if usage_at >= seven_days_ago:
             totals_by_mode[mode_key]['last_7_days_mb'] += total_mb
-        if flow.started_at >= today_start:
+        if usage_at >= today_start:
             totals_by_mode[mode_key]['today_mb'] += total_mb
 
     rows: list[AccessModeUsageContext] = []
@@ -570,6 +580,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         db.WanMacFlowUsage(
             source_file=flow.source_file,
             started_at=flow.started_at,
+            ended_at=flow.ended_at,
             bytes=flow.bytes,
             direction=flow.direction,
         )

@@ -34,7 +34,7 @@ class FixedDateTime(datetime):
 class FixedDateTimeMay10(datetime):
     @classmethod
     def now(cls, tz=None):  # type: ignore[override]
-        fixed = cls(2026, 5, 10, 10, 40)
+        fixed = cls(2026, 5, 10, 10, 41)
         if tz is not None:
             return fixed.replace(tzinfo=tz)
         return fixed
@@ -71,6 +71,39 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(first_limits, second_limits)
         self.assertEqual(set(first_limits), {"slow"})
         self.assertEqual(get_speed_limits.call_count, 1)
+
+    def test_wan_chart_buckets_use_flow_end_time(self) -> None:
+        flow = db.WanMacFlowUsage(
+            source_file="nfcapd.202605100000",
+            started_at=datetime(2026, 5, 9, 23, 59),
+            ended_at=datetime(2026, 5, 10, 0, 1),
+            bytes=2_000_000,
+            direction="download",
+        )
+
+        daily_totals = usage_context.build_wan_flow_bucket_totals(
+            [flow],
+            datetime(2026, 5, 10, 0, 0),
+            datetime(2026, 5, 10, 23, 59),
+            "day",
+        )
+        hourly_totals = usage_context.build_wan_flow_bucket_totals(
+            [flow],
+            datetime(2026, 5, 10, 0, 0),
+            datetime(2026, 5, 10, 23, 59),
+            "hour",
+        )
+        direction_series = usage_context.build_wan_flow_direction_series(
+            [flow],
+            datetime(2026, 5, 10, 0, 0),
+            datetime(2026, 5, 10, 23, 59),
+            "day",
+            [9, 10],
+        )
+
+        self.assertEqual(daily_totals, {10: 2.0})
+        self.assertEqual(hourly_totals, {0: 2.0})
+        self.assertEqual(direction_series[0]["data"], [0.0, 2.0])
 
     def test_wan_usage_fills_zero_sampled_usage_and_voucher_identity(self) -> None:
         mac = "42:3e:c1:5d:fc:59"
@@ -202,7 +235,7 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(recent_import["source_label"], "nfcapd.202605092205")
         self.assertEqual(recent_import["imported_at"], observed_at + timedelta(minutes=10))
         self.assertEqual(recent_import["first_flow_at"], observed_at + timedelta(minutes=5))
-        self.assertEqual(recent_import["last_flow_at"], observed_at + timedelta(minutes=6))
+        self.assertEqual(recent_import["last_flow_at"], observed_at + timedelta(minutes=7))
         self.assertAlmostEqual(recent_import["total_mb"], 3.0)
         self.assertAlmostEqual(recent_import["download_mb"], 2.0)
         self.assertAlmostEqual(recent_import["upload_mb"], 1.0)
