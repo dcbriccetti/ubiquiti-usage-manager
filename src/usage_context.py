@@ -362,6 +362,11 @@ def summarize_wan_flows(
     return download_bytes / 1_000_000.0, upload_bytes / 1_000_000.0
 
 
+def safe_resolved_host_label(endpoint: str, host_labels: dict[str, str]) -> str:
+    'Return a display-safe host label, falling back to the IP.'
+    return host_labels.get(endpoint) or endpoint
+
+
 def summarize_remote_endpoint_counts(endpoint_bytes: dict[str, int]) -> tuple[str, str, str, int] | None:
     'Return visible and tooltip labels for remote endpoint byte rollups.'
     if not endpoint_bytes:
@@ -374,9 +379,7 @@ def summarize_remote_endpoint_counts(endpoint_bytes: dict[str, int]) -> tuple[st
     host_labels = resolve_host_labels([endpoint for endpoint, _ in ordered_endpoints[:4]], wait=False)
 
     def render_endpoint(endpoint: str) -> str:
-        if endpoint in host_labels:
-            return host_labels[endpoint]
-        return endpoint
+        return safe_resolved_host_label(endpoint, host_labels)
 
     primary_endpoint = ordered_endpoints[0][0]
     primary_label = render_endpoint(primary_endpoint)
@@ -714,7 +717,7 @@ def build_flow_activity_context(
         endpoint_rows: list[FlowActivityEndpointContext] = [
             {
                 'ip': endpoint,
-                'label': host_labels.get(endpoint, endpoint),
+                'label': safe_resolved_host_label(endpoint, host_labels),
             }
             for endpoint, _ in top_endpoints
             if endpoint
