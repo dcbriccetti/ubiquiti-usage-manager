@@ -100,7 +100,7 @@
     };
 
     const refreshReverseDnsLabels = () => {
-        [500, 1500, 3500].forEach((delay) => {
+        [500, 1500, 3500, 7000, 12000].forEach((delay) => {
             window.setTimeout(() => {
                 requestReverseDnsLabels().catch(() => {});
             }, delay);

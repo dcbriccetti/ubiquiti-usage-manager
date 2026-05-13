@@ -17,6 +17,16 @@ _cache: dict[str, tuple[datetime, str | None]] = {}
 _pending: dict[str, Future[str | None]] = {}
 
 
+def shorten_hostname(hostname: str) -> str:
+    'Return a compact hostname label for display.'
+    parts = [part for part in hostname.rstrip('.').split('.') if part]
+    if len(parts) <= 3:
+        return '.'.join(parts)
+    if len(parts[-3]) > 12:
+        return '.'.join(parts[-2:])
+    return '.'.join(parts[-3:])
+
+
 def _lookup_hostname(ip_address: str) -> str | None:
     try:
         hostname, _, _ = socket.gethostbyaddr(ip_address)
@@ -86,7 +96,7 @@ def resolve_host_labels(ip_addresses: list[str], wait: bool = True) -> dict[str,
         for ip_address in unique_ips:
             cached = _cache.get(ip_address)
             if cached and cached[0] > now and cached[1]:
-                labels[ip_address] = cached[1]
+                labels[ip_address] = shorten_hostname(cached[1])
 
     for ip_address in unique_ips:
         if ip_address in labels:
@@ -110,5 +120,5 @@ def resolve_host_labels(ip_addresses: list[str], wait: bool = True) -> dict[str,
         except Exception:
             continue
         if hostname:
-            labels[ip_address] = hostname
+            labels[ip_address] = shorten_hostname(hostname)
     return labels
