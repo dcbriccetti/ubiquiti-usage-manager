@@ -1949,6 +1949,91 @@ def get_today_hourly_profile_minutes(mac: str) -> list[tuple[int, dict[str, int]
     return series
 
 
+def normalize_access_point_name(ap_name: object) -> str:
+    'Return a compact display label for an access point value.'
+    normalized_name = ap_name.strip() if isinstance(ap_name, str) and ap_name.strip() else 'Unknown'
+    if normalized_name.lower().endswith(' ap'):
+        normalized_name = normalized_name[:-3].rstrip() or 'Unknown'
+    return normalized_name
+
+
+def get_calendar_month_daily_access_point_minutes(mac: str) -> list[tuple[date, dict[str, int]]]:
+    'Return per-day active-minute counts grouped by access point for current month.'
+    now = datetime.now()
+    month_start = date(now.year, now.month, 1)
+    today = now.date()
+    month_start_dt = datetime.combine(month_start, time.min)
+    month_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.ap_name)
+        .where(
+            UsageRecord.mac == mac,
+            UsageRecord.timestamp >= month_start_dt,
+            UsageRecord.timestamp <= month_end_dt,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    day_ap_counts: dict[date, dict[str, int]] = {}
+    for row_timestamp, row_ap_name in rows:
+        if not hasattr(row_timestamp, 'date'):
+            continue
+
+        usage_day = row_timestamp.date()
+        ap_name = normalize_access_point_name(row_ap_name)
+        ap_counts = day_ap_counts.setdefault(usage_day, {})
+        ap_counts[ap_name] = ap_counts.get(ap_name, 0) + 1
+
+    day = month_start
+    series: list[tuple[date, dict[str, int]]] = []
+    while day <= today:
+        series.append((day, day_ap_counts.get(day, {})))
+        day += timedelta(days=1)
+
+    return series
+
+
+def get_today_hourly_access_point_minutes(mac: str) -> list[tuple[int, dict[str, int]]]:
+    'Return per-hour active-minute counts grouped by access point for today.'
+    now = datetime.now()
+    today = now.date()
+    today_start_dt = datetime.combine(today, time.min)
+    today_end_dt = datetime.combine(today, time.max)
+
+    stmt = (
+        select(UsageRecord.timestamp, UsageRecord.ap_name)
+        .where(
+            UsageRecord.mac == mac,
+            UsageRecord.timestamp >= today_start_dt,
+            UsageRecord.timestamp <= today_end_dt,
+        )
+        .order_by(UsageRecord.timestamp.asc())
+    )
+
+    with SessionLocal() as session:
+        rows = session.execute(stmt).all()
+
+    hour_ap_counts: dict[int, dict[str, int]] = {}
+    for row_timestamp, row_ap_name in rows:
+        if not hasattr(row_timestamp, 'hour'):
+            continue
+
+        usage_hour = row_timestamp.hour
+        ap_name = normalize_access_point_name(row_ap_name)
+        ap_counts = hour_ap_counts.setdefault(usage_hour, {})
+        ap_counts[ap_name] = ap_counts.get(ap_name, 0) + 1
+
+    series: list[tuple[int, dict[str, int]]] = []
+    for hour in range(0, now.hour + 1):
+        series.append((hour, hour_ap_counts.get(hour, {})))
+
+    return series
+
+
 def get_today_access_point_totals(mac: str) -> list[tuple[str, float, int]]:
     'Return today usage totals per access point for one client.'
     now = datetime.now()
@@ -1971,9 +2056,7 @@ def get_today_access_point_totals(mac: str) -> list[tuple[str, float, int]]:
 
     totals_by_ap: dict[str, tuple[float, int]] = {}
     for row_ap_name, row_mb_used in rows:
-        ap_name = row_ap_name.strip() if isinstance(row_ap_name, str) and row_ap_name.strip() else 'Unknown'
-        if ap_name.lower().endswith(' ap'):
-            ap_name = ap_name[:-3].rstrip() or 'Unknown'
+        ap_name = normalize_access_point_name(row_ap_name)
         existing_total_mb, existing_minutes = totals_by_ap.get(ap_name, (0.0, 0))
         totals_by_ap[ap_name] = (existing_total_mb + float(row_mb_used or 0.0), existing_minutes + 1)
 
@@ -2007,9 +2090,7 @@ def get_calendar_month_access_point_totals(mac: str) -> list[tuple[str, float, i
 
     totals_by_ap: dict[str, tuple[float, int]] = {}
     for row_ap_name, row_mb_used in rows:
-        ap_name = row_ap_name.strip() if isinstance(row_ap_name, str) and row_ap_name.strip() else 'Unknown'
-        if ap_name.lower().endswith(' ap'):
-            ap_name = ap_name[:-3].rstrip() or 'Unknown'
+        ap_name = normalize_access_point_name(row_ap_name)
         existing_total_mb, existing_minutes = totals_by_ap.get(ap_name, (0.0, 0))
         totals_by_ap[ap_name] = (existing_total_mb + float(row_mb_used or 0.0), existing_minutes + 1)
 

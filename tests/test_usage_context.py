@@ -219,6 +219,12 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertIsInstance(up_series, list)
         self.assertAlmostEqual(down_series[day_9_index], 2.0)
         self.assertAlmostEqual(up_series[day_9_index], 1.0)
+        self.assertEqual(
+            [series["label"] for series in monthly_scale["throttle_datasets"]],
+            ["AP"],
+        )
+        ap_series = monthly_scale["throttle_datasets"][0]["data"]
+        self.assertEqual(ap_series[day_9_index], 1)
 
     def test_voucher_balance_uses_mac_wan_usage_when_identity_changes(self) -> None:
         mac = "42:3e:c1:5d:fc:59"

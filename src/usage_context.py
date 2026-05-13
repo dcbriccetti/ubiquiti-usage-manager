@@ -197,6 +197,27 @@ def build_throttle_datasets(
     ]
 
 
+def build_active_minutes_datasets(bucket_rows: list[tuple[int, dict[str, int]]]) -> list[ThrottleChartDataset]:
+    'Build sorted stacked active-minute datasets for one bucketed time scale.'
+    totals_by_label: dict[str, int] = {}
+    for _, bucket_counts in bucket_rows:
+        for label, minutes in bucket_counts.items():
+            totals_by_label[label] = totals_by_label.get(label, 0) + minutes
+
+    sorted_labels = sorted(
+        totals_by_label,
+        key=lambda label: (totals_by_label[label], label.lower()),
+        reverse=True,
+    )
+    return [
+        {
+            'label': label,
+            'data': [bucket_counts.get(label, 0) for _, bucket_counts in bucket_rows],
+        }
+        for label in sorted_labels
+    ]
+
+
 def summarize_wan_flows(
     flows: list[db.WanMacFlowUsage],
     period_start: datetime,
@@ -455,7 +476,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         )
         usage_history = []
 
-    speed_limits_by_name = get_speed_limits_by_name()
+    speed_limits_by_name: SpeedLimitsByName = {}
     now = datetime.now()
     current_month_label = render_month_label(now)
     latest_ip_identity = db.get_latest_client_identity_by_mac(mac)
@@ -512,11 +533,11 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
     ]
     month_wan_totals_by_day = build_wan_flow_bucket_totals(mac_wan_flows, month_start, now, 'day')
     month_daily_usage = merge_wan_totals_into_usage_points(month_daily_usage, month_wan_totals_by_day)
-    month_throttle_rows = [
+    month_access_point_rows = [
         (usage_day.day, daily_counts)
-        for usage_day, daily_counts in db.get_calendar_month_daily_profile_minutes(mac)
+        for usage_day, daily_counts in db.get_calendar_month_daily_access_point_minutes(mac)
     ]
-    month_throttle_datasets = build_throttle_datasets(month_throttle_rows, speed_limits_by_name)
+    month_access_point_datasets = build_active_minutes_datasets(month_access_point_rows)
 
     daily_hourly_usage: list[UsageScalePoint] = [
         {
@@ -531,8 +552,8 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         daily_hourly_usage,
         build_wan_flow_bucket_totals(mac_wan_flows, today_start, now, 'hour'),
     )
-    daily_throttle_rows = db.get_today_hourly_profile_minutes(mac)
-    daily_throttle_datasets = build_throttle_datasets(daily_throttle_rows, speed_limits_by_name)
+    daily_access_point_rows = db.get_today_hourly_access_point_minutes(mac)
+    daily_access_point_datasets = build_active_minutes_datasets(daily_access_point_rows)
     daily_access_points = db.get_today_access_point_totals(mac)
     monthly_access_points = db.get_calendar_month_access_point_totals(mac)
     daily_hour_values = [point['bucket_value'] for point in daily_hourly_usage]
@@ -545,7 +566,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Hour of day',
             'mb_axis_title': 'MB/hour',
             'minutes_axis_title': 'minutes/hour',
-            'summary_text': 'Top chart: attributed WAN MB/hour stacked by down/up direction. Bottom chart: sampled active minutes/hour, with the pie showing access-point time.',
+            'summary_text': 'Top chart: attributed WAN MB/hour stacked by down/up direction. Bottom chart: sampled active minutes/hour stacked by access point.',
             'points': daily_hourly_usage,
             'usage_device_series': build_wan_flow_direction_series(
                 mac_wan_flows,
@@ -559,8 +580,8 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'access_point_labels': [ap_name for ap_name, _, _ in daily_access_points],
             'access_point_mb_values': [],
             'access_point_minutes_values': [active_minutes for _, _, active_minutes in daily_access_points],
-            'throttle_x_values': [hour for hour, _ in daily_throttle_rows],
-            'throttle_datasets': daily_throttle_datasets,
+            'throttle_x_values': [hour for hour, _ in daily_access_point_rows],
+            'throttle_datasets': daily_access_point_datasets,
         },
         {
             'key': 'monthly',
@@ -568,7 +589,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Day of month',
             'mb_axis_title': 'MB/day',
             'minutes_axis_title': 'minutes/day',
-            'summary_text': 'Top chart: attributed WAN MB/day stacked by down/up direction. Bottom chart: sampled active minutes/day, with the pie showing access-point time.',
+            'summary_text': 'Top chart: attributed WAN MB/day stacked by down/up direction. Bottom chart: sampled active minutes/day stacked by access point.',
             'points': month_daily_usage,
             'usage_device_series': build_wan_flow_direction_series(
                 mac_wan_flows,
@@ -582,8 +603,8 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'access_point_labels': [ap_name for ap_name, _, _ in monthly_access_points],
             'access_point_mb_values': [],
             'access_point_minutes_values': [active_minutes for _, _, active_minutes in monthly_access_points],
-            'throttle_x_values': [usage_day for usage_day, _ in month_throttle_rows],
-            'throttle_datasets': month_throttle_datasets,
+            'throttle_x_values': [usage_day for usage_day, _ in month_access_point_rows],
+            'throttle_datasets': month_access_point_datasets,
         },
     ]
 
