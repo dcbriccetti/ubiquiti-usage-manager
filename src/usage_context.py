@@ -386,7 +386,7 @@ def summarize_remote_endpoint_counts(endpoint_bytes: dict[str, int]) -> tuple[st
     for endpoint, byte_count in ordered_endpoints[:4]:
         endpoint_label = render_endpoint(endpoint)
         endpoint_detail = f'{endpoint_label} ({endpoint})' if endpoint_label != endpoint else endpoint
-        detail_parts.append(f'{endpoint_detail}: {byte_count / 1_000_000.0:.1f} MB')
+        detail_parts.append(f'{endpoint_detail}: {byte_count / 1_000.0:,.0f} KB')
     if len(ordered_endpoints) > 4:
         detail_parts.append(f'+{len(ordered_endpoints) - 4} more')
     return label, ', '.join(detail_parts), primary_endpoint, extra_count
