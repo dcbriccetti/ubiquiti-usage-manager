@@ -93,7 +93,7 @@
         <article class="panel">
             <div class="panel-body">
                 <h2>Payer & Infrastructure</h2>
-                <section class="insights-summary-grid">
+                <section class="insights-detail-stack">
                     <article class="insights-summary">
                         <h3>Usage Split ({{ current_month_label }})</h3>
                         {% set total_split_mb = organization_paid_total_mb + user_paid_total_mb %}
@@ -136,33 +136,6 @@
                             </tbody>
                         </table>
                     </article>
-                    <article class="insights-ap-hotspots">
-                        <h3>Activity by Access Point</h3>
-                        <table class="insights-table">
-                            <thead>
-                                <tr>
-                                    <th>Access Point</th>
-                                    <th class="num">Minutes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for ap in top_access_points_this_month %}
-                                    <tr>
-                                        <td class="nowrap-col">{{ ap.ap_name }}</td>
-                                        <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
-                                    </tr>
-                                {% else %}
-                                    <tr>
-                                        <td colspan="2" class="muted">No access-point activity data for {{ report_period_label }}.</td>
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </article>
-                </section>
-
-                <h3>User Detail</h3>
-                <section class="insights-user-detail-grid">
                     <article>
                         <h3>Organization-paid Clients</h3>
                         <p class="muted">
@@ -238,6 +211,29 @@
                                 {% else %}
                                     <tr>
                                         <td colspan="4" class="muted">No usage data for {{ report_period_label }}.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </article>
+                    <article class="insights-ap-hotspots">
+                        <h3>Activity by Access Point</h3>
+                        <table class="insights-table">
+                            <thead>
+                                <tr>
+                                    <th>Access Point</th>
+                                    <th class="num">Minutes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ap in top_access_points_this_month %}
+                                    <tr>
+                                        <td class="nowrap-col">{{ ap.ap_name }}</td>
+                                        <td class="num">{{ "{:,.0f}".format(ap.active_minutes) }}</td>
+                                    </tr>
+                                {% else %}
+                                    <tr>
+                                        <td colspan="2" class="muted">No access-point activity data for {{ report_period_label }}.</td>
                                     </tr>
                                 {% endfor %}
                             </tbody>
