@@ -15,6 +15,8 @@ class DisplayFormatTests(unittest.TestCase):
     def test_voucher_data_amount_shows_small_usage_in_mb(self) -> None:
         self.assertEqual(format_voucher_data_amount(0.0), "0 MB")
         self.assertEqual(format_voucher_data_amount(25.0), "25 MB")
+        self.assertEqual(format_voucher_data_amount(39_975.0), "39.98 GB")
+        self.assertEqual(format_voucher_data_amount(40_000.0), "40 GB")
         self.assertEqual(format_voucher_data_amount(1784.0), "1.8 GB")
 
     def test_voucher_percent_shows_tiny_nonzero_values(self) -> None:

@@ -7,7 +7,13 @@ def format_voucher_data_amount(mb_value: float) -> str:
         return '0 MB'
     if abs(mb_value) < 1000:
         return f'{mb_value:,.0f} MB'
-    return f'{mb_value / 1000.0:,.1f} GB'
+
+    gb_value = mb_value / 1000.0
+    if mb_value % 1000 == 0:
+        return f'{gb_value:,.0f} GB'
+    if abs(gb_value) >= 10:
+        return f'{gb_value:,.2f} GB'
+    return f'{gb_value:,.1f} GB'
 
 
 def format_voucher_percent(percent_value: float) -> str:
