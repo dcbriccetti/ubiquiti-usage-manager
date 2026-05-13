@@ -208,6 +208,17 @@ class ClientUsageContextTests(unittest.TestCase):
         monthly_scale = next(scale for scale in context["usage_scales"] if scale["key"] == "monthly")
         day_9_point = next(point for point in monthly_scale["points"] if point["bucket_value"] == 9)
         self.assertAlmostEqual(day_9_point["total_mb"], 3.0)
+        self.assertEqual(
+            [series["label"] for series in monthly_scale["usage_device_series"]],
+            ["Down", "Up"],
+        )
+        day_9_index = [point["bucket_value"] for point in monthly_scale["points"]].index(9)
+        down_series = monthly_scale["usage_device_series"][0]["data"]
+        up_series = monthly_scale["usage_device_series"][1]["data"]
+        self.assertIsInstance(down_series, list)
+        self.assertIsInstance(up_series, list)
+        self.assertAlmostEqual(down_series[day_9_index], 2.0)
+        self.assertAlmostEqual(up_series[day_9_index], 1.0)
 
     def test_voucher_balance_uses_mac_wan_usage_when_identity_changes(self) -> None:
         mac = "42:3e:c1:5d:fc:59"

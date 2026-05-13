@@ -287,6 +287,35 @@ def build_wan_flow_bucket_totals(
     return totals_by_bucket
 
 
+def build_wan_flow_direction_series(
+    flows: list[db.WanMacFlowUsage],
+    period_start: datetime,
+    period_end: datetime,
+    bucket: str,
+    bucket_values: list[int],
+) -> list[dict[str, object]]:
+    'Return download/upload MB series aligned to rendered client chart buckets.'
+    download_totals: dict[int, float] = {}
+    upload_totals: dict[int, float] = {}
+    for flow in flows:
+        if flow.started_at < period_start or flow.started_at > period_end:
+            continue
+        bucket_value = flow.started_at.day if bucket == 'day' else flow.started_at.hour
+        totals = upload_totals if flow.direction == 'upload' else download_totals
+        totals[bucket_value] = totals.get(bucket_value, 0.0) + flow.bytes / 1_000_000.0
+
+    return [
+        {
+            'label': 'Down',
+            'data': [download_totals.get(bucket_value, 0.0) for bucket_value in bucket_values],
+        },
+        {
+            'label': 'Up',
+            'data': [upload_totals.get(bucket_value, 0.0) for bucket_value in bucket_values],
+        },
+    ]
+
+
 def summarize_wan_flows_for_voucher(
     voucher: db.PlusVoucherRecord,
     flows: list[db.WanMacFlowUsage],
@@ -506,6 +535,8 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
     daily_throttle_datasets = build_throttle_datasets(daily_throttle_rows, speed_limits_by_name)
     daily_access_points = db.get_today_access_point_totals(mac)
     monthly_access_points = db.get_calendar_month_access_point_totals(mac)
+    daily_hour_values = [point['bucket_value'] for point in daily_hourly_usage]
+    month_day_values = [point['bucket_value'] for point in month_daily_usage]
 
     usage_scales: list[UsageScaleContext] = [
         {
@@ -514,14 +545,15 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Hour of day',
             'mb_axis_title': 'MB/hour',
             'minutes_axis_title': 'minutes/hour',
-            'summary_text': 'Top chart: attributed WAN MB/hour, with the pie showing down/up split. Bottom chart: sampled active minutes/hour, with the pie showing access-point time.',
+            'summary_text': 'Top chart: attributed WAN MB/hour stacked by down/up direction. Bottom chart: sampled active minutes/hour, with the pie showing access-point time.',
             'points': daily_hourly_usage,
-            'usage_device_series': [
-                {
-                    'label': '',
-                    'data': [point['total_mb'] for point in daily_hourly_usage],
-                }
-            ],
+            'usage_device_series': build_wan_flow_direction_series(
+                mac_wan_flows,
+                today_start,
+                now,
+                'hour',
+                daily_hour_values,
+            ),
             'wan_direction_labels': ['Down', 'Up'],
             'wan_direction_mb_values': [wan_today_download_mb, wan_today_upload_mb],
             'access_point_labels': [ap_name for ap_name, _, _ in daily_access_points],
@@ -536,14 +568,15 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Day of month',
             'mb_axis_title': 'MB/day',
             'minutes_axis_title': 'minutes/day',
-            'summary_text': 'Top chart: attributed WAN MB/day, with the pie showing down/up split. Bottom chart: sampled active minutes/day, with the pie showing access-point time.',
+            'summary_text': 'Top chart: attributed WAN MB/day stacked by down/up direction. Bottom chart: sampled active minutes/day, with the pie showing access-point time.',
             'points': month_daily_usage,
-            'usage_device_series': [
-                {
-                    'label': '',
-                    'data': [point['total_mb'] for point in month_daily_usage],
-                }
-            ],
+            'usage_device_series': build_wan_flow_direction_series(
+                mac_wan_flows,
+                month_start,
+                now,
+                'day',
+                month_day_values,
+            ),
             'wan_direction_labels': ['Down', 'Up'],
             'wan_direction_mb_values': [wan_month_download_mb, wan_month_upload_mb],
             'access_point_labels': [ap_name for ap_name, _, _ in monthly_access_points],
