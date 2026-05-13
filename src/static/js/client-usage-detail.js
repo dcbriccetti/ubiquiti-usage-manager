@@ -74,7 +74,7 @@
                 });
 
                 if (pageStatus) {
-                    pageStatus.textContent = `${start + 1}–${end} of ${rows.length}`;
+                    pageStatus.innerHTML = `${start + 1}<span class="range-dash">–</span>${end} of ${rows.length}`;
                 }
                 if (prevButton) {
                     prevButton.disabled = page === 0;
