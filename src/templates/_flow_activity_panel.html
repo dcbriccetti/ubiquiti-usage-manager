@@ -25,11 +25,11 @@
                         <tr>
                             <th>Activity</th>
                             <th>Hosts</th>
-                            <th class="num">Internet MB</th>
-                            <th class="num">Down</th>
-                            <th class="num">Up</th>
+                            <th class="num">Data</th>
+                            <th class="num">Downloaded</th>
+                            <th class="num">Uploaded</th>
                             <th class="num">Share</th>
-                            <th class="num">Connections</th>
+                            <th class="num">Records</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -47,9 +47,9 @@
                                         {{ row.detail }}
                                     {%- endif -%}
                                 </td>
-                                <td class="num">{{ "{:,.0f}".format(row.total_mb) }}</td>
-                                <td class="num">{{ "{:,.0f}".format(row.download_mb) }}</td>
-                                <td class="num">{{ "{:,.0f}".format(row.upload_mb) }}</td>
+                                <td class="num">{{ row.total_mb|internet_data_amount }}</td>
+                                <td class="num">{{ row.download_mb|internet_data_amount }}</td>
+                                <td class="num">{{ row.upload_mb|internet_data_amount }}</td>
                                 <td class="num">{{ "{:,.0f}".format(row.pct) }}%</td>
                                 <td class="num">{{ "{:,}".format(row.flow_count) }}</td>
                             </tr>

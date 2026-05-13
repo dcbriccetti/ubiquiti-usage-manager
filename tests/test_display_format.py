@@ -8,10 +8,18 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from display_format import format_voucher_data_amount, format_voucher_percent
+from display_format import format_internet_data_amount, format_voucher_data_amount, format_voucher_percent
 
 
 class DisplayFormatTests(unittest.TestCase):
+    def test_internet_data_amount_shows_small_usage_in_kb(self) -> None:
+        self.assertEqual(format_internet_data_amount(0.0), "0 KB")
+        self.assertEqual(format_internet_data_amount(0.0004), "<1 KB")
+        self.assertEqual(format_internet_data_amount(0.2), "200 KB")
+        self.assertEqual(format_internet_data_amount(1.8), "1.8 MB")
+        self.assertEqual(format_internet_data_amount(138.0), "138 MB")
+        self.assertEqual(format_internet_data_amount(2_207.0), "2.2 GB")
+
     def test_voucher_data_amount_shows_small_usage_in_mb(self) -> None:
         self.assertEqual(format_voucher_data_amount(0.0), "0 MB")
         self.assertEqual(format_voucher_data_amount(25.0), "25 MB")
