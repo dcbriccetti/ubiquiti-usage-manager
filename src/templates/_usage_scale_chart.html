@@ -20,16 +20,18 @@
         </aside>
     </div>
 
-    <div class="usage-scale-row">
-        <div class="usage-scale-primary month-chart-wrap" style="height: 220px;">
-            <canvas id="{{ minutes_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} active minutes"></canvas>
+    {% if usage_scale.show_access_point_activity %}
+        <div class="usage-scale-row">
+            <div class="usage-scale-primary month-chart-wrap" style="height: 220px;">
+                <canvas id="{{ minutes_chart_id }}" class="month-chart-canvas" role="img" aria-label="{{ usage_scale.title }} active minutes"></canvas>
+            </div>
+            <aside class="usage-scale-side month-chart-wrap usage-scale-pie-wrap" style="height: 220px;">
+                <h3>Active Time by Access Point</h3>
+                <canvas id="{{ minutes_ap_pie_id }}" class="usage-scale-pie-canvas" role="img" aria-label="Minutes by access point"></canvas>
+                <p class="muted usage-scale-empty" data-empty-for="{{ minutes_ap_pie_id }}" hidden>No access-point usage data.</p>
+            </aside>
         </div>
-        <aside class="usage-scale-side month-chart-wrap usage-scale-pie-wrap" style="height: 220px;">
-            <h3>Active Time by Access Point</h3>
-            <canvas id="{{ minutes_ap_pie_id }}" class="usage-scale-pie-canvas" role="img" aria-label="Minutes by access point"></canvas>
-            <p class="muted usage-scale-empty" data-empty-for="{{ minutes_ap_pie_id }}" hidden>No access-point usage data.</p>
-        </aside>
-    </div>
+    {% endif %}
 
     <script id="{{ chart_id_prefix }}-config" type="application/json" data-usage-chart-config>
         {{ {

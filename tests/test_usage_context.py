@@ -229,6 +229,36 @@ class ClientUsageContextTests(unittest.TestCase):
         ap_series = monthly_scale["throttle_datasets"][0]["data"]
         self.assertEqual(ap_series[day_9_index], 1)
 
+    def test_wired_client_hides_access_point_activity_charts(self) -> None:
+        mac = "aa:bb:cc:dd:ee:40"
+        with db.SessionLocal() as session:
+            session.add(
+                db.UsageRecord(
+                    timestamp=datetime(2026, 5, 10, 10, 1),
+                    mac=mac,
+                    user_id="wired",
+                    name="Wired Client",
+                    vlan="Basic",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name="",
+                    signal=None,
+                )
+            )
+            session.commit()
+
+        with (
+            patch.object(usage_context, "datetime", FixedDateTimeMay10),
+            patch.object(db, "datetime", FixedDateTimeMay10),
+            patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+        ):
+            context = usage_context.get_client_usage_context(mac)
+
+        self.assertEqual(context["latest_record"].ap_name, "")
+        for usage_scale in context["usage_scales"]:
+            self.assertFalse(usage_scale["show_access_point_activity"])
+            self.assertNotIn("access point", usage_scale["summary_text"].lower())
+
     def test_voucher_balance_uses_flow_time_voucher_identity_when_client_modes_change(self) -> None:
         mac = "42:3e:c1:5d:fc:59"
         generated_at = datetime(2026, 5, 6, 13, 32)
