@@ -619,6 +619,45 @@
             font-size: 0.86rem;
         }
 
+        .loading-stage {
+            min-height: min(520px, calc(100vh - 160px));
+            display: grid;
+            place-items: center;
+            text-align: center;
+        }
+
+        .loading-panel {
+            width: min(420px, 100%);
+            padding: var(--space-7);
+        }
+
+        .loading-spinner {
+            width: 52px;
+            height: 52px;
+            margin: 0 auto var(--space-5);
+            border: 4px solid rgba(15, 118, 110, 0.14);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: loading-spin 0.8s linear infinite;
+        }
+
+        .loading-panel h1 {
+            margin: 0;
+            font-size: 1.8rem;
+            line-height: 1.1;
+        }
+
+        .loading-panel p {
+            margin: var(--space-3) 0 0;
+            color: var(--muted);
+        }
+
+        @keyframes loading-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
         table.dashboard-loading {
             opacity: 0.66;
         }

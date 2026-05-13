@@ -335,6 +335,21 @@ def create_app() -> Flask:
 
     @flask_app.route("/insights")
     def insights():
+        'Render a fast loading screen before the expensive Insights report.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        report_args = {}
+        if month_value := request.args.get('month'):
+            report_args['month'] = month_value
+
+        return render_template(
+            "insights_loading.html",
+            target_url=url_for("insights_report", **report_args),
+        )
+
+    @flask_app.route("/insights/report")
+    def insights_report():
         'Render deeper month analytics panels.'
         if not requester_is_plus_admin():
             abort(403)

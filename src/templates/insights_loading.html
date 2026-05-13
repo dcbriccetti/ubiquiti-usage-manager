@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Loading Insights | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="loading-stage">
+        <article class="panel loading-panel" aria-live="polite">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <h1>Loading Insights</h1>
+            <p>Preparing analytics...</p>
+            <noscript>
+                <p><a href="{{ target_url }}">Continue</a></p>
+            </noscript>
+        </article>
+    </section>
+    <script>
+        requestAnimationFrame(() => {
+            window.location.replace({{ target_url|tojson }});
+        });
+    </script>
+{% endblock %}
