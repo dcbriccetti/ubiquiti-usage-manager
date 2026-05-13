@@ -180,7 +180,6 @@ class ClientUsageContextTests(unittest.TestCase):
             patch.object(usage_context, "datetime", FixedDateTime),
             patch.object(db, "datetime", FixedDateTime),
             patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
-            patch.object(db, "get_plus_voucher_usage_summary", side_effect=AssertionError),
         ):
             context = usage_context.get_client_usage_context(mac)
 
@@ -226,7 +225,7 @@ class ClientUsageContextTests(unittest.TestCase):
         ap_series = monthly_scale["throttle_datasets"][0]["data"]
         self.assertEqual(ap_series[day_9_index], 1)
 
-    def test_voucher_balance_uses_mac_wan_usage_when_identity_changes(self) -> None:
+    def test_voucher_balance_uses_flow_time_voucher_identity_when_client_modes_change(self) -> None:
         mac = "42:3e:c1:5d:fc:59"
         generated_at = datetime(2026, 5, 6, 13, 32)
         with db.SessionLocal() as session:
@@ -270,6 +269,14 @@ class ClientUsageContextTests(unittest.TestCase):
                         user_id="5921",
                         vlan="Plus",
                     ),
+                    db.ClientIpIdentity(
+                        observed_at=datetime(2026, 5, 10, 9, 0),
+                        ip_address="192.168.6.143",
+                        mac=mac,
+                        name="iPad",
+                        user_id="basic-user",
+                        vlan="Basic",
+                    ),
                     db.WanFlowUsage(
                         source_file="nfcapd.202605092215",
                         started_at=datetime(2026, 5, 9, 22, 15),
@@ -282,6 +289,21 @@ class ClientUsageContextTests(unittest.TestCase):
                         dst_port=52344,
                         packets=10,
                         bytes=1_700_000_000,
+                        direction="download",
+                        client_ip="192.168.6.143",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605100930",
+                        started_at=datetime(2026, 5, 10, 9, 30),
+                        ended_at=datetime(2026, 5, 10, 9, 31),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="8.8.8.8",
+                        src_port=443,
+                        dst_ip="192.168.6.143",
+                        dst_port=52344,
+                        packets=10,
+                        bytes=300_000_000,
                         direction="download",
                         client_ip="192.168.6.143",
                     ),
@@ -308,16 +330,15 @@ class ClientUsageContextTests(unittest.TestCase):
             patch.object(usage_context, "datetime", FixedDateTimeMay10),
             patch.object(db, "datetime", FixedDateTimeMay10),
             patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
-            patch.object(db, "get_plus_voucher_usage_summary", side_effect=AssertionError),
         ):
             context = usage_context.get_client_usage_context(mac)
 
         self.assertEqual(context["latest_record"].user_id, "5921")
-        self.assertAlmostEqual(context["calendar_month_total_mb"], 1717.0)
+        self.assertAlmostEqual(context["calendar_month_total_mb"], 2017.0)
         self.assertIsNotNone(context["voucher_usage"])
         assert context["voucher_usage"] is not None
-        self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 1717.0)
-        self.assertEqual(context["voucher_usage"]["activated_at"], datetime(2026, 5, 9, 22, 15))
+        self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 17.0)
+        self.assertEqual(context["voucher_usage"]["activated_at"], datetime(2026, 5, 10, 10, 40))
 
 
 if __name__ == "__main__":

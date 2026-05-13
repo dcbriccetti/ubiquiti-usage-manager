@@ -337,24 +337,9 @@ def build_wan_flow_direction_series(
     ]
 
 
-def summarize_wan_flows_for_voucher(
-    voucher: db.PlusVoucherRecord,
-    flows: list[db.WanMacFlowUsage],
-) -> tuple[datetime | None, float]:
-    'Return first flow and MB for current-device WAN usage after voucher creation.'
-    voucher_flows = [flow for flow in flows if flow.started_at >= voucher.generated_at]
-    if not voucher_flows:
-        return None, 0.0
-    first_usage_at = min(flow.started_at for flow in voucher_flows)
-    total_mb = sum(flow.bytes for flow in voucher_flows) / 1_000_000.0
-    return first_usage_at, total_mb
-
-
 def build_voucher_usage_context(
     user_id: str | None,
-    mac: str | None = None,
     voucher: db.PlusVoucherRecord | None = None,
-    mac_wan_flows: list[db.WanMacFlowUsage] | None = None,
 ) -> VoucherUsageContext | None:
     'Return remaining lifetime voucher allocation for one RADIUS user ID.'
     voucher = voucher or db.get_active_plus_voucher_for_user_id(user_id)
@@ -362,18 +347,7 @@ def build_voucher_usage_context(
         return None
 
     allocation_mb = float(voucher.allocation_gb * 1000)
-    if mac_wan_flows is not None:
-        activated_at, used_mb = summarize_wan_flows_for_voucher(voucher, mac_wan_flows)
-    else:
-        activated_at, used_mb = db.get_plus_voucher_usage_summary(voucher)
-    if mac_wan_flows is None and mac:
-        mac_activated_at, mac_used_mb = db.get_wan_usage_summary_for_mac(
-            mac,
-            period_start=voucher.generated_at,
-        )
-        if mac_used_mb > used_mb:
-            activated_at = mac_activated_at
-            used_mb = mac_used_mb
+    activated_at, used_mb = db.get_plus_voucher_usage_summary(voucher)
     remaining_mb = max(0.0, allocation_mb - used_mb)
     used_pct = (used_mb / allocation_mb * 100.0) if allocation_mb else 0.0
     voucher_context: VoucherUsageContext = {
@@ -491,8 +465,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         hydrate_usage_record_identity(latest_record, latest_ip_identity, month_wan_rows, mac)
 
     voucher = db.get_active_plus_voucher_for_user_id(latest_record.user_id)
-    wan_flow_start = min(month_start, voucher.generated_at) if voucher else month_start
-    mac_wan_flows = db.get_wan_flow_rows_for_mac(mac, wan_flow_start, now)
+    mac_wan_flows = db.get_wan_flow_rows_for_mac(mac, month_start, now)
     wan_import_usage_rows = build_wan_import_usage_context(mac_wan_flows, month_start, now)
     wan_today_download_mb, wan_today_upload_mb = summarize_wan_flows(
         mac_wan_flows,
@@ -628,9 +601,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'wan_import_usage_rows': wan_import_usage_rows,
         'voucher_usage': build_voucher_usage_context(
             latest_record.user_id,
-            mac,
             voucher=voucher,
-            mac_wan_flows=mac_wan_flows,
         ),
         'usage_scales': usage_scales,
         'current_month_label': current_month_label,

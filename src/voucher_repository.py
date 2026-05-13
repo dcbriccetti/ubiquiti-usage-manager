@@ -135,10 +135,7 @@ def get_active_plus_voucher_for_user_id(user_id: str | int | None) -> db.PlusVou
 
 def get_plus_voucher_usage_summary(voucher: db.PlusVoucherRecord) -> tuple[datetime | None, float]:
     'Return WAN-attributed first usage time and lifetime usage for one voucher.'
-    return db.get_wan_usage_summary_for_user_id(
-        voucher.user_id,
-        period_start=voucher.generated_at,
-    )
+    return _get_plus_voucher_wan_usage_summaries([voucher]).get(voucher.id, (None, 0.0))
 
 
 def _build_voucher_summary(
