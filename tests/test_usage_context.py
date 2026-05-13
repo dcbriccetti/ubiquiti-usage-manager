@@ -109,6 +109,13 @@ class ClientUsageContextTests(unittest.TestCase):
             datetime(2026, 5, 1, 0, 0),
         )
 
+    def test_service_label_identifies_apple_push_notifications(self) -> None:
+        self.assertEqual(
+            usage_context.service_label_for_flow("TCP", 5223),
+            "Apple push notifications",
+        )
+        self.assertEqual(usage_context.service_label_for_flow("TCP", 22067), "TCP/22067")
+
     def test_wan_chart_buckets_use_flow_end_time(self) -> None:
         flow = db.WanMacFlowUsage(
             source_file="nfcapd.202605100000",

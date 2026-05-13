@@ -55,6 +55,7 @@ SERVICE_LABEL_BY_PROTO_PORT = {
     ('TCP', 587): 'Email sending',
     ('TCP', 993): 'Email reading',
     ('TCP', 995): 'Email reading',
+    ('TCP', 5223): 'Apple push notifications',
     ('TCP', 22): 'SSH / remote login',
     ('TCP', 3389): 'Remote desktop',
     ('UDP', 500): 'VPN',
@@ -605,10 +606,16 @@ def aggregate_tiny_wan_import_rows(rows: list[WanImportUsageContext]) -> list[Wa
 
 def build_tiny_wan_import_row(rows: list[WanImportUsageContext]) -> WanImportUsageContext:
     'Return one display row for a consecutive run of tiny Internet usage batches.'
-    first_flow_at = min(row['first_flow_at'] for row in rows)
-    last_flow_at = max(row['last_flow_at'] for row in rows)
-    imported_values = [row['imported_at'] for row in rows if row['imported_at'] is not None]
-    imported_at = max(imported_values) if imported_values else None
+    first_flow_values: list[datetime] = [row['first_flow_at'] for row in rows]
+    last_flow_values: list[datetime] = [row['last_flow_at'] for row in rows]
+    first_flow_at: datetime = min(first_flow_values)
+    last_flow_at: datetime = max(last_flow_values)
+    imported_values: list[datetime] = []
+    for row in rows:
+        imported_value = row['imported_at']
+        if imported_value is not None:
+            imported_values.append(imported_value)
+    imported_at: datetime | None = max(imported_values) if imported_values else None
     access_point_labels = [row['access_point_label'] for row in rows if row['access_point_label']]
     unique_access_point_labels = list(dict.fromkeys(access_point_labels))
     host_labels = [row['host_label'] for row in rows if row['host_label'] and row['host_label'] != 'Unknown']
