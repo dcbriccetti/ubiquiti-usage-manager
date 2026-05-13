@@ -87,7 +87,7 @@
                         <th>User ID</th>
                         <th>Status</th>
                         <th class="num">Allocation</th>
-                        <th class="num">Used GB</th>
+                        <th class="num">Used</th>
                         <th class="num">Remaining</th>
                         <th class="num">Used %</th>
                         <th>Created</th>
@@ -107,10 +107,10 @@
                                 {% endif %}
                             </td>
                             <td class="num">{{ "{:,.0f}".format(voucher.allocation_gb) }} GB</td>
-                            <td class="num">{{ "{:,.1f}".format(summary.used_mb / 1000.0) }} GB</td>
-                            <td class="num">{{ "{:,.1f}".format(summary.remaining_mb / 1000.0) }} GB</td>
+                            <td class="num">{{ summary.used_mb|voucher_data_amount }}</td>
+                            <td class="num">{{ summary.remaining_mb|voucher_data_amount }}</td>
                             <td class="num{% if summary.used_mb >= voucher.allocation_gb * 1000 %} warn-text{% endif %}">
-                                {{ "{:,.0f}".format(summary.used_pct) }}%
+                                {{ summary.used_pct|voucher_percent }}
                             </td>
                             <td>{{ voucher.generated_at.strftime("%Y-%m-%d") }}</td>
                             <td>

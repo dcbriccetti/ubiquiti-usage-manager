@@ -35,15 +35,15 @@
             <section class="detail-facts">
                 <div>
                     <span class="label">Remaining</span>
-                    <strong>{{ "{:,.1f}".format(voucher_usage.remaining_mb / 1000.0) }} GB</strong>
+                    <strong>{{ voucher_usage.remaining_mb|voucher_data_amount }}</strong>
                 </div>
                 <div>
                     <span class="label">Used</span>
                     <strong{% if voucher_usage.is_over_allocation %} class="warn-text"{% endif %}>
-                        {{ "{:,.1f}".format(voucher_usage.used_mb / 1000.0) }} GB
+                        {{ voucher_usage.used_mb|voucher_data_amount }}
                     </strong>
                     <span class="detail-note{% if voucher_usage.is_over_allocation %} warn-text{% endif %}">
-                        {{ "{:,.0f}".format(voucher_usage.used_pct) }}%
+                        {{ voucher_usage.used_pct|voucher_percent }}
                     </span>
                 </div>
                 <div>

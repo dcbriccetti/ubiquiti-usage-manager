@@ -29,6 +29,7 @@ from dashboard_service import (
     normalize_window,
 )
 from dashboard_stream import event_stream
+from display_format import format_voucher_data_amount, format_voucher_percent
 from lan_identity import find_client_mac_for_ip, get_request_ip
 from logging_config import configure_logging
 from report_periods import build_report_period_context
@@ -62,6 +63,8 @@ def create_app() -> Flask:
     configure_logging()
     db.init_db()
     flask_app = Flask(__name__)
+    flask_app.jinja_env.filters['voucher_data_amount'] = format_voucher_data_amount
+    flask_app.jinja_env.filters['voucher_percent'] = format_voucher_percent
     live_update_seconds = 60
     live_update_boundary_offset_seconds = 3
     admin_auth_cache_seconds = 30.0
