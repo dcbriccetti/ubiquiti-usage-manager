@@ -20,7 +20,15 @@
                                 {{ row.flow_window_label }}
                             </td>
                             <td class="nowrap-col" title="{{ row.access_point_detail }}">{{ row.access_point_label }}</td>
-                            <td class="nowrap-col" title="{{ row.host_detail }}">{{ row.host_label }}</td>
+                            <td
+                                class="nowrap-col"
+                                title="{{ row.host_detail }}"
+                                {% if row.host_ip %}
+                                    data-rdns-ip="{{ row.host_ip }}"
+                                    data-rdns-mode="summary"
+                                    data-rdns-extra-count="{{ row.host_extra_count }}"
+                                {% endif %}
+                            >{{ row.host_label }}</td>
                             <td class="num">{{ "{:,.1f}".format(row.total_mb) }}</td>
                             <td class="num">{{ "{:,.1f}".format(row.download_mb) }}</td>
                             <td class="num">{{ "{:,.1f}".format(row.upload_mb) }}</td>

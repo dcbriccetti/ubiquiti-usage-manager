@@ -107,6 +107,8 @@ class WanImportUsageContext(TypedDict):
     access_point_detail: str
     host_label: str
     host_detail: str
+    host_ip: str
+    host_extra_count: int
     imported_at: datetime | None
     first_flow_at: datetime
     last_flow_at: datetime
@@ -127,10 +129,18 @@ class AccessModeUsageContext(TypedDict):
     month_cost_cents: float
 
 
+class FlowActivityEndpointContext(TypedDict):
+    'One remote endpoint shown in a flow activity summary.'
+    ip: str
+    label: str
+
+
 class FlowActivityContext(TypedDict):
     'Client WAN usage grouped by likely network activity.'
     label: str
     detail: str
+    endpoints: list[FlowActivityEndpointContext]
+    extra_endpoint_count: int
     download_mb: float
     upload_mb: float
     total_mb: float
@@ -351,7 +361,7 @@ def summarize_wan_flows(
     return download_bytes / 1_000_000.0, upload_bytes / 1_000_000.0
 
 
-def summarize_remote_endpoint_counts(endpoint_bytes: dict[str, int]) -> tuple[str, str] | None:
+def summarize_remote_endpoint_counts(endpoint_bytes: dict[str, int]) -> tuple[str, str, str, int] | None:
     'Return visible and tooltip labels for remote endpoint byte rollups.'
     if not endpoint_bytes:
         return None
@@ -378,7 +388,7 @@ def summarize_remote_endpoint_counts(endpoint_bytes: dict[str, int]) -> tuple[st
         detail_parts.append(f'{endpoint_detail}: {byte_count / 1_000_000.0:.1f} MB')
     if len(ordered_endpoints) > 4:
         detail_parts.append(f'+{len(ordered_endpoints) - 4} more')
-    return label, ', '.join(detail_parts)
+    return label, ', '.join(detail_parts), primary_endpoint, extra_count
 
 
 def build_wan_import_usage_context(
@@ -442,9 +452,11 @@ def build_wan_import_usage_context(
             summary.source_file,
             ('Unknown', 'Unknown'),
         )
-        host_label, host_detail = summarize_remote_endpoint_counts(summary.endpoint_bytes or {}) or (
+        host_label, host_detail, host_ip, host_extra_count = summarize_remote_endpoint_counts(summary.endpoint_bytes or {}) or (
             'Unknown',
             'Unknown',
+            '',
+            0,
         )
         rows.append(
             {
@@ -460,6 +472,8 @@ def build_wan_import_usage_context(
                 'access_point_detail': access_point_detail,
                 'host_label': host_label,
                 'host_detail': host_detail,
+                'host_ip': host_ip,
+                'host_extra_count': host_extra_count,
                 'imported_at': imported_at_by_source.get(summary.source_file),
                 'first_flow_at': summary.first_flow_at,
                 'last_flow_at': summary.last_flow_at,
@@ -603,10 +617,19 @@ def build_flow_activity_context(
         endpoint_bytes = activity.endpoint_bytes or {}
         top_endpoints = sorted(endpoint_bytes.items(), key=lambda item: item[1], reverse=True)[:3]
         host_labels = resolve_host_labels([endpoint for endpoint, _ in top_endpoints], wait=False)
-        rendered_endpoints = [
-            f'{host_labels[endpoint]} ({endpoint})' if endpoint in host_labels else endpoint
+        endpoint_rows: list[FlowActivityEndpointContext] = [
+            {
+                'ip': endpoint,
+                'label': host_labels.get(endpoint, endpoint),
+            }
             for endpoint, _ in top_endpoints
             if endpoint
+        ]
+        rendered_endpoints = [
+            f'{endpoint["label"]} ({endpoint["ip"]})'
+            if endpoint['label'] != endpoint['ip']
+            else endpoint['ip']
+            for endpoint in endpoint_rows
         ]
         endpoint_text = ', '.join(rendered_endpoints)
         if len(endpoint_bytes) > len(top_endpoints):
@@ -615,6 +638,8 @@ def build_flow_activity_context(
             {
                 'label': activity.label,
                 'detail': endpoint_text or 'No remote endpoint',
+                'endpoints': endpoint_rows,
+                'extra_endpoint_count': max(0, len(endpoint_bytes) - len(top_endpoints)),
                 'download_mb': download_bytes / 1_000_000.0,
                 'upload_mb': upload_bytes / 1_000_000.0,
                 'total_mb': activity_total_bytes / 1_000_000.0,

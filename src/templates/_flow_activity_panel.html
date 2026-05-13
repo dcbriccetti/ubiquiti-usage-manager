@@ -22,7 +22,20 @@
                         {% for row in flow_activity_rows %}
                             <tr>
                                 <td>{{ row.label }}</td>
-                                <td class="mono">{{ row.detail }}</td>
+                                <td class="mono">
+                                    {% if row.endpoints %}
+                                        {% for endpoint in row.endpoints %}
+                                            {% if not loop.first %}, {% endif %}
+                                            <span
+                                                data-rdns-ip="{{ endpoint.ip }}"
+                                                data-rdns-mode="detail"
+                                            >{% if endpoint.label != endpoint.ip %}{{ endpoint.label }} ({{ endpoint.ip }}){% else %}{{ endpoint.ip }}{% endif %}</span>
+                                        {% endfor %}
+                                        {% if row.extra_endpoint_count > 0 %}, +{{ row.extra_endpoint_count }} more{% endif %}
+                                    {% else %}
+                                        {{ row.detail }}
+                                    {% endif %}
+                                </td>
                                 <td class="num">{{ "{:,.0f}".format(row.total_mb) }}</td>
                                 <td class="num">{{ "{:,.0f}".format(row.download_mb) }}</td>
                                 <td class="num">{{ "{:,.0f}".format(row.upload_mb) }}</td>

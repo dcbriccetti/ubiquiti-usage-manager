@@ -29,7 +29,11 @@
         </article>
     {% else %}
         {% if wan_details_url %}
-            <section id="wan-detail-panels" data-wan-details-url="{{ wan_details_url }}">
+            <section
+                id="wan-detail-panels"
+                data-wan-details-url="{{ wan_details_url }}"
+                data-reverse-dns-url="{{ url_for('reverse_dns_labels') }}"
+            >
                 <article class="panel">
                     <div class="panel-body">
                         <h2>WAN Usage</h2>

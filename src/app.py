@@ -33,6 +33,7 @@ from display_format import format_voucher_data_amount, format_voucher_percent
 from lan_identity import find_client_mac_for_ip, get_request_ip
 from logging_config import configure_logging
 from report_periods import build_report_period_context
+from reverse_dns import resolve_host_labels
 from usage_context import get_client_usage_context, speed_limit_option_label
 from wan_service import (
     build_month_usage_comparison_rows,
@@ -625,6 +626,18 @@ def create_app() -> Flask:
             "_client_deferred_usage_panels.html",
             **get_client_usage_context(mac),
         )
+
+    @flask_app.route("/api/reverse-dns-labels")
+    def reverse_dns_labels():
+        'Return cached or briefly-awaited reverse-DNS labels for visible WAN endpoints.'
+        requested_ips = request.args.getlist('ip')
+        if not requested_ips:
+            comma_separated = request.args.get('ips', '')
+            requested_ips = [ip.strip() for ip in comma_separated.split(',') if ip.strip()]
+
+        ip_addresses = list(dict.fromkeys(requested_ips))[:24]
+        labels = resolve_host_labels(ip_addresses, wait=True)
+        return jsonify({'labels': labels})
 
     @flask_app.route("/clients/<mac>/usage-today-embed")
     def client_usage_today_embed(mac: str):
