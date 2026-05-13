@@ -8,7 +8,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from reverse_dns import shorten_hostname
+from reverse_dns import safe_hostname_label, shorten_hostname
 
 
 class ReverseDnsTests(unittest.TestCase):
@@ -28,6 +28,24 @@ class ReverseDnsTests(unittest.TestCase):
         self.assertEqual(
             shorten_hostname("edge.cache.verylonghostnamepart.example.net"),
             "example.net",
+        )
+
+    def test_safe_hostname_label_hides_raw_hostnames(self) -> None:
+        self.assertEqual(
+            safe_hostname_label("a184-28-149-222.deploy.static.akamaitechnologies.com"),
+            "Akamai CDN host",
+        )
+        self.assertEqual(
+            safe_hostname_label("server-108-139-10-20.sfo5.r.cloudfront.net"),
+            "Amazon CDN host",
+        )
+        self.assertEqual(
+            safe_hostname_label("ec2-203-0-113-10.compute-1.amazonaws.com"),
+            "Amazon cloud host",
+        )
+        self.assertEqual(
+            safe_hostname_label("potentially-sensitive.example.net"),
+            "Named Internet host",
         )
 
 

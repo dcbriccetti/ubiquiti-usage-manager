@@ -15,6 +15,18 @@ _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix='reverse-dns')
 _cache_lock = Lock()
 _cache: dict[str, tuple[datetime, str | None]] = {}
 _pending: dict[str, Future[str | None]] = {}
+HOSTNAME_CATEGORY_LABELS = (
+    (('amazonaws.com',), 'Amazon cloud host'),
+    (('cloudfront.net',), 'Amazon CDN host'),
+    (('akamaitechnologies.com', 'akamai.net', 'akadns.net'), 'Akamai CDN host'),
+    (('1e100.net', 'googleusercontent.com', 'googlevideo.com'), 'Google host'),
+    (('cloudflare.com', 'cloudflare.net'), 'Cloudflare host'),
+    (('fastly.net',), 'Fastly CDN host'),
+    (('azure.com', 'azureedge.net', 'trafficmanager.net', 'windows.net'), 'Microsoft cloud host'),
+    (('microsoft.com', 'msn.com', 'office.com'), 'Microsoft host'),
+    (('apple.com', 'icloud.com'), 'Apple host'),
+    (('nflxvideo.net', 'netflix.com'), 'Streaming service host'),
+)
 
 
 def shorten_hostname(hostname: str) -> str:
@@ -25,6 +37,15 @@ def shorten_hostname(hostname: str) -> str:
     if len(parts[-3]) > 12:
         return '.'.join(parts[-2:])
     return '.'.join(parts[-3:])
+
+
+def safe_hostname_label(hostname: str) -> str:
+    'Return a report-safe hostname label without exposing the raw hostname.'
+    normalized = shorten_hostname(hostname).lower()
+    for suffixes, label in HOSTNAME_CATEGORY_LABELS:
+        if any(normalized == suffix or normalized.endswith(f'.{suffix}') for suffix in suffixes):
+            return label
+    return 'Named Internet host'
 
 
 def _lookup_hostname(ip_address: str) -> str | None:
@@ -96,7 +117,7 @@ def resolve_host_labels(ip_addresses: list[str], wait: bool = True) -> dict[str,
         for ip_address in unique_ips:
             cached = _cache.get(ip_address)
             if cached and cached[0] > now and cached[1]:
-                labels[ip_address] = shorten_hostname(cached[1])
+                labels[ip_address] = safe_hostname_label(cached[1])
 
     for ip_address in unique_ips:
         if ip_address in labels:
@@ -120,5 +141,5 @@ def resolve_host_labels(ip_addresses: list[str], wait: bool = True) -> dict[str,
         except Exception:
             continue
         if hostname:
-            labels[ip_address] = shorten_hostname(hostname)
+            labels[ip_address] = safe_hostname_label(hostname)
     return labels
