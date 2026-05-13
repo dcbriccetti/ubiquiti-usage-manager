@@ -1,37 +1,30 @@
 <section class="grid">
     <article class="panel usage-history-panel">
         <div class="panel-body">
-            <h2>Recent WAN Imports</h2>
+            <h2>Recent WAN Capture Batches</h2>
             <table>
                 <thead>
                     <tr>
-                        <th class="nowrap-col">Imported</th>
-                        <th class="nowrap-col">Source</th>
-                        <th class="nowrap-col">Flow Window</th>
+                        <th class="nowrap-col">Added</th>
+                        <th class="nowrap-col">Capture</th>
+                        <th class="nowrap-col">Activity Time</th>
                         <th class="num">WAN MB</th>
-                        <th class="num">Down</th>
-                        <th class="num">Up</th>
-                        <th class="num">Flows</th>
+                        <th class="num">Down MB</th>
+                        <th class="num">Up MB</th>
+                        <th class="num">Connections</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in wan_import_usage_rows %}
                         <tr>
                             <td class="nowrap-col">
-                                {% if row.imported_at %}
-                                    {{ row.imported_at.strftime("%Y-%m-%d %H:%M") }}
-                                {% else %}
-                                    <span class="muted">Unknown</span>
-                                {% endif %}
+                                {{ row.imported_label }}
                             </td>
                             <td class="nowrap-col" title="{{ row.source_file }}">
                                 {{ row.source_label }}
                             </td>
                             <td class="nowrap-col">
-                                {{ row.first_flow_at.strftime("%m-%d %H:%M") }}
-                                {% if row.first_flow_at != row.last_flow_at %}
-                                    - {{ row.last_flow_at.strftime("%m-%d %H:%M") }}
-                                {% endif %}
+                                {{ row.flow_window_label }}
                             </td>
                             <td class="num">{{ "{:,.1f}".format(row.total_mb) }}</td>
                             <td class="num">{{ "{:,.1f}".format(row.download_mb) }}</td>
@@ -40,7 +33,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="7" class="muted">No non-zero WAN imports attributed to this client for {{ current_month_label }} yet.</td>
+                            <td colspan="7" class="muted">No non-zero WAN capture batches attributed to this client for {{ current_month_label }} yet.</td>
                         </tr>
                     {% endfor %}
                 </tbody>

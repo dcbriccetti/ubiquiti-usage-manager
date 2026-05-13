@@ -72,6 +72,22 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(set(first_limits), {"slow"})
         self.assertEqual(get_speed_limits.call_count, 1)
 
+    def test_time_range_labels_elide_matching_end_date(self) -> None:
+        self.assertEqual(
+            usage_context.render_time_range_label(
+                datetime(2026, 5, 9, 22, 5),
+                datetime(2026, 5, 9, 22, 7),
+            ),
+            "May 9, 22:05–22:07",
+        )
+        self.assertEqual(
+            usage_context.render_time_range_label(
+                datetime(2026, 5, 9, 23, 59),
+                datetime(2026, 5, 10, 0, 1),
+            ),
+            "May 9, 23:59–May 10, 00:01",
+        )
+
     def test_wan_chart_buckets_use_flow_end_time(self) -> None:
         flow = db.WanMacFlowUsage(
             source_file="nfcapd.202605100000",
@@ -213,6 +229,7 @@ class ClientUsageContextTests(unittest.TestCase):
             patch.object(usage_context, "datetime", FixedDateTime),
             patch.object(db, "datetime", FixedDateTime),
             patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+            patch.object(usage_context, "resolve_host_labels", return_value={}),
         ):
             context = usage_context.get_client_usage_context(mac)
 
@@ -238,7 +255,9 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(len(context["wan_import_usage_rows"]), 1)
         recent_import = context["wan_import_usage_rows"][0]
         self.assertEqual(recent_import["source_file"], "nfcapd.202605092205")
-        self.assertEqual(recent_import["source_label"], "nfcapd.202605092205")
+        self.assertEqual(recent_import["source_label"], "Capture May 9, 22:05")
+        self.assertEqual(recent_import["imported_label"], "May 9, 22:10")
+        self.assertEqual(recent_import["flow_window_label"], "May 9, 22:05–22:07")
         self.assertEqual(recent_import["imported_at"], observed_at + timedelta(minutes=10))
         self.assertEqual(recent_import["first_flow_at"], observed_at + timedelta(minutes=5))
         self.assertEqual(recent_import["last_flow_at"], observed_at + timedelta(minutes=7))
@@ -291,6 +310,7 @@ class ClientUsageContextTests(unittest.TestCase):
             patch.object(usage_context, "datetime", FixedDateTimeMay10),
             patch.object(db, "datetime", FixedDateTimeMay10),
             patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+            patch.object(usage_context, "resolve_host_labels", return_value={}),
         ):
             context = usage_context.get_client_usage_context(mac)
 
@@ -404,6 +424,7 @@ class ClientUsageContextTests(unittest.TestCase):
             patch.object(usage_context, "datetime", FixedDateTimeMay10),
             patch.object(db, "datetime", FixedDateTimeMay10),
             patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+            patch.object(usage_context, "resolve_host_labels", return_value={}),
         ):
             context = usage_context.get_client_usage_context(mac)
 

@@ -10,6 +10,7 @@ import unifi_api as api
 from billing import calculate_month_cost_cents
 from database import UsageRecord
 from monitor import get_connected_clients
+from reverse_dns import resolve_host_labels
 from speedlimit import SpeedLimit
 
 
@@ -100,6 +101,8 @@ class WanImportUsageContext(TypedDict):
     'WAN usage attributed to the client from one imported capture.'
     source_file: str
     source_label: str
+    imported_label: str
+    flow_window_label: str
     imported_at: datetime | None
     first_flow_at: datetime
     last_flow_at: datetime
@@ -182,6 +185,33 @@ class FlowActivityAccumulator:
 def wan_flow_usage_at(flow: db.WanMacFlowUsage | db.WanMacIdentityFlowUsage) -> datetime:
     'Return the timestamp used to place WAN bytes in reporting buckets.'
     return flow.ended_at
+
+
+def render_datetime_label(value: datetime) -> str:
+    'Return a compact, user-facing timestamp label.'
+    return f'{value.strftime("%b")} {value.day}, {value.strftime("%H:%M")}'
+
+
+def render_time_range_label(start: datetime, end: datetime) -> str:
+    'Return a compact datetime range, eliding the ending date when unchanged.'
+    start_label = render_datetime_label(start)
+    if start == end:
+        return start_label
+    if start.date() == end.date():
+        return f'{start_label}–{end.strftime("%H:%M")}'
+    return f'{start_label}–{render_datetime_label(end)}'
+
+
+def render_capture_source_label(source_file: str) -> str:
+    'Return a readable nfcapd capture label when possible.'
+    source_name = source_file.rsplit('/', 1)[-1]
+    if source_name.startswith('nfcapd.') and len(source_name) == 19:
+        try:
+            captured_at = datetime.strptime(source_name.removeprefix('nfcapd.'), '%Y%m%d%H%M')
+        except ValueError:
+            return source_name
+        return f'Capture {render_datetime_label(captured_at)}'
+    return source_name
 
 
 def render_month_label(now: datetime) -> str:
@@ -347,7 +377,13 @@ def build_wan_import_usage_context(
         rows.append(
             {
                 'source_file': summary.source_file,
-                'source_label': summary.source_file.rsplit('/', 1)[-1],
+                'source_label': render_capture_source_label(summary.source_file),
+                'imported_label': (
+                    render_datetime_label(imported_at_by_source[summary.source_file])
+                    if summary.source_file in imported_at_by_source
+                    else 'Not recorded'
+                ),
+                'flow_window_label': render_time_range_label(summary.first_flow_at, summary.last_flow_at),
                 'imported_at': imported_at_by_source.get(summary.source_file),
                 'first_flow_at': summary.first_flow_at,
                 'last_flow_at': summary.last_flow_at,
@@ -490,7 +526,13 @@ def build_flow_activity_context(
         activity_total_bytes = download_bytes + upload_bytes
         endpoint_bytes = activity.endpoint_bytes or {}
         top_endpoints = sorted(endpoint_bytes.items(), key=lambda item: item[1], reverse=True)[:3]
-        endpoint_text = ', '.join(endpoint for endpoint, _ in top_endpoints if endpoint)
+        host_labels = resolve_host_labels([endpoint for endpoint, _ in top_endpoints])
+        rendered_endpoints = [
+            f'{host_labels[endpoint]} ({endpoint})' if endpoint in host_labels else endpoint
+            for endpoint, _ in top_endpoints
+            if endpoint
+        ]
+        endpoint_text = ', '.join(rendered_endpoints)
         if len(endpoint_bytes) > len(top_endpoints):
             endpoint_text = f'{endpoint_text}, +{len(endpoint_bytes) - len(top_endpoints)} more'
         rows.append(

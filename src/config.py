@@ -49,6 +49,8 @@ NFDUMP_BIN = 'nfdump'
 INTERNAL_NETWORKS = {'192.168.0.0/16'}
 FLOW_IMPORT_ENABLED = True
 FLOW_IMPORT_INTERVAL_SECONDS = 300
+ENABLE_REVERSE_DNS = True
+REVERSE_DNS_LOOKUP_TIMEOUT_SECONDS = 0.05
 
 # Devices/users whose usage is paid by the organization (for global analytics split).
 # Use VLAN names only (not SSID names).
