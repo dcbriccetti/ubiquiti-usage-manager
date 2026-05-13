@@ -42,6 +42,8 @@ class UsageScaleContext(TypedDict):
     summary_text: str
     points: list[UsageScalePoint]
     usage_device_series: list[dict[str, object]]
+    wan_direction_labels: list[str]
+    wan_direction_mb_values: list[float]
     access_point_labels: list[str]
     access_point_mb_values: list[float]
     access_point_minutes_values: list[int]
@@ -512,7 +514,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Hour of day',
             'mb_axis_title': 'MB/hour',
             'minutes_axis_title': 'minutes/hour',
-            'summary_text': 'Top chart: WAN MB/hour. Bottom chart: active minutes/hour stacked by speed-limit profile.',
+            'summary_text': 'Top chart: attributed WAN MB/hour, with the pie showing down/up split. Bottom chart: sampled active minutes/hour, with the pie showing access-point time.',
             'points': daily_hourly_usage,
             'usage_device_series': [
                 {
@@ -520,6 +522,8 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
                     'data': [point['total_mb'] for point in daily_hourly_usage],
                 }
             ],
+            'wan_direction_labels': ['Down', 'Up'],
+            'wan_direction_mb_values': [wan_today_download_mb, wan_today_upload_mb],
             'access_point_labels': [ap_name for ap_name, _, _ in daily_access_points],
             'access_point_mb_values': [],
             'access_point_minutes_values': [active_minutes for _, _, active_minutes in daily_access_points],
@@ -532,7 +536,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
             'x_axis_title': 'Day of month',
             'mb_axis_title': 'MB/day',
             'minutes_axis_title': 'minutes/day',
-            'summary_text': 'Top chart: WAN MB/day. Bottom chart: active minutes/day stacked by speed-limit profile.',
+            'summary_text': 'Top chart: attributed WAN MB/day, with the pie showing down/up split. Bottom chart: sampled active minutes/day, with the pie showing access-point time.',
             'points': month_daily_usage,
             'usage_device_series': [
                 {
@@ -540,6 +544,8 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
                     'data': [point['total_mb'] for point in month_daily_usage],
                 }
             ],
+            'wan_direction_labels': ['Down', 'Up'],
+            'wan_direction_mb_values': [wan_month_download_mb, wan_month_upload_mb],
             'access_point_labels': [ap_name for ap_name, _, _ in monthly_access_points],
             'access_point_mb_values': [],
             'access_point_minutes_values': [active_minutes for _, _, active_minutes in monthly_access_points],

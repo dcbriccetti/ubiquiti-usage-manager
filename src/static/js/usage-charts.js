@@ -49,6 +49,10 @@
         "rgba(228, 26, 28, 0.9)",
         "rgba(77, 77, 77, 0.9)"
     ];
+    const directionPalette = [
+        "rgba(15, 118, 110, 0.86)",
+        "rgba(37, 99, 235, 0.78)"
+    ];
 
     const parseConfig = (script) => {
         try {
@@ -277,15 +281,15 @@
         });
     };
 
-    const renderAccessPointPie = (canvasId, apLabels, values, valueLabel) => {
+    const renderPie = (canvasId, labels, values, valueLabel, palette = accessPointPalette) => {
         const canvas = document.getElementById(canvasId);
         if (!canvas) {
             return;
         }
         const emptyMessage = document.querySelector(`[data-empty-for="${canvas.id}"]`);
-        const series = (apLabels || [])
-            .map((apLabel, idx) => ({
-                label: apLabel,
+        const series = (labels || [])
+            .map((label, idx) => ({
+                label,
                 value: Number(values?.[idx] || 0),
             }))
             .filter((row) => row.value > 0);
@@ -310,7 +314,7 @@
                 datasets: [
                     {
                         data: series.map((row) => row.value),
-                        backgroundColor: series.map((_, idx) => accessPointPalette[idx % accessPointPalette.length]),
+                        backgroundColor: series.map((_, idx) => palette[idx % palette.length]),
                         borderColor: "rgba(255, 255, 255, 0.85)",
                         borderWidth: 1,
                     }
@@ -365,8 +369,14 @@
             xAxisTitle: config.xAxisTitle,
             yAxisTitle: config.minutesAxisTitle
         });
-        renderAccessPointPie(config.mbApPieCanvasId, config.apLabels, config.apMbValues, "MB");
-        renderAccessPointPie(config.minutesApPieCanvasId, config.apLabels, config.apMinutesValues, "minutes");
+        renderPie(
+            config.wanDirectionPieCanvasId,
+            config.wanDirectionLabels,
+            config.wanDirectionMbValues,
+            "MB",
+            directionPalette
+        );
+        renderPie(config.minutesApPieCanvasId, config.apLabels, config.apMinutesValues, "minutes");
     };
 
     const renderInsights = (config) => {
