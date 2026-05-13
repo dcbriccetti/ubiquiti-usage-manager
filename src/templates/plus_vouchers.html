@@ -92,6 +92,7 @@
                         <th class="num">Used %</th>
                         <th>Created</th>
                         <th>Activated</th>
+                        <th>Action</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -116,10 +117,20 @@
                             <td>
                                 {{ summary.activated_at.strftime("%Y-%m-%d") }}
                             </td>
+                            <td>
+                                <form
+                                    class="voucher-action-form"
+                                    method="post"
+                                    action="{{ url_for('consume_plus_voucher', voucher_id=voucher.id) }}"
+                                    onsubmit="return confirm('Remove RADIUS user {{ voucher.user_id }} and mark this voucher used?');"
+                                >
+                                    <button type="submit">Mark used</button>
+                                </form>
+                            </td>
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="8" class="muted">No activated vouchers.</td>
+                            <td colspan="9" class="muted">No activated vouchers.</td>
                         </tr>
                     {% endfor %}
                     </tbody>

@@ -133,6 +133,35 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
         self.assertEqual(summaries_by_user_id[102].activated_at, generated_at + timedelta(hours=4))
         self.assertEqual(summaries_by_user_id[102].used_mb, 2.0)
 
+    def test_mark_plus_voucher_consumed_sets_consumed_at_once(self) -> None:
+        generated_at = datetime(2026, 5, 1, 10, 0)
+        consumed_at = datetime(2026, 5, 8, 9, 30)
+        with db.SessionLocal() as session:
+            voucher = db.PlusVoucher(
+                batch_id="batch",
+                user_id=321,
+                password="sample1",
+                allocation_gb=10,
+                generated_at=generated_at,
+            )
+            session.add(voucher)
+            session.commit()
+            voucher_id = voucher.id
+
+        consumed_voucher = voucher_repository.mark_plus_voucher_consumed(voucher_id, consumed_at)
+
+        self.assertIsNotNone(consumed_voucher)
+        assert consumed_voucher is not None
+        self.assertEqual(consumed_voucher.user_id, 321)
+        self.assertEqual(consumed_voucher.consumed_at, consumed_at)
+
+        second_consumed_at = datetime(2026, 5, 9, 9, 30)
+        unchanged_voucher = voucher_repository.mark_plus_voucher_consumed(voucher_id, second_consumed_at)
+
+        self.assertIsNotNone(unchanged_voucher)
+        assert unchanged_voucher is not None
+        self.assertEqual(unchanged_voucher.consumed_at, consumed_at)
+
 
 if __name__ == "__main__":
     unittest.main()

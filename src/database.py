@@ -1475,6 +1475,20 @@ def get_plus_vouchers(limit: int = 200) -> list[PlusVoucherRecord]:
     return _get_plus_vouchers(limit)
 
 
+def get_plus_voucher(voucher_id: int) -> PlusVoucherRecord | None:
+    'Return one generated Plus voucher by internal ID.'
+    from voucher_repository import get_plus_voucher as _get_plus_voucher
+
+    return _get_plus_voucher(voucher_id)
+
+
+def mark_plus_voucher_consumed(voucher_id: int, consumed_at: datetime | None = None) -> PlusVoucherRecord | None:
+    'Mark one active Plus voucher consumed and return the updated voucher.'
+    from voucher_repository import mark_plus_voucher_consumed as _mark_plus_voucher_consumed
+
+    return _mark_plus_voucher_consumed(voucher_id, consumed_at)
+
+
 def get_unconsumed_plus_voucher_count() -> int:
     'Return the number of generated vouchers that have not been consumed.'
     from voucher_repository import get_unconsumed_plus_voucher_count as _get_unconsumed_plus_voucher_count

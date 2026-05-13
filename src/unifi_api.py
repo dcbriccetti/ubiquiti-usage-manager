@@ -64,6 +64,61 @@ def get_radius_accounts() -> list[dict[str, Any]]:
     return get_api_data('rest/account')
 
 
+def delete_radius_account(account_id: str) -> tuple[bool, str]:
+    'Delete one UniFi local RADIUS account by controller account ID.'
+    url = f"{BASE_URL}/rest/account/{account_id}"
+    try:
+        response = requests.delete(url, headers=HEADERS, verify=False, timeout=10)
+        if response.status_code in {200, 204, 404}:
+            return True, ''
+        logger.warning(
+            "UniFi API error endpoint=rest/account/%s status=%s response=%s",
+            account_id,
+            response.status_code,
+            response.text[:500],
+        )
+        return False, f"UniFi returned HTTP {response.status_code}"
+    except requests.RequestException as exc:
+        logger.warning("UniFi API error endpoint=rest/account/%s error=%s", account_id, exc)
+        return False, str(exc)
+
+
+def delete_radius_account_by_name(username: str) -> tuple[bool, str]:
+    'Delete the UniFi local RADIUS account with the matching username.'
+    normalized_username = username.strip()
+    if not normalized_username:
+        return False, 'Missing RADIUS username.'
+
+    url = f"{BASE_URL}/rest/account"
+    try:
+        response = requests.get(url, headers=HEADERS, verify=False, timeout=10)
+        if response.status_code != 200:
+            logger.warning(
+                "UniFi API error endpoint=rest/account status=%s response=%s",
+                response.status_code,
+                response.text[:500],
+            )
+            return False, f"UniFi returned HTTP {response.status_code}"
+        payload = response.json()
+    except requests.RequestException as exc:
+        logger.warning("UniFi API error endpoint=rest/account error=%s", exc)
+        return False, str(exc)
+    except ValueError as exc:
+        logger.warning("UniFi API error endpoint=rest/account invalid_json=%s", exc)
+        return False, 'UniFi returned an unreadable account list.'
+
+    accounts = payload.get('data', []) if isinstance(payload, dict) else []
+    for account in accounts:
+        if not isinstance(account, dict) or str(account.get('name') or '') != normalized_username:
+            continue
+        account_id = account.get('_id')
+        if not isinstance(account_id, str) or not account_id:
+            return False, f"RADIUS account {normalized_username} has no controller ID."
+        return delete_radius_account(account_id)
+
+    return True, 'No matching RADIUS account found.'
+
+
 def build_radius_account_payload(
     username: str,
     password: str,

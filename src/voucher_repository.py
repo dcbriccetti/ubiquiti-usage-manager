@@ -102,6 +102,27 @@ def get_plus_vouchers(limit: int = 200) -> list[db.PlusVoucherRecord]:
         return [_voucher_record(row) for row in rows]
 
 
+def get_plus_voucher(voucher_id: int) -> db.PlusVoucherRecord | None:
+    'Return one generated Plus voucher by internal ID.'
+    stmt = select(db.PlusVoucher).where(db.PlusVoucher.id == voucher_id)
+    with db.SessionLocal() as session:
+        row = session.execute(stmt).scalar_one_or_none()
+        return _voucher_record(row) if row else None
+
+
+def mark_plus_voucher_consumed(voucher_id: int, consumed_at: datetime | None = None) -> db.PlusVoucherRecord | None:
+    'Mark one active Plus voucher consumed and return the updated voucher.'
+    with db.SessionLocal() as session:
+        row = session.get(db.PlusVoucher, voucher_id)
+        if row is None:
+            return None
+        if row.consumed_at is None:
+            row.consumed_at = consumed_at or datetime.now()
+            session.commit()
+            _clear_active_voucher_summaries_cache()
+        return _voucher_record(row)
+
+
 def get_unconsumed_plus_voucher_count() -> int:
     'Return the number of generated vouchers that have not been consumed.'
     stmt = select(func.count()).select_from(db.PlusVoucher).where(db.PlusVoucher.consumed_at.is_(None))

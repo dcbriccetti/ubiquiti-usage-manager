@@ -487,7 +487,7 @@ def create_app() -> Flask:
             abort(403)
 
         generated_vouchers: list[db.PlusVoucherRecord] = []
-        voucher_form_message = ''
+        voucher_form_message = request.args.get('message', '')
         selected_count = '10'
         selected_value_dollars = '5'
 
@@ -542,6 +542,36 @@ def create_app() -> Flask:
             inventory_voucher_summaries=summarize_inventory_vouchers(active_voucher_summaries),
             voucher_cost_cents=calculate_voucher_cost_cents,
         )
+
+    @flask_app.route("/vouchers/<int:voucher_id>/consume", methods=["POST"])
+    def consume_plus_voucher(voucher_id: int):
+        'Remove one voucher RADIUS account and mark the voucher consumed.'
+        if not requester_is_plus_admin():
+            abort(403)
+
+        voucher = db.get_plus_voucher(voucher_id)
+        if voucher is None:
+            abort(404)
+        if voucher.consumed_at is not None:
+            return redirect(url_for("plus_vouchers", message=f"Voucher {voucher.user_id} was already marked used."))
+
+        deleted, delete_message = api.delete_radius_account_by_name(str(voucher.user_id))
+        if not deleted:
+            return redirect(
+                url_for(
+                    "plus_vouchers",
+                    message=f"Could not remove RADIUS user {voucher.user_id}: {delete_message}",
+                )
+            )
+
+        consumed_voucher = db.mark_plus_voucher_consumed(voucher.id)
+        if consumed_voucher is None:
+            abort(404)
+
+        message = f"Removed RADIUS user {voucher.user_id} and marked voucher used."
+        if delete_message:
+            message = f"Marked voucher {voucher.user_id} used. {delete_message}"
+        return redirect(url_for("plus_vouchers", message=message))
 
     @flask_app.route("/vouchers/batches/<batch_id>/print")
     def plus_voucher_batch_print(batch_id: str):
