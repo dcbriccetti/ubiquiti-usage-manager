@@ -300,6 +300,20 @@ class WanMacFlowUsage:
 
 
 @dataclass(frozen=True, kw_only=True)
+class WanMacIdentityFlowUsage:
+    'One WAN flow attributed to a specific client MAC with flow-time identity.'
+    source_file: str
+    started_at: datetime
+    bytes: int
+    direction: str
+    client_ip: str
+    mac: str
+    name: str
+    user_id: str
+    vlan: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class FlowImportRecord:
     'Import bookkeeping view-model for one nfcapd capture file.'
     source_file: str
@@ -1062,6 +1076,44 @@ def get_wan_usage_summary_for_user_id(
     return first_usage_at, total_bytes / 1_000_000.0
 
 
+def get_active_plus_vouchers_by_user_id(user_ids: set[str]) -> dict[str, PlusVoucherRecord]:
+    'Return newest active Plus voucher for each requested RADIUS user ID.'
+    voucher_user_ids: set[int] = set()
+    for user_id in user_ids:
+        try:
+            voucher_user_ids.add(int(str(user_id).strip()))
+        except ValueError:
+            continue
+    if not voucher_user_ids:
+        return {}
+
+    stmt = (
+        select(PlusVoucher)
+        .where(
+            PlusVoucher.user_id.in_(sorted(voucher_user_ids)),
+            PlusVoucher.consumed_at.is_(None),
+        )
+        .order_by(PlusVoucher.user_id.asc(), PlusVoucher.generated_at.desc(), PlusVoucher.id.desc())
+    )
+
+    vouchers_by_user_id: dict[str, PlusVoucherRecord] = {}
+    with SessionLocal() as session:
+        for row in session.execute(stmt).scalars():
+            user_id_key = str(row.user_id)
+            if user_id_key in vouchers_by_user_id:
+                continue
+            vouchers_by_user_id[user_id_key] = PlusVoucherRecord(
+                id=row.id,
+                batch_id=row.batch_id,
+                user_id=row.user_id,
+                password=row.password,
+                allocation_gb=row.allocation_gb,
+                generated_at=row.generated_at,
+                consumed_at=row.consumed_at,
+            )
+    return vouchers_by_user_id
+
+
 def get_wan_flow_rows_for_mac(
     mac: str,
     period_start: datetime,
@@ -1069,6 +1121,29 @@ def get_wan_flow_rows_for_mac(
     identity_after_tolerance: timedelta = timedelta(minutes=10),
 ) -> list[WanMacFlowUsage]:
     'Return WAN flow timestamps and bytes attributed to one client MAC.'
+    return [
+        WanMacFlowUsage(
+            source_file=row.source_file,
+            started_at=row.started_at,
+            bytes=row.bytes,
+            direction=row.direction,
+        )
+        for row in get_wan_identity_flow_rows_for_mac(
+            mac,
+            period_start,
+            period_end,
+            identity_after_tolerance=identity_after_tolerance,
+        )
+    ]
+
+
+def get_wan_identity_flow_rows_for_mac(
+    mac: str,
+    period_start: datetime,
+    period_end: datetime,
+    identity_after_tolerance: timedelta = timedelta(minutes=10),
+) -> list[WanMacIdentityFlowUsage]:
+    'Return WAN flows attributed to one client MAC with identity resolved at flow time.'
     target_mac = mac.lower()
     if not target_mac:
         return []
@@ -1140,7 +1215,7 @@ def get_wan_flow_rows_for_mac(
         for client_ip, identities in identities_by_ip.items()
     }
 
-    attributed_rows: list[WanMacFlowUsage] = []
+    attributed_rows: list[WanMacIdentityFlowUsage] = []
     for source_file, started_at, client_ip, direction, byte_count in flow_rows:
         ip_text = str(client_ip)
         identities = identities_by_ip.get(ip_text, [])
@@ -1157,11 +1232,16 @@ def get_wan_flow_rows_for_mac(
             continue
 
         attributed_rows.append(
-            WanMacFlowUsage(
+            WanMacIdentityFlowUsage(
                 source_file=str(source_file),
                 started_at=started_at,
                 bytes=int(byte_count or 0),
                 direction=str(direction or ''),
+                client_ip=ip_text,
+                mac=identity.mac,
+                name=identity.name,
+                user_id=identity.user_id,
+                vlan=identity.vlan,
             )
         )
 

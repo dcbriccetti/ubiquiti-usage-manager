@@ -192,6 +192,10 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertIsNotNone(context["voucher_usage"])
         assert context["voucher_usage"] is not None
         self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 3.0)
+        access_modes = {row["key"]: row for row in context["access_mode_usage_rows"]}
+        self.assertAlmostEqual(access_modes["basic"]["month_mb"], 0.0)
+        self.assertAlmostEqual(access_modes["plus_paid"]["month_mb"], 0.0)
+        self.assertAlmostEqual(access_modes["plus_voucher"]["month_mb"], 3.0)
         self.assertEqual(len(context["wan_import_usage_rows"]), 1)
         recent_import = context["wan_import_usage_rows"][0]
         self.assertEqual(recent_import["source_file"], "nfcapd.202605092205")
@@ -339,6 +343,11 @@ class ClientUsageContextTests(unittest.TestCase):
         assert context["voucher_usage"] is not None
         self.assertAlmostEqual(context["voucher_usage"]["used_mb"], 17.0)
         self.assertEqual(context["voucher_usage"]["activated_at"], datetime(2026, 5, 10, 10, 40))
+        access_modes = {row["key"]: row for row in context["access_mode_usage_rows"]}
+        self.assertAlmostEqual(access_modes["basic"]["month_mb"], 300.0)
+        self.assertAlmostEqual(access_modes["plus_paid"]["month_mb"], 1700.0)
+        self.assertAlmostEqual(access_modes["plus_voucher"]["month_mb"], 17.0)
+        self.assertAlmostEqual(access_modes["plus_paid"]["month_cost_cents"], 85.0)
 
 
 if __name__ == "__main__":

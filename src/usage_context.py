@@ -16,6 +16,19 @@ from speedlimit import SpeedLimit
 SpeedLimitsByName = dict[str, SpeedLimit]
 SPEED_LIMIT_CACHE_SECONDS = 300.0
 _speed_limits_cache: tuple[float, SpeedLimitsByName] | None = None
+ACCESS_MODE_LABELS = {
+    'basic': 'Basic',
+    'plus_paid': 'Plus (paid)',
+    'plus_voucher': 'Plus voucher',
+    'unclassified': 'Unclassified',
+}
+ACCESS_MODE_NOTES = {
+    'basic': 'Included access',
+    'plus_paid': 'No voucher; estimated charge',
+    'plus_voucher': 'Prepaid voucher allocation',
+    'unclassified': 'Missing flow-time identity',
+}
+ACCESS_MODE_ORDER = ('basic', 'plus_paid', 'plus_voucher', 'unclassified')
 
 
 class ThrottleChartDataset(TypedDict):
@@ -77,6 +90,17 @@ class WanImportUsageContext(TypedDict):
     flow_count: int
 
 
+class AccessModeUsageContext(TypedDict):
+    'WAN usage attributed to one client access mode.'
+    key: str
+    label: str
+    note: str
+    today_mb: float
+    last_7_days_mb: float
+    month_mb: float
+    month_cost_cents: float
+
+
 class ClientUsageContext(TypedDict):
     'Template context for client-detail and my-usage pages.'
     mac: str
@@ -96,6 +120,7 @@ class ClientUsageContext(TypedDict):
     wan_month_total_mb: float
     wan_usage_available: bool
     wan_import_usage_rows: list[WanImportUsageContext]
+    access_mode_usage_rows: list[AccessModeUsageContext]
     voucher_usage: VoucherUsageContext | None
     usage_scales: list[UsageScaleContext]
     current_month_label: str
@@ -337,6 +362,74 @@ def build_wan_flow_direction_series(
     ]
 
 
+def access_mode_key_for_flow(
+    flow: db.WanMacIdentityFlowUsage,
+    vouchers_by_user_id: dict[str, db.PlusVoucherRecord],
+) -> str:
+    'Classify one attributed WAN flow by its access/payment mode.'
+    user_id = flow.user_id.strip()
+    voucher = vouchers_by_user_id.get(user_id)
+    if voucher is not None and flow.started_at >= voucher.generated_at:
+        return 'plus_voucher'
+
+    vlan_key = flow.vlan.strip().lower()
+    if vlan_key == 'basic':
+        return 'basic'
+    if vlan_key == 'plus':
+        return 'plus_paid'
+    return 'unclassified'
+
+
+def build_access_mode_usage_context(
+    flows: list[db.WanMacIdentityFlowUsage],
+    vouchers_by_user_id: dict[str, db.PlusVoucherRecord],
+    today_start: datetime,
+    seven_days_ago: datetime,
+) -> list[AccessModeUsageContext]:
+    'Return client WAN usage split by Basic, paid Plus, and voucher Plus.'
+    totals_by_mode = {
+        key: {'today_mb': 0.0, 'last_7_days_mb': 0.0, 'month_mb': 0.0}
+        for key in ACCESS_MODE_ORDER
+    }
+
+    for flow in flows:
+        mode_key = access_mode_key_for_flow(flow, vouchers_by_user_id)
+        total_mb = flow.bytes / 1_000_000.0
+        totals_by_mode[mode_key]['month_mb'] += total_mb
+        if flow.started_at >= seven_days_ago:
+            totals_by_mode[mode_key]['last_7_days_mb'] += total_mb
+        if flow.started_at >= today_start:
+            totals_by_mode[mode_key]['today_mb'] += total_mb
+
+    rows: list[AccessModeUsageContext] = []
+    for mode_key in ACCESS_MODE_ORDER:
+        totals = totals_by_mode[mode_key]
+        if (
+            mode_key == 'unclassified'
+            and not totals['today_mb']
+            and not totals['last_7_days_mb']
+            and not totals['month_mb']
+        ):
+            continue
+        month_cost_cents = (
+            calculate_month_cost_cents(totals['month_mb'])
+            if mode_key == 'plus_paid'
+            else 0.0
+        )
+        rows.append(
+            {
+                'key': mode_key,
+                'label': ACCESS_MODE_LABELS[mode_key],
+                'note': ACCESS_MODE_NOTES[mode_key],
+                'today_mb': totals['today_mb'],
+                'last_7_days_mb': totals['last_7_days_mb'],
+                'month_mb': totals['month_mb'],
+                'month_cost_cents': month_cost_cents,
+            }
+        )
+    return rows
+
+
 def build_voucher_usage_context(
     user_id: str | None,
     voucher: db.PlusVoucherRecord | None = None,
@@ -465,7 +558,29 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         hydrate_usage_record_identity(latest_record, latest_ip_identity, month_wan_rows, mac)
 
     voucher = db.get_active_plus_voucher_for_user_id(latest_record.user_id)
-    mac_wan_flows = db.get_wan_flow_rows_for_mac(mac, month_start, now)
+    mac_identity_wan_flows = db.get_wan_identity_flow_rows_for_mac(mac, month_start, now)
+    mac_wan_flows = [
+        db.WanMacFlowUsage(
+            source_file=flow.source_file,
+            started_at=flow.started_at,
+            bytes=flow.bytes,
+            direction=flow.direction,
+        )
+        for flow in mac_identity_wan_flows
+    ]
+    vouchers_by_user_id = db.get_active_plus_vouchers_by_user_id(
+        {flow.user_id for flow in mac_identity_wan_flows}
+    )
+    access_mode_usage_rows = build_access_mode_usage_context(
+        mac_identity_wan_flows,
+        vouchers_by_user_id,
+        today_start,
+        seven_days_ago,
+    )
+    paid_plus_month_mb = next(
+        (row['month_mb'] for row in access_mode_usage_rows if row['key'] == 'plus_paid'),
+        0.0,
+    )
     wan_import_usage_rows = build_wan_import_usage_context(mac_wan_flows, month_start, now)
     wan_today_download_mb, wan_today_upload_mb = summarize_wan_flows(
         mac_wan_flows,
@@ -588,7 +703,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'daily_total_mb': daily_total_mb,
         'last_7_days_total_mb': last_7_days_total_mb,
         'calendar_month_total_mb': calendar_month_total_mb,
-        'month_cost_cents': calculate_month_cost_cents(calendar_month_total_mb),
+        'month_cost_cents': calculate_month_cost_cents(paid_plus_month_mb),
         'wan_client_ip': wan_client_ip,
         'wan_usage_available': wan_usage_available,
         'wan_identity_observed_at': latest_ip_identity.observed_at if latest_ip_identity else None,
@@ -599,6 +714,7 @@ def get_client_usage_context(mac: str) -> ClientUsageContext:
         'wan_month_upload_mb': wan_month_upload_mb,
         'wan_month_total_mb': wan_month_total_mb,
         'wan_import_usage_rows': wan_import_usage_rows,
+        'access_mode_usage_rows': access_mode_usage_rows,
         'voucher_usage': build_voucher_usage_context(
             latest_record.user_id,
             voucher=voucher,

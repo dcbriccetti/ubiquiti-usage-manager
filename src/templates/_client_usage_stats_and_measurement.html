@@ -11,9 +11,9 @@
         <span class="label">WAN {{ current_month_label }}</span>
         <span class="value">{{ "{:,.0f}".format(calendar_month_total_mb) }} MB</span>
     </article>
-    {% if not voucher_usage %}
+    {% if not voucher_usage and month_cost_cents > 0 %}
         <article class="panel stat">
-            <span class="label">Estimated {{ current_month_label }} Cost</span>
+            <span class="label">Estimated Paid Plus Cost</span>
             <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
         </article>
     {% endif %}
@@ -51,6 +51,43 @@
                     <strong>{{ "{:,.0f}".format(voucher_usage.allocation_gb) }} GB</strong>
                 </div>
             </section>
+        </div>
+    </article>
+{% endif %}
+
+{% if access_mode_usage_rows %}
+    <article class="panel">
+        <div class="panel-body">
+            <h2>Usage by Access Mode</h2>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mode</th>
+                            <th class="num">Today</th>
+                            <th class="num">7 Days</th>
+                            <th class="num">{{ current_month_label }}</th>
+                            <th>Accounting</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in access_mode_usage_rows %}
+                            <tr>
+                                <td>{{ row.label }}</td>
+                                <td class="num">{{ "{:,.0f}".format(row.today_mb) }} MB</td>
+                                <td class="num">{{ "{:,.0f}".format(row.last_7_days_mb) }} MB</td>
+                                <td class="num">{{ "{:,.0f}".format(row.month_mb) }} MB</td>
+                                <td>
+                                    {{ row.note }}
+                                    {% if row.month_cost_cents > 0 %}
+                                        · ${{ "{:,.2f}".format(row.month_cost_cents / 100.0) }}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </article>
 {% endif %}
