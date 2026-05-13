@@ -13,7 +13,7 @@
     </article>
     {% if not voucher_usage and month_cost_cents > 0 %}
         <article class="panel stat">
-            <span class="label">Estimated Paid Plus Cost</span>
+            <span class="label">Plus Charge</span>
             <span class="value">${{ "{:,.2f}".format(month_cost_cents / 100.0) }}</span>
         </article>
     {% endif %}

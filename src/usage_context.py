@@ -18,14 +18,14 @@ SPEED_LIMIT_CACHE_SECONDS = 300.0
 _speed_limits_cache: tuple[float, SpeedLimitsByName] | None = None
 ACCESS_MODE_LABELS = {
     'basic': 'Basic',
-    'plus_paid': 'Plus (paid)',
-    'plus_voucher': 'Plus voucher',
+    'plus_paid': 'Plus without voucher',
+    'plus_voucher': 'Plus with voucher',
     'unclassified': 'Unclassified',
 }
 ACCESS_MODE_NOTES = {
     'basic': 'Included access',
-    'plus_paid': 'No voucher; estimated charge',
-    'plus_voucher': 'Prepaid voucher allocation',
+    'plus_paid': 'Charged at configured Plus rate',
+    'plus_voucher': 'Counts against prepaid voucher allocation',
     'unclassified': 'Missing flow-time identity',
 }
 ACCESS_MODE_ORDER = ('basic', 'plus_paid', 'plus_voucher', 'unclassified')
