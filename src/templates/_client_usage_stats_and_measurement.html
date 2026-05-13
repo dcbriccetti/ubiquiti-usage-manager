@@ -128,7 +128,9 @@
     </article>
 {% endif %}
 
+{% if not suppress_usage_chart_scripts|default(false) %}
 <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+{% endif %}
 
 {% for usage_scale in usage_scales %}
     {% if usage_scale.key != "daily" or daily_total_mb > 0 %}
@@ -141,4 +143,6 @@
     </article>
     {% endif %}
 {% endfor %}
+{% if not suppress_usage_chart_scripts|default(false) %}
 <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>
+{% endif %}

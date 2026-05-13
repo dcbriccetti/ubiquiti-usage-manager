@@ -695,6 +695,8 @@
         });
     };
 
+    window.renderUsageCharts = renderAll;
+
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", renderAll);
     } else {

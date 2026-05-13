@@ -29,6 +29,9 @@
         })
         .then((html) => {
             container.innerHTML = html;
+            if (typeof window.renderUsageCharts === 'function') {
+                window.renderUsageCharts();
+            }
         })
         .catch(renderError);
 })();

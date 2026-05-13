@@ -37,6 +37,8 @@
                     </div>
                 </article>
             </section>
+            <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+            <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>
             <script src="{{ url_for('static', filename='js/client-usage-detail.js') }}"></script>
         {% else %}
             {% include "_client_deferred_usage_panels.html" %}
