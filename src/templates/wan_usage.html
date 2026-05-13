@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}Internet Diagnostics | UniFi Usage{% endblock %}
+{% block title %}Internet Data Health | UniFi Usage{% endblock %}
 {% block page_class %} wide-page{% endblock %}
 
 {% block content %}
     <section class="hero">
         <div>
             <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
-            <h1>Internet Diagnostics</h1>
-            <p>Import freshness, attribution quality, and client/network rollups from completed router data batches.</p>
+            <h1>Internet Data Health</h1>
+            <p>Import freshness, device matching, and client/network rollups from completed router data batches.</p>
         </div>
     </section>
 
@@ -42,18 +42,17 @@
 
     <article class="panel">
         <div class="panel-body">
-            <h2>Import Status</h2>
+            <h2>Latest Data</h2>
             {% if latest_import %}
                 <p class="muted">
-                    Latest file {{ latest_import.source_file }} · imported {{ latest_import.imported_at.strftime("%Y-%m-%d %H:%M:%S") }} ·
-                    {{ latest_import.record_count }} records · {{ latest_import.skipped_count }} skipped
+                    Latest Internet data received {{ latest_import.imported_at.strftime("%Y-%m-%d %H:%M:%S") }} ·
+                    {{ latest_import.record_count }} activity record{% if latest_import.record_count != 1 %}s{% endif %}
                 </p>
             {% else %}
                 <p class="muted">No completed Internet data batches have been imported yet.</p>
             {% endif %}
             <p class="muted">
-                Internal networks: {{ internal_networks|join(", ") if internal_networks else "none configured" }}.
-                Client and network rows use the identity observed nearest each connection time.
+                Client and network rows use the device identity observed nearest each connection time.
                 Top client table hides rows below {{ "{:,.2f}".format(client_display_threshold_mb) }} MB today.
                 {% if hidden_tiny_client_count %}
                     {{ hidden_tiny_client_count }} tiny client{% if hidden_tiny_client_count != 1 %}s{% endif %} hidden.
@@ -64,28 +63,28 @@
 
     <article class="panel">
         <div class="panel-body">
-            <h2>Attribution Health</h2>
+            <h2>Device Matching Health</h2>
             <p class="muted">
-                Month-to-date identity coverage for deciding whether Internet data is ready for billing and reports.
+                Month-to-date coverage for assigning Internet usage to devices.
             </p>
             <p>
-                Billing readiness:
-                <strong{% if wan_billing_readiness.class %} class="{{ wan_billing_readiness.class }}"{% endif %}>
-                    {{ wan_billing_readiness.label }}
+                Data health:
+                <strong{% if wan_data_health.class %} class="{{ wan_data_health.class }}"{% endif %}>
+                    {{ wan_data_health.label }}
                 </strong>
-                <span class="muted">{{ wan_billing_readiness.detail }}</span>
+                <span class="muted">{{ wan_data_health.detail }}</span>
             </p>
             <section class="grid stats">
                 <article class="panel stat">
-                    <span class="label">Month Confident</span>
+                    <span class="label">Matched to Device</span>
                     <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.attributed_pct) }}%</span>
                 </article>
                 <article class="panel stat">
-                    <span class="label">Month Approximate</span>
+                    <span class="label">Best-effort Match</span>
                     <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.fallback_pct) }}%</span>
                 </article>
                 <article class="panel stat">
-                    <span class="label">Month Unknown</span>
+                    <span class="label">Unmatched</span>
                     <span class="value">{{ "{:,.1f}".format(month_attribution_diagnostics.unattributed_pct) }}%</span>
                 </article>
                 <article class="panel stat">
@@ -98,11 +97,11 @@
                     <thead>
                     <tr>
                         <th>Period</th>
-                        <th class="num">Confident %</th>
-                        <th class="num">Approximate %</th>
-                        <th class="num">Unknown %</th>
-                        <th class="num">Unknown MB</th>
-                        <th class="num">Unknown Clients</th>
+                        <th class="num">Matched %</th>
+                        <th class="num">Best-effort %</th>
+                        <th class="num">Unmatched %</th>
+                        <th class="num">Unmatched MB</th>
+                        <th class="num">Unmatched IPs</th>
                         <th class="num">Total MB</th>
                     </tr>
                     </thead>
@@ -123,7 +122,7 @@
             </div>
             <section class="grid">
                 <section>
-                    <h3>Top Unidentified Traffic</h3>
+                    <h3>Top Unmatched Traffic</h3>
                     <div class="table-wrap">
                         <table class="fit-content-table">
                             <thead>
@@ -131,7 +130,7 @@
                                 <th>Client IP</th>
                                 <th>Network</th>
                                 <th class="num">Internet MB</th>
-                                <th class="num">Connections</th>
+                                <th class="num">Activity Records</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -144,7 +143,7 @@
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td colspan="4" class="muted">No unidentified Internet usage this month.</td>
+                                    <td colspan="4" class="muted">No unmatched Internet usage this month.</td>
                                 </tr>
                             {% endfor %}
                             </tbody>
@@ -152,7 +151,7 @@
                     </div>
                 </section>
                 <section>
-                    <h3>Top Approximate Identity Matches</h3>
+                    <h3>Best-effort Device Matches</h3>
                     <div class="table-wrap">
                         <table class="fit-content-table">
                             <thead>
@@ -161,7 +160,7 @@
                                 <th>Client IP</th>
                                 <th>MAC</th>
                                 <th class="num">Internet MB</th>
-                                <th class="num">Connections</th>
+                                <th class="num">Activity Records</th>
                             </tr>
                             </thead>
                             <tbody>
@@ -185,7 +184,7 @@
                                 </tr>
                             {% else %}
                                 <tr>
-                                    <td colspan="5" class="muted">No approximate identity matches this month.</td>
+                                    <td colspan="5" class="muted">No best-effort device matches this month.</td>
                                 </tr>
                             {% endfor %}
                             </tbody>
@@ -209,7 +208,7 @@
                             <th class="num">Upload MB</th>
                             <th class="num">Total MB</th>
                             <th class="num">Clients</th>
-                            <th class="num">Connections</th>
+                            <th class="num">Activity Records</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -250,7 +249,7 @@
                             <th class="num">Download MB</th>
                             <th class="num">Upload MB</th>
                             <th class="num">Total MB</th>
-                            <th class="num">Connections</th>
+                            <th class="num">Activity Records</th>
                         </tr>
                         </thead>
                         <tbody>
@@ -294,14 +293,14 @@
 
         <article class="panel">
             <div class="panel-body">
-                <h2>Recent Import Batches</h2>
+                <h2>Troubleshooting: Recent Data Batches</h2>
                 <div class="table-wrap">
                     <table class="fit-content-table">
                         <thead>
                         <tr>
-                            <th>Data File</th>
+                            <th>Batch</th>
                             <th>Imported</th>
-                            <th class="num">Rows</th>
+                            <th class="num">Activity Records</th>
                             <th class="num">Skipped</th>
                         </tr>
                         </thead>

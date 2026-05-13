@@ -43,7 +43,7 @@ from usage_context import (
 from wan_service import (
     build_wan_attribution_diagnostics,
     build_wan_attribution_period_rows,
-    build_wan_billing_readiness,
+    build_wan_data_health,
     bytes_to_mb,
     serialize_wan_identity_rows,
     summarize_wan_by_network,
@@ -407,7 +407,7 @@ def create_app() -> Flask:
                 today_attribution_diagnostics,
                 month_attribution_diagnostics,
             ),
-            wan_billing_readiness=build_wan_billing_readiness(
+            wan_data_health=build_wan_data_health(
                 month_attribution_diagnostics,
                 latest_import_age_minutes,
             ),
@@ -416,7 +416,6 @@ def create_app() -> Flask:
             recent_imports=recent_imports,
             latest_import=latest_import,
             latest_import_age_minutes=latest_import_age_minutes,
-            internal_networks=sorted(str(network) for network in getattr(cfg, 'INTERNAL_NETWORKS', set())),
             client_display_threshold_mb=client_display_threshold_mb,
             hidden_tiny_client_count=hidden_tiny_client_count,
             bytes_to_mb=bytes_to_mb,

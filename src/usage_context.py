@@ -33,13 +33,13 @@ ACCESS_MODE_LABELS = {
     'basic': 'Basic',
     'plus_paid': 'Plus without voucher',
     'plus_voucher': 'Plus with voucher',
-    'unclassified': 'Unclassified',
+    'unclassified': 'Unknown',
 }
 ACCESS_MODE_NOTES = {
     'basic': 'Included access',
     'plus_paid': 'Charged at configured Plus rate',
     'plus_voucher': 'Counts against prepaid voucher allocation',
-    'unclassified': 'Missing flow-time identity',
+    'unclassified': 'Could not match this Internet activity to a device at the time it happened',
 }
 ACCESS_MODE_ORDER = ('basic', 'plus_paid', 'plus_voucher', 'unclassified')
 TINY_IMPORT_ROW_DISPLAY_MB = 0.05

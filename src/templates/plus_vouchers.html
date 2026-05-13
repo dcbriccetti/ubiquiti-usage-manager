@@ -7,7 +7,7 @@
         <div>
             <h1>Plus Vouchers</h1>
             <p class="muted">
-                Paper login credentials with fixed data allocations · {{ unconsumed_voucher_count }} unconsumed
+                Paper login credentials with fixed data allocations · {{ unconsumed_voucher_count }} unused
             </p>
             <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
         </div>
@@ -187,9 +187,9 @@
                             <td class="num">${{ "{:.2f}".format(voucher_cost_cents(voucher.allocation_gb) / 100.0) }}</td>
                             <td>
                                 {% if voucher.consumed_at %}
-                                    <span class="pill warn">Consumed</span>
+                                    <span class="pill warn">Used</span>
                                 {% else %}
-                                    <span class="pill">Unconsumed</span>
+                                    <span class="pill">Unused</span>
                                 {% endif %}
                             </td>
                             <td>

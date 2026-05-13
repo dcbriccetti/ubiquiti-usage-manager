@@ -192,11 +192,11 @@ def build_wan_attribution_period_rows(
     ]
 
 
-def build_wan_billing_readiness(
+def build_wan_data_health(
     attribution_diagnostics: WanAttributionDiagnostics,
     latest_import_age_minutes: int | None,
 ) -> dict[str, str]:
-    'Return a concise status for deciding whether WAN usage is ready to drive billing.'
+    'Return a concise health status for Internet import and identity matching.'
     total_mb = attribution_diagnostics['total_mb']
     unattributed_pct = attribution_diagnostics['unattributed_pct']
     fallback_pct = attribution_diagnostics['fallback_pct']
@@ -216,7 +216,7 @@ def build_wan_billing_readiness(
         return {
             'label': 'Collecting',
             'class': 'muted',
-            'detail': 'Internet volume is still low; wait for a busy period before switching billing.',
+            'detail': 'Internet volume is still low; totals will be more useful after a busier period.',
         }
     if unattributed_pct <= 2.0 and fallback_pct <= 10.0:
         return {
@@ -233,7 +233,7 @@ def build_wan_billing_readiness(
     return {
         'label': 'Needs identity work',
         'class': 'warn-text',
-        'detail': 'Too much Internet usage is still unidentified to use as the billing source.',
+        'detail': 'Too much Internet usage is still unidentified for clean billing and reports.',
     }
 
 
