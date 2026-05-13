@@ -165,6 +165,47 @@ class ClientUsageContextTests(unittest.TestCase):
         ap_labels.assert_called_once()
         self.assertEqual(len(ap_labels.call_args.args[1]), 3)
 
+    def test_recent_wan_rows_default_to_full_month_activity(self) -> None:
+        mac = "aa:bb:cc:dd:ee:21"
+        flows = [
+            db.WanMacIdentityFlowUsage(
+                source_file=f"nfcapd.20260509{minute:04d}",
+                started_at=datetime(2026, 5, 9, 12, minute),
+                ended_at=datetime(2026, 5, 9, 12, minute),
+                proto="TCP",
+                src_ip="8.8.8.8",
+                src_port=443,
+                dst_ip="192.168.1.21",
+                dst_port=50000 + minute,
+                packets=1,
+                bytes=1_000_000,
+                direction="download",
+                client_ip="192.168.1.21",
+                mac=mac,
+                name="Test client",
+                user_id="",
+                vlan="Plus",
+            )
+            for minute in range(45)
+        ]
+
+        with (
+            patch.object(db, "get_access_point_labels_for_windows", return_value={}) as ap_labels,
+            patch.object(usage_context, "resolve_host_labels", return_value={}),
+        ):
+            rows = usage_context.build_wan_import_usage_context(
+                mac,
+                flows,
+                datetime(2026, 5, 9, 12, 0),
+                datetime(2026, 5, 9, 12, 59),
+            )
+
+        self.assertEqual(len(rows), 45)
+        self.assertEqual(rows[0]["source_file"], "nfcapd.202605090044")
+        self.assertEqual(rows[-1]["source_file"], "nfcapd.202605090000")
+        ap_labels.assert_called_once()
+        self.assertEqual(len(ap_labels.call_args.args[1]), 45)
+
     def test_recent_wan_rows_aggregate_consecutive_tiny_batches(self) -> None:
         def recent_row(
             minute: int,

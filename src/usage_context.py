@@ -397,7 +397,7 @@ def build_wan_import_usage_context(
     flows: list[db.WanMacIdentityFlowUsage],
     period_start: datetime,
     period_end: datetime,
-    limit: int = 40,
+    limit: int | None = None,
 ) -> list[WanImportUsageContext]:
     'Return client-detail rows grouped by non-zero WAN capture import.'
     summaries_by_source: dict[str, WanImportUsageAccumulator] = {}
@@ -436,7 +436,9 @@ def build_wan_import_usage_context(
             summary.source_file,
         ),
         reverse=True,
-    )[:max(1, limit)]
+    )
+    if limit is not None:
+        selected_summaries = selected_summaries[:max(1, limit)]
     access_point_by_source = db.get_access_point_labels_for_windows(
         mac,
         {
@@ -489,7 +491,9 @@ def build_wan_import_usage_context(
         rows,
         key=lambda row: (row['imported_at'] or row['last_flow_at'], row['last_flow_at'], row['source_file']),
         reverse=True,
-    )[:max(1, limit)]
+    )
+    if limit is not None:
+        sorted_rows = sorted_rows[:max(1, limit)]
     return aggregate_tiny_wan_import_rows(sorted_rows)
 
 

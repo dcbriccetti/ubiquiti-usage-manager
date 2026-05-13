@@ -55,6 +55,9 @@
             let page = 0;
 
             const selectedPageSize = () => {
+                if (pageSizeSelect?.value === 'all') {
+                    return rows.length;
+                }
                 const value = Number.parseInt(pageSizeSelect?.value || '10', 10);
                 return Number.isFinite(value) && value > 0 ? value : 10;
             };
