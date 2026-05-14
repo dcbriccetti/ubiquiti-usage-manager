@@ -112,7 +112,8 @@
     };
     const formatDecimal = (value, digits = 1) => {
         const numeric = Number(value) || 0;
-        if (numeric <= 0) return '';
+        const threshold = 0.5 / (10 ** digits);
+        if (numeric < threshold) return '';
         return numeric.toLocaleString(undefined, {
             minimumFractionDigits: digits,
             maximumFractionDigits: digits
