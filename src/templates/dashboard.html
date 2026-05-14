@@ -28,7 +28,7 @@
             <section class="grid stats dashboard-stats">
                 <article class="panel stat">
                     <span class="label">Last 5 Min</span>
-                    <span class="value stat-combo" id="stat-last-5-min-rate">
+                    <span class="value" id="stat-last-5-min-rate">
                         {% if payload.last_5_min_mbps >= 0.05 %}
                             {{ "{:,.2f}".format(payload.last_5_min_mbps) if payload.last_5_min_mbps < 10 else "{:,.1f}".format(payload.last_5_min_mbps) }} Mbps
                         {% endif %}
