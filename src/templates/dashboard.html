@@ -32,9 +32,15 @@
                 </article>
                 <article class="panel stat">
                     <span class="label">Last 5 Min</span>
-                    <span class="value stat-combo" id="stat-last-5-min">
-                        {{ "{:,.1f}".format(payload.last_5_min_mb) }} MB<br>
-                        {{ "{:,.1f}".format(payload.last_5_min_mbps) }} Mbps
+                    <span class="value stat-combo" id="stat-last-5-min-rate">
+                        {% if payload.last_5_min_mbps >= 0.05 %}
+                            {{ "{:,.2f}".format(payload.last_5_min_mbps) if payload.last_5_min_mbps < 10 else "{:,.1f}".format(payload.last_5_min_mbps) }} Mbps
+                        {% endif %}
+                    </span>
+                    <span class="detail-note" id="stat-last-5-min-volume">
+                        {% if payload.last_5_min_mb > 0 %}
+                            {{ "{:,.1f}".format(payload.last_5_min_mb) }} MB used
+                        {% endif %}
                     </span>
                 </article>
                 <article class="panel stat">
@@ -114,9 +120,9 @@
                             <th class="num sig-col">Sig</th>
                             <th class="activity-col" title="Recent activity bars for the selected range.">Activity</th>
                             <th class="nowrap-col" title="How long the client has appeared online or offline.">Connected</th>
-                            <th class="num usage-col usage-first recent-col">Recent</th>
-                            <th class="num usage-col last-5-col">Last 5m</th>
-                            <th class="num usage-col rate-col">Mbps</th>
+                            <th class="num usage-col usage-first last-5-col">Last 5m</th>
+                            <th class="num usage-col rate-col">Avg Mbps</th>
+                            <th class="num usage-col recent-col">Selected</th>
                             <th class="num usage-col today-col">Today</th>
                             <th class="num usage-col seven-days-col">7&nbsp;Days</th>
                             <th class="num usage-col month-col" id="usage-month-header">{{ payload.current_month_label }}</th>

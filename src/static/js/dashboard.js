@@ -20,7 +20,8 @@
     const activitySpanSelect = document.getElementById('activity-span-select');
     const dashboardLoadingStatus = document.getElementById('dashboard-loading-status');
     const statUsageToday = document.getElementById('stat-usage-today');
-    const statLast5Min = document.getElementById('stat-last-5-min');
+    const statLast5MinRate = document.getElementById('stat-last-5-min-rate');
+    const statLast5MinVolume = document.getElementById('stat-last-5-min-volume');
     const statUsage7Days = document.getElementById('stat-usage-7-days');
     const statUsageThisMonth = document.getElementById('stat-usage-this-month');
     const statUsageMonthLabel = document.getElementById('stat-usage-month-label');
@@ -36,7 +37,8 @@
 
     if (
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
-        !windowSelect || !activitySpanSelect || !dashboardLoadingStatus || !statUsageToday || !statLast5Min || !statUsage7Days ||
+        !windowSelect || !activitySpanSelect || !dashboardLoadingStatus || !statUsageToday ||
+        !statLast5MinRate || !statLast5MinVolume || !statUsage7Days ||
         !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader || !usageCostHeader ||
         !costGroupHeader || !topConsumersTitle ||
         !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty ||
@@ -116,6 +118,15 @@
             maximumFractionDigits: digits
         });
     };
+    const formatRate = (value) => {
+        const numeric = Number(value) || 0;
+        if (numeric < 0.05) return '';
+        const digits = numeric < 10 ? 2 : 1;
+        return numeric.toLocaleString(undefined, {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits
+        });
+    };
     const formatCost = (costCents) => {
         if (!costCents || costCents < 0.5) return '';
         const dollars = Number(costCents) / 100;
@@ -125,6 +136,14 @@
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         });
+    };
+    const renderLast5MinStat = (mbValue, mbpsValue) => {
+        const mbText = formatDecimal(mbValue);
+        const mbpsText = formatRate(mbpsValue);
+        return {
+            rate: mbpsText ? `${mbpsText} Mbps` : '',
+            volume: mbText ? `${mbText} MB used` : ''
+        };
     };
     const costCentsForSelectedWindow = (client) => {
         if (selectedWindow === 'today') {
@@ -322,9 +341,9 @@
                     <td class="num sig-col">${escapeHtml(signal)}</td>
                     <td class="activity-col">${renderRecentActivity(client)}</td>
                     <td class="nowrap-col">${escapeHtml(client.connection_duration || '')}</td>
-                    <td class="num usage-col usage-first recent-col">${formatWhole(client.recent_total_mb)}</td>
-                    <td class="num usage-col last-5-col">${formatDecimal(client.last_5_min_mb)}</td>
+                    <td class="num usage-col usage-first last-5-col">${formatDecimal(client.last_5_min_mb)}</td>
                     <td class="num usage-col rate-col">${formatDecimal(client.last_5_min_mbps)}</td>
+                    <td class="num usage-col recent-col">${formatWhole(client.recent_total_mb)}</td>
                     <td class="num usage-col today-col">${formatWhole(client.day_total_mb)}</td>
                     <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
                     <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
@@ -466,7 +485,9 @@
         }
         setLoadingState(false);
         statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
-        statLast5Min.innerHTML = `${formatDecimal(data.last_5_min_mb) || '0.0'} MB<br>${formatDecimal(data.last_5_min_mbps) || '0.0'} Mbps`;
+        const last5MinStat = renderLast5MinStat(data.last_5_min_mb, data.last_5_min_mbps);
+        statLast5MinRate.textContent = last5MinStat.rate;
+        statLast5MinVolume.textContent = last5MinStat.volume;
         statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
         statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
         if (data.current_month_label) {
