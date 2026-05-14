@@ -367,6 +367,17 @@ def _activity_window_seconds(activity_span: ActivitySpan) -> int:
     return 3600
 
 
+def render_wan_import_status(age_minutes: int | None) -> str:
+    'Return a dashboard freshness label for the latest Internet data import.'
+    if age_minutes is None:
+        return 'Internet data: none yet'
+    if age_minutes <= 0:
+        return 'Internet data updated just now'
+    if age_minutes == 1:
+        return 'Internet data updated 1m ago'
+    return f'Internet data updated {age_minutes}m ago'
+
+
 def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> DashboardWanData:
     'Build the WAN attribution slice used by all dashboard views.'
     today_start = datetime.combine(now.date(), time.min)
@@ -392,7 +403,7 @@ def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> Das
     wan_import_stale = True
     if latest_import:
         age_minutes = int((now - latest_import.imported_at).total_seconds() // 60)
-        wan_import_status = f'Internet data updated {age_minutes}m ago'
+        wan_import_status = render_wan_import_status(age_minutes)
         wan_import_stale = age_minutes > 15
 
     return DashboardWanData(

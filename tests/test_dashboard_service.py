@@ -13,6 +13,28 @@ import dashboard_service
 
 
 class DashboardActivitySpanTests(unittest.TestCase):
+    def test_wan_import_status_uses_just_now_for_zero_and_negative_age(self) -> None:
+        self.assertEqual(
+            dashboard_service.render_wan_import_status(None),
+            "Internet data: none yet",
+        )
+        self.assertEqual(
+            dashboard_service.render_wan_import_status(-1),
+            "Internet data updated just now",
+        )
+        self.assertEqual(
+            dashboard_service.render_wan_import_status(0),
+            "Internet data updated just now",
+        )
+        self.assertEqual(
+            dashboard_service.render_wan_import_status(1),
+            "Internet data updated 1m ago",
+        )
+        self.assertEqual(
+            dashboard_service.render_wan_import_status(2),
+            "Internet data updated 2m ago",
+        )
+
     def test_activity_span_normalization_accepts_current_and_legacy_values(self) -> None:
         self.assertEqual(dashboard_service.normalize_activity_span("1h"), "1h")
         self.assertEqual(dashboard_service.normalize_activity_span("6h"), "6h")
