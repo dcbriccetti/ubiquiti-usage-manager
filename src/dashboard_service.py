@@ -56,6 +56,7 @@ ALLOWED_ACTIVITY_SPANS: frozenset[ActivitySpan] = frozenset({
     ACTIVITY_SPAN_7_DAY,
 })
 DASHBOARD_WAN_CACHE_SECONDS = 30.0
+RECENT_INTERNET_WINDOW_SECONDS = 3600
 SPEED_LIMIT_CACHE_SECONDS = 300.0
 INSIGHTS_CACHE_SECONDS_CURRENT = 30.0
 INSIGHTS_CACHE_SECONDS_HISTORICAL = 600.0
@@ -174,6 +175,7 @@ class DashboardWanData:
     today_rows: list[db.WanIdentityUsageSummary]
     seven_day_rows: list[db.WanIdentityUsageSummary]
     month_rows: list[db.WanIdentityUsageSummary]
+    last_5_min_totals_by_mac: dict[str, float]
     recent_totals_by_mac: dict[str, float]
     today_totals_by_mac: dict[str, float]
     seven_day_totals_by_mac: dict[str, float]
@@ -188,7 +190,7 @@ class DashboardWanData:
 
 
 _dashboard_wan_cache_lock = Lock()
-_dashboard_wan_cache_by_activity_span: dict[ActivitySpan, tuple[float, DashboardWanData]] = {}
+_dashboard_wan_cache: tuple[float, DashboardWanData] | None = None
 _speed_limits_cache_lock = Lock()
 _speed_limits_cache: tuple[float, dict[str, SpeedLimit]] | None = None
 _insights_cache_lock = Lock()
@@ -197,8 +199,9 @@ _insights_cache_by_key: dict[InsightsCacheKey, tuple[float, InsightsData]] = {}
 
 def clear_dashboard_wan_cache() -> None:
     'Clear cached WAN attribution data after new flow imports arrive.'
+    global _dashboard_wan_cache
     with _dashboard_wan_cache_lock:
-        _dashboard_wan_cache_by_activity_span.clear()
+        _dashboard_wan_cache = None
     with _insights_cache_lock:
         _insights_cache_by_key.clear()
 
@@ -390,13 +393,13 @@ def _last_5_min_metrics(rows: list[db.WanIdentityUsageSummary]) -> tuple[float, 
     return total_mb, total_mb * 8.0 / 300.0
 
 
-def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> DashboardWanData:
+def _build_dashboard_wan_data(now: datetime) -> DashboardWanData:
     'Build the WAN attribution slice used by all dashboard views.'
     today_start = datetime.combine(now.date(), time.min)
     seven_days_ago = now - timedelta(days=7)
     month_start = datetime.combine(now.date().replace(day=1), time.min)
     last_5_min_start = now - timedelta(minutes=5)
-    recent_start = now - timedelta(seconds=_activity_window_seconds(activity_span))
+    recent_start = now - timedelta(seconds=RECENT_INTERNET_WINDOW_SECONDS)
     period_rows = db.get_wan_usage_by_identity_for_periods(
         {
             'last_5_min': last_5_min_start,
@@ -427,6 +430,7 @@ def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> Das
         today_rows=today_wan_rows,
         seven_day_rows=seven_day_wan_rows,
         month_rows=month_wan_rows,
+        last_5_min_totals_by_mac=_wan_totals_by_mac(last_5_min_wan_rows),
         recent_totals_by_mac=_wan_totals_by_mac(recent_wan_rows),
         today_totals_by_mac=_wan_totals_by_mac(today_wan_rows),
         seven_day_totals_by_mac=_wan_totals_by_mac(seven_day_wan_rows),
@@ -441,17 +445,17 @@ def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> Das
     )
 
 
-def get_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> DashboardWanData:
+def get_dashboard_wan_data(now: datetime) -> DashboardWanData:
     'Return cached WAN attribution data so changing dashboard windows is fast.'
+    global _dashboard_wan_cache
     now_monotonic = monotonic_time.monotonic()
     with _dashboard_wan_cache_lock:
-        cached = _dashboard_wan_cache_by_activity_span.get(activity_span)
-        if cached and cached[0] > now_monotonic:
-            return cached[1]
+        if _dashboard_wan_cache and _dashboard_wan_cache[0] > now_monotonic:
+            return _dashboard_wan_cache[1]
 
-    wan_data = _build_dashboard_wan_data(activity_span, now)
+    wan_data = _build_dashboard_wan_data(now)
     with _dashboard_wan_cache_lock:
-        _dashboard_wan_cache_by_activity_span[activity_span] = (
+        _dashboard_wan_cache = (
             monotonic_time.monotonic() + DASHBOARD_WAN_CACHE_SECONDS,
             wan_data,
         )
@@ -461,6 +465,7 @@ def get_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> Dashbo
 def build_rows_for_online_clients(
     active_only: bool = False,
     snapshots: list[ClientSnapshot] | None = None,
+    last_5_min_totals_by_mac: dict[str, float] | None = None,
     recent_totals_by_mac: dict[str, float] | None = None,
     today_totals_by_mac: dict[str, float] | None = None,
     seven_day_totals_by_mac: dict[str, float] | None = None,
@@ -481,6 +486,7 @@ def build_rows_for_online_clients(
 
     rows: list[DashboardRow] = []
     source_snapshots = snapshots if snapshots is not None else get_connected_clients()
+    last_5_min_totals_by_mac = last_5_min_totals_by_mac or {}
     recent_totals_by_mac = recent_totals_by_mac or {}
     today_totals_by_mac = today_totals_by_mac or {}
     seven_day_totals_by_mac = seven_day_totals_by_mac or {}
@@ -488,6 +494,7 @@ def build_rows_for_online_clients(
     for snapshot in source_snapshots:
         speed_limit = snapshot.effective_speed_limit
         mac_key = snapshot.client.mac.lower()
+        last_5_min_mb = last_5_min_totals_by_mac.get(mac_key, 0.0)
         recent_total_mb = recent_totals_by_mac.get(mac_key, 0.0)
         day_total_mb = today_totals_by_mac.get(mac_key, 0.0)
         last_7_days_total_mb = seven_day_totals_by_mac.get(mac_key, 0.0)
@@ -508,8 +515,8 @@ def build_rows_for_online_clients(
             'signal': snapshot.client.signal if snapshot.client.signal else None,
             'recent_activity': [],
             'recent_total_mb': recent_total_mb,
-            'last_5_min_mb': 0.0,
-            'last_5_min_mbps': 0.0,
+            'last_5_min_mb': last_5_min_mb,
+            'last_5_min_mbps': last_5_min_mb * 8.0 / 300.0,
             'connection_duration': '',
             'day_total_mb': day_total_mb,
             'day_cost_cents': calculate_month_cost_cents(day_total_mb),
@@ -541,6 +548,7 @@ def build_rows_for_historical_window(
     window_name: WindowName,
     speed_limits_by_name: dict[str, SpeedLimit],
     selected_wan_rows: list[db.WanIdentityUsageSummary],
+    last_5_min_totals_by_mac: dict[str, float],
     recent_totals_by_mac: dict[str, float],
     today_totals_by_mac: dict[str, float],
     seven_day_totals_by_mac: dict[str, float],
@@ -584,6 +592,7 @@ def build_rows_for_historical_window(
             primary_ap_name = (summary.ap_name if summary else '') or ''
             ap_count = 1 if primary_ap_name else 0
             ap_breakdown = primary_ap_name
+        last_5_min_mb = last_5_min_totals_by_mac.get(mac_key, 0.0)
         recent_total_mb = recent_totals_by_mac.get(mac_key, 0.0)
         day_total_mb = today_totals_by_mac.get(mac_key, 0.0)
         last_7_days_total_mb = seven_day_totals_by_mac.get(mac_key, 0.0)
@@ -604,8 +613,8 @@ def build_rows_for_historical_window(
             'signal': None,
             'recent_activity': [],
             'recent_total_mb': recent_total_mb,
-            'last_5_min_mb': 0.0,
-            'last_5_min_mbps': 0.0,
+            'last_5_min_mb': last_5_min_mb,
+            'last_5_min_mbps': last_5_min_mb * 8.0 / 300.0,
             'connection_duration': '',
             'day_total_mb': day_total_mb,
             'day_cost_cents': calculate_month_cost_cents(day_total_mb),
@@ -705,9 +714,6 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
         mac_key = row['mac'].lower()
         series = series_by_mac.get(mac_key, default_series.copy())
         row['recent_activity'] = series
-        row['recent_total_mb'] = sum(series)
-        row['last_5_min_mb'] = series[-1] if series and activity_span == ACTIVITY_SPAN_1_HOUR else 0.0
-        row['last_5_min_mbps'] = (row['last_5_min_mb'] * 8.0 / 300.0) if activity_span == ACTIVITY_SPAN_1_HOUR else 0.0
 
 
 def render_dashboard_window_label(window_name: WindowName, current_month_label: str) -> str:
@@ -815,6 +821,7 @@ def _build_live_dashboard_rows(
     activity_span: ActivitySpan,
     connected_snapshots: list[ClientSnapshot],
     selected_wan_rows: list[db.WanIdentityUsageSummary],
+    last_5_min_totals_by_mac: dict[str, float],
     recent_totals_by_mac: dict[str, float],
     today_totals_by_mac: dict[str, float],
     seven_day_totals_by_mac: dict[str, float],
@@ -823,6 +830,7 @@ def _build_live_dashboard_rows(
     if window_name == WINDOW_ONLINE_NOW:
         rows = build_rows_for_online_clients(
             snapshots=connected_snapshots,
+            last_5_min_totals_by_mac=last_5_min_totals_by_mac,
             recent_totals_by_mac=recent_totals_by_mac,
             today_totals_by_mac=today_totals_by_mac,
             seven_day_totals_by_mac=seven_day_totals_by_mac,
@@ -832,6 +840,7 @@ def _build_live_dashboard_rows(
         rows = build_rows_for_online_clients(
             active_only=True,
             snapshots=connected_snapshots,
+            last_5_min_totals_by_mac=last_5_min_totals_by_mac,
             recent_totals_by_mac=recent_totals_by_mac,
             today_totals_by_mac=today_totals_by_mac,
             seven_day_totals_by_mac=seven_day_totals_by_mac,
@@ -843,6 +852,7 @@ def _build_live_dashboard_rows(
             window_name,
             speed_limits_by_name,
             selected_wan_rows,
+            last_5_min_totals_by_mac,
             recent_totals_by_mac,
             today_totals_by_mac,
             seven_day_totals_by_mac,
@@ -873,7 +883,7 @@ def build_live_dashboard_payload(
     now = datetime.now()
     current_month_label = render_month_label(now)
     connected_snapshots = get_connected_clients()
-    wan_data = get_dashboard_wan_data(activity_span, now)
+    wan_data = get_dashboard_wan_data(now)
     selected_wan_rows = wan_data.recent_rows
     if window_name == WINDOW_TODAY:
         selected_wan_rows = wan_data.today_rows
@@ -887,6 +897,7 @@ def build_live_dashboard_payload(
         activity_span,
         connected_snapshots,
         selected_wan_rows,
+        wan_data.last_5_min_totals_by_mac,
         wan_data.recent_totals_by_mac,
         wan_data.today_totals_by_mac,
         wan_data.seven_day_totals_by_mac,

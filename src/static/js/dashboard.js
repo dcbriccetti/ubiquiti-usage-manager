@@ -90,12 +90,6 @@
         last_7_days: '7 Days',
         this_month: 'month'
     };
-    const activityHeaderBySpan = {
-        '1h': '1 Hour',
-        '6h': '6 Hours',
-        '24h': '24 Hours',
-        '7d': '7 Days'
-    };
 
     const applyWindowColumnVisibility = () => {
         const isRealtime = realtimeWindows.has(selectedWindow);
@@ -108,7 +102,7 @@
         if (windowFocusClassByWindow[selectedWindow]) {
             clientsTable.classList.add(windowFocusClassByWindow[selectedWindow]);
         }
-        selectedActivityHeader.textContent = activityHeaderBySpan[selectedActivitySpan] || 'Selected';
+        selectedActivityHeader.textContent = 'Last Hour';
         usageCostHeader.textContent = costHeaderByWindow[selectedWindow] || 'Cost';
     };
 
