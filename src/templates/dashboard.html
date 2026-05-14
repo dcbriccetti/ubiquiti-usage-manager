@@ -31,6 +31,13 @@
                     <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(payload.total_today_mb) }} MB</span>
                 </article>
                 <article class="panel stat">
+                    <span class="label">Last 5 Min</span>
+                    <span class="value stat-combo" id="stat-last-5-min">
+                        {{ "{:,.1f}".format(payload.last_5_min_mb) }} MB<br>
+                        {{ "{:,.1f}".format(payload.last_5_min_mbps) }} Mbps
+                    </span>
+                </article>
+                <article class="panel stat">
                     <span class="label">Internet Last 7&nbsp;Days</span>
                     <span class="value" id="stat-usage-7-days">{{ "{:,.0f}".format(payload.total_last_7_days_mb) }} MB</span>
                 </article>
@@ -87,7 +94,7 @@
                             ></th>
                             <th
                                 id="usage-group-header"
-                                colspan="4"
+                                colspan="6"
                                 class="usage-group"
                             >
                                 Internet Usage (MB)
@@ -108,6 +115,8 @@
                             <th class="activity-col" title="Recent activity bars for the selected range.">Activity</th>
                             <th class="nowrap-col" title="How long the client has appeared online or offline.">Connected</th>
                             <th class="num usage-col usage-first recent-col">Recent</th>
+                            <th class="num usage-col last-5-col">Last 5m</th>
+                            <th class="num usage-col rate-col">Mbps</th>
                             <th class="num usage-col today-col">Today</th>
                             <th class="num usage-col seven-days-col">7&nbsp;Days</th>
                             <th class="num usage-col month-col" id="usage-month-header">{{ payload.current_month_label }}</th>

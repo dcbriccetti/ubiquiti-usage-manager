@@ -78,6 +78,8 @@ class DashboardRow(TypedDict):
     signal: int | None
     recent_activity: list[float]
     recent_total_mb: float
+    last_5_min_mb: float
+    last_5_min_mbps: float
     connection_duration: str
     day_total_mb: float
     day_cost_cents: float
@@ -155,6 +157,8 @@ class DashboardPayload(TypedDict):
     total_today_mb: float
     total_last_7_days_mb: float
     total_calendar_month_mb: float
+    last_5_min_mb: float
+    last_5_min_mbps: float
     wan_import_status: str
     wan_import_stale: bool
     top_consumers_title: str
@@ -177,6 +181,8 @@ class DashboardWanData:
     total_today_mb: float
     total_last_7_days_mb: float
     total_calendar_month_mb: float
+    last_5_min_mb: float
+    last_5_min_mbps: float
     wan_import_status: str
     wan_import_stale: bool
 
@@ -378,14 +384,22 @@ def render_wan_import_status(age_minutes: int | None) -> str:
     return f'Internet data updated {age_minutes}m ago'
 
 
+def _last_5_min_metrics(rows: list[db.WanIdentityUsageSummary]) -> tuple[float, float]:
+    'Return MB and average Mbps for one five-minute WAN summary window.'
+    total_mb = _total_wan_mb(rows)
+    return total_mb, total_mb * 8.0 / 300.0
+
+
 def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> DashboardWanData:
     'Build the WAN attribution slice used by all dashboard views.'
     today_start = datetime.combine(now.date(), time.min)
     seven_days_ago = now - timedelta(days=7)
     month_start = datetime.combine(now.date().replace(day=1), time.min)
+    last_5_min_start = now - timedelta(minutes=5)
     recent_start = now - timedelta(seconds=_activity_window_seconds(activity_span))
     period_rows = db.get_wan_usage_by_identity_for_periods(
         {
+            'last_5_min': last_5_min_start,
             'recent': recent_start,
             'today': today_start,
             'seven_day': seven_days_ago,
@@ -393,6 +407,7 @@ def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> Das
         },
         period_end=now,
     )
+    last_5_min_wan_rows = period_rows.get('last_5_min', [])
     recent_wan_rows = period_rows.get('recent', [])
     today_wan_rows = period_rows.get('today', [])
     seven_day_wan_rows = period_rows.get('seven_day', [])
@@ -405,6 +420,7 @@ def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> Das
         age_minutes = int((now - latest_import.imported_at).total_seconds() // 60)
         wan_import_status = render_wan_import_status(age_minutes)
         wan_import_stale = age_minutes > 15
+    last_5_min_mb, last_5_min_mbps = _last_5_min_metrics(last_5_min_wan_rows)
 
     return DashboardWanData(
         recent_rows=recent_wan_rows,
@@ -418,6 +434,8 @@ def _build_dashboard_wan_data(activity_span: ActivitySpan, now: datetime) -> Das
         total_today_mb=_total_wan_mb(today_wan_rows),
         total_last_7_days_mb=_total_wan_mb(seven_day_wan_rows),
         total_calendar_month_mb=_total_wan_mb(month_wan_rows),
+        last_5_min_mb=last_5_min_mb,
+        last_5_min_mbps=last_5_min_mbps,
         wan_import_status=wan_import_status,
         wan_import_stale=wan_import_stale,
     )
@@ -490,6 +508,8 @@ def build_rows_for_online_clients(
             'signal': snapshot.client.signal if snapshot.client.signal else None,
             'recent_activity': [],
             'recent_total_mb': recent_total_mb,
+            'last_5_min_mb': 0.0,
+            'last_5_min_mbps': 0.0,
             'connection_duration': '',
             'day_total_mb': day_total_mb,
             'day_cost_cents': calculate_month_cost_cents(day_total_mb),
@@ -584,6 +604,8 @@ def build_rows_for_historical_window(
             'signal': None,
             'recent_activity': [],
             'recent_total_mb': recent_total_mb,
+            'last_5_min_mb': 0.0,
+            'last_5_min_mbps': 0.0,
             'connection_duration': '',
             'day_total_mb': day_total_mb,
             'day_cost_cents': calculate_month_cost_cents(day_total_mb),
@@ -684,6 +706,8 @@ def add_recent_activity(rows: list[DashboardRow], activity_span: ActivitySpan) -
         series = series_by_mac.get(mac_key, default_series.copy())
         row['recent_activity'] = series
         row['recent_total_mb'] = sum(series)
+        row['last_5_min_mb'] = series[-1] if series and activity_span == ACTIVITY_SPAN_1_HOUR else 0.0
+        row['last_5_min_mbps'] = (row['last_5_min_mb'] * 8.0 / 300.0) if activity_span == ACTIVITY_SPAN_1_HOUR else 0.0
 
 
 def render_dashboard_window_label(window_name: WindowName, current_month_label: str) -> str:
@@ -875,6 +899,8 @@ def build_live_dashboard_payload(
         'total_today_mb': wan_data.total_today_mb,
         'total_last_7_days_mb': wan_data.total_last_7_days_mb,
         'total_calendar_month_mb': wan_data.total_calendar_month_mb,
+        'last_5_min_mb': wan_data.last_5_min_mb,
+        'last_5_min_mbps': wan_data.last_5_min_mbps,
         'wan_import_status': wan_data.wan_import_status,
         'wan_import_stale': wan_data.wan_import_stale,
         'top_consumers_title': f"Usage Share ({render_dashboard_window_label(window_name, current_month_label)})",

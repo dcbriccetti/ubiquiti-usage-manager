@@ -63,6 +63,8 @@ class DashboardActivitySpanTests(unittest.TestCase):
                 "signal": None,
                 "recent_activity": [],
                 "recent_total_mb": 0.0,
+                "last_5_min_mb": 0.0,
+                "last_5_min_mbps": 0.0,
                 "connection_duration": "",
                 "day_total_mb": 0.0,
                 "day_cost_cents": 0.0,
@@ -97,6 +99,12 @@ class DashboardActivitySpanTests(unittest.TestCase):
                     bucket_seconds=bucket_seconds,
                 )
                 self.assertEqual(len(rows[0]["recent_activity"]), buckets)
+                if span == "1h":
+                    self.assertEqual(rows[0]["last_5_min_mb"], 1.0)
+                    self.assertAlmostEqual(rows[0]["last_5_min_mbps"], 8.0 / 300.0)
+                else:
+                    self.assertEqual(rows[0]["last_5_min_mb"], 0.0)
+                    self.assertEqual(rows[0]["last_5_min_mbps"], 0.0)
 
 
 if __name__ == "__main__":

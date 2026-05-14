@@ -20,6 +20,7 @@
     const activitySpanSelect = document.getElementById('activity-span-select');
     const dashboardLoadingStatus = document.getElementById('dashboard-loading-status');
     const statUsageToday = document.getElementById('stat-usage-today');
+    const statLast5Min = document.getElementById('stat-last-5-min');
     const statUsage7Days = document.getElementById('stat-usage-7-days');
     const statUsageThisMonth = document.getElementById('stat-usage-this-month');
     const statUsageMonthLabel = document.getElementById('stat-usage-month-label');
@@ -35,7 +36,7 @@
 
     if (
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
-        !windowSelect || !activitySpanSelect || !dashboardLoadingStatus || !statUsageToday || !statUsage7Days ||
+        !windowSelect || !activitySpanSelect || !dashboardLoadingStatus || !statUsageToday || !statLast5Min || !statUsage7Days ||
         !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader || !usageCostHeader ||
         !costGroupHeader || !topConsumersTitle ||
         !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty ||
@@ -93,7 +94,7 @@
         clientsTable.classList.toggle('non-realtime-window', !isRealtime);
         clientsTable.classList.toggle('hide-cost-column', isRealtime);
         preUsageGroupHeader.colSpan = isRealtime ? 11 : 7;
-        usageGroupHeader.colSpan = isRealtime ? 4 : 3;
+        usageGroupHeader.colSpan = isRealtime ? 6 : 5;
         clientsTable.classList.remove('focus-recent', 'focus-today', 'focus-7-days', 'focus-month');
         if (windowFocusClassByWindow[selectedWindow]) {
             clientsTable.classList.add(windowFocusClassByWindow[selectedWindow]);
@@ -106,6 +107,14 @@
         if (!value) return '';
         const rounded = Math.round(value);
         return rounded > 0 ? rounded.toLocaleString() : '';
+    };
+    const formatDecimal = (value, digits = 1) => {
+        const numeric = Number(value) || 0;
+        if (numeric <= 0) return '';
+        return numeric.toLocaleString(undefined, {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits
+        });
     };
     const formatCost = (costCents) => {
         if (!costCents || costCents < 0.5) return '';
@@ -253,7 +262,7 @@
         dashboardLoadingStatus.hidden = !isLoading;
         if (isLoading) {
             dashboardLoadingStatus.textContent = `Loading ${selectedWindowLabel()}...`;
-            connectedBody.innerHTML = '<tr><td colspan="19" class="muted">Loading usage...</td></tr>';
+            connectedBody.innerHTML = '<tr><td colspan="21" class="muted">Loading usage...</td></tr>';
             topCurrentConsumersCanvas.hidden = true;
             topCurrentConsumersLegend.hidden = true;
             topCurrentConsumersEmpty.hidden = false;
@@ -268,7 +277,7 @@
         activitySpanSelect.disabled = false;
         dashboardLoadingStatus.hidden = false;
         dashboardLoadingStatus.textContent = 'Waiting for live update...';
-        connectedBody.innerHTML = '<tr><td colspan="19" class="muted">Still waiting for usage data...</td></tr>';
+        connectedBody.innerHTML = '<tr><td colspan="21" class="muted">Still waiting for usage data...</td></tr>';
         topCurrentConsumersCanvas.hidden = true;
         topCurrentConsumersLegend.hidden = true;
         topCurrentConsumersEmpty.hidden = false;
@@ -292,7 +301,7 @@
         ipPrefixHeader.textContent = ipPrefixes.size === 1 ? `${[...ipPrefixes][0]}.` : defaultIpHeader;
 
         if (!clients.length) {
-            connectedBody.innerHTML = `<tr><td colspan="19" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+            connectedBody.innerHTML = `<tr><td colspan="21" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
             return;
         }
 
@@ -314,6 +323,8 @@
                     <td class="activity-col">${renderRecentActivity(client)}</td>
                     <td class="nowrap-col">${escapeHtml(client.connection_duration || '')}</td>
                     <td class="num usage-col usage-first recent-col">${formatWhole(client.recent_total_mb)}</td>
+                    <td class="num usage-col last-5-col">${formatDecimal(client.last_5_min_mb)}</td>
+                    <td class="num usage-col rate-col">${formatDecimal(client.last_5_min_mbps)}</td>
                     <td class="num usage-col today-col">${formatWhole(client.day_total_mb)}</td>
                     <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
                     <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
@@ -455,6 +466,7 @@
         }
         setLoadingState(false);
         statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
+        statLast5Min.innerHTML = `${formatDecimal(data.last_5_min_mb) || '0.0'} MB<br>${formatDecimal(data.last_5_min_mbps) || '0.0'} Mbps`;
         statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
         statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
         if (data.current_month_label) {
