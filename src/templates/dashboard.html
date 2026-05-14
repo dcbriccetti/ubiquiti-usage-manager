@@ -27,10 +27,6 @@
             </div>
             <section class="grid stats dashboard-stats">
                 <article class="panel stat">
-                    <span class="label">Internet Today</span>
-                    <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(payload.total_today_mb) }} MB</span>
-                </article>
-                <article class="panel stat">
                     <span class="label">Last 5 Min</span>
                     <span class="value stat-combo" id="stat-last-5-min-rate">
                         {% if payload.last_5_min_mbps >= 0.05 %}
@@ -42,6 +38,10 @@
                             {{ "{:,.1f}".format(payload.last_5_min_mb) }} MB used
                         {% endif %}
                     </span>
+                </article>
+                <article class="panel stat">
+                    <span class="label">Internet Today</span>
+                    <span class="value" id="stat-usage-today">{{ "{:,.0f}".format(payload.total_today_mb) }} MB</span>
                 </article>
                 <article class="panel stat">
                     <span class="label">Internet Last 7&nbsp;Days</span>

@@ -219,7 +219,7 @@
 
         .stats {
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            align-items: start;
+            align-items: stretch;
             margin-bottom: var(--space-6);
         }
 
@@ -242,6 +242,17 @@
 
         .stat {
             padding: var(--space-5);
+        }
+
+        .dashboard-stats .stat {
+            min-height: 112px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+
+        .dashboard-stats .detail-note {
+            min-height: 1.15em;
         }
 
         .stat .label {
