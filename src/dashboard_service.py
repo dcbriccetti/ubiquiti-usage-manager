@@ -172,6 +172,7 @@ class DashboardPayload(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class DashboardWanData:
     'Cached WAN attribution data shared across dashboard window changes.'
+    last_5_min_rows: list[db.WanIdentityUsageSummary]
     recent_rows: list[db.WanIdentityUsageSummary]
     today_rows: list[db.WanIdentityUsageSummary]
     seven_day_rows: list[db.WanIdentityUsageSummary]
@@ -427,6 +428,7 @@ def _build_dashboard_wan_data(now: datetime) -> DashboardWanData:
     last_5_min_mb, last_5_min_mbps = _last_5_min_metrics(last_5_min_wan_rows)
 
     return DashboardWanData(
+        last_5_min_rows=last_5_min_wan_rows,
         recent_rows=recent_wan_rows,
         today_rows=today_wan_rows,
         seven_day_rows=seven_day_wan_rows,
@@ -741,13 +743,11 @@ def usage_value_for_window(row: DashboardRow, window_name: WindowName) -> float:
     return float(row['calendar_month_total_mb'] or 0.0)
 
 
-def build_top_consumers_for_window(
-    rows: list[DashboardRow],
-    window_name: WindowName,
-    now: datetime,
+def build_top_consumers_for_last_5_min(
+    rows: list[db.WanIdentityUsageSummary],
     limit: int = 5,
 ) -> list[TopCurrentConsumer]:
-    'Return mode-specific usage/capacity slices for the dashboard pie chart.'
+    'Return last-5-minute WAN usage slices for the dashboard pie chart.'
     def duplicate_suffix(client_label: str, device_name: str, mac: str) -> str:
         'Return a compact secondary label for repeated chart labels.'
         if not device_name or device_name == client_label:
@@ -770,20 +770,19 @@ def build_top_consumers_for_window(
 
     usage_rows = sorted(
         (
-            (row, usage_value_for_window(row, window_name))
+            (row, _wan_total_mb(row))
             for row in rows
-            if usage_value_for_window(row, window_name) > 0.0
+            if _wan_total_mb(row) > 0.0
         ),
         key=lambda entry: (
             entry[1],
-            float(entry[0]['day_total_mb'] or 0.0),
-            str(entry[0]['name'] or entry[0]['mac']).lower(),
+            str(entry[0].name or entry[0].mac).lower(),
         ),
         reverse=True,
     )
     top_rows = usage_rows[:max(1, limit)]
     base_labels = [
-        str(row['user_id'] or row['name'] or row['mac'])
+        str(row.user_id or row.name or row.mac)
         for row, _ in top_rows
     ]
     duplicate_base_labels = {
@@ -794,11 +793,11 @@ def build_top_consumers_for_window(
     for (row, usage_mb), base_label in zip(top_rows, base_labels):
         label = base_label
         if base_label in duplicate_base_labels:
-            secondary_label = duplicate_suffix(base_label, str(row['name']), str(row['mac']))
+            secondary_label = duplicate_suffix(base_label, str(row.name), str(row.mac))
             label = f'{base_label} - {secondary_label}'
         consumers.append({
             'label': label,
-            'mac': str(row['mac']),
+            'mac': str(row.mac),
             'interval_mb': usage_mb,
             'slice_type': 'usage',
         })
@@ -915,8 +914,8 @@ def build_live_dashboard_payload(
         'last_5_min_mbps': wan_data.last_5_min_mbps,
         'wan_import_status': wan_data.wan_import_status,
         'wan_import_stale': wan_data.wan_import_stale,
-        'top_consumers_title': f"Usage Share ({render_dashboard_window_label(window_name, current_month_label)})",
-        'top_current_consumers': build_top_consumers_for_window(rows, window_name, now),
+        'top_consumers_title': 'Usage Share (Last 5 Min)',
+        'top_current_consumers': build_top_consumers_for_last_5_min(wan_data.last_5_min_rows),
         'clients': rows,
         'live_update_seconds': live_update_seconds,
         'throttling_enabled': cfg.THROTTLING_ENABLED,

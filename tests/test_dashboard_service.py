@@ -106,6 +106,45 @@ class DashboardActivitySpanTests(unittest.TestCase):
                 self.assertEqual(rows[0]["last_5_min_mb"], 2.0)
                 self.assertAlmostEqual(rows[0]["last_5_min_mbps"], 2.0 * 8.0 / 300.0)
 
+    def test_top_consumers_use_last_5_min_wan_rows(self) -> None:
+        rows = [
+            dashboard_service.db.WanIdentityUsageSummary(
+                client_ip="192.168.4.10",
+                mac="aa:bb:cc:dd:ee:01",
+                name="Phone",
+                user_id="",
+                vlan="Basic",
+                upload_bytes=250_000,
+                download_bytes=750_000,
+                flow_count=5,
+            ),
+            dashboard_service.db.WanIdentityUsageSummary(
+                client_ip="192.168.4.11",
+                mac="aa:bb:cc:dd:ee:02",
+                name="Laptop",
+                user_id="alex",
+                vlan="Plus",
+                upload_bytes=0,
+                download_bytes=2_000_000,
+                flow_count=3,
+            ),
+            dashboard_service.db.WanIdentityUsageSummary(
+                client_ip="192.168.4.12",
+                mac="aa:bb:cc:dd:ee:03",
+                name="Idle",
+                user_id="",
+                vlan="Basic",
+                upload_bytes=0,
+                download_bytes=0,
+                flow_count=1,
+            ),
+        ]
+
+        consumers = dashboard_service.build_top_consumers_for_last_5_min(rows)
+
+        self.assertEqual([consumer["label"] for consumer in consumers], ["alex", "Phone"])
+        self.assertEqual([consumer["interval_mb"] for consumer in consumers], [2.0, 1.0])
+
 
 if __name__ == "__main__":
     unittest.main()
