@@ -20,8 +20,8 @@
     const activitySpanSelect = document.getElementById('activity-span-select');
     const dashboardLoadingStatus = document.getElementById('dashboard-loading-status');
     const statUsageToday = document.getElementById('stat-usage-today');
-    const statLast5MinRate = document.getElementById('stat-last-5-min-rate');
     const statLast5MinVolume = document.getElementById('stat-last-5-min-volume');
+    const statLast5MinRate = document.getElementById('stat-last-5-min-rate');
     const statUsage7Days = document.getElementById('stat-usage-7-days');
     const statUsageThisMonth = document.getElementById('stat-usage-this-month');
     const statUsageMonthLabel = document.getElementById('stat-usage-month-label');
@@ -141,8 +141,8 @@
         const mbText = formatDecimal(mbValue);
         const mbpsText = formatRate(mbpsValue);
         return {
-            rate: mbpsText ? `${mbpsText} Mbps` : '',
-            volume: mbText ? `${mbText} MB used` : ''
+            volume: mbText ? `${mbText} MB` : '',
+            rate: mbpsText ? `${mbpsText} Mbps avg` : ''
         };
     };
     const costCentsForSelectedWindow = (client) => {
@@ -486,8 +486,8 @@
         setLoadingState(false);
         statUsageToday.textContent = `${formatInt(data.total_today_mb)} MB`;
         const last5MinStat = renderLast5MinStat(data.last_5_min_mb, data.last_5_min_mbps);
-        statLast5MinRate.textContent = last5MinStat.rate;
         statLast5MinVolume.textContent = last5MinStat.volume;
+        statLast5MinRate.textContent = last5MinStat.rate;
         statUsage7Days.textContent = `${formatInt(data.total_last_7_days_mb)} MB`;
         statUsageThisMonth.textContent = `${formatInt(data.total_calendar_month_mb)} MB`;
         if (data.current_month_label) {

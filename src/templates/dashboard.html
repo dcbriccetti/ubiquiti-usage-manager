@@ -28,14 +28,14 @@
             <section class="grid stats dashboard-stats">
                 <article class="panel stat">
                     <span class="label">Last 5 Min</span>
-                    <span class="value" id="stat-last-5-min-rate">
-                        {% if payload.last_5_min_mbps >= 0.05 %}
-                            {{ "{:,.2f}".format(payload.last_5_min_mbps) if payload.last_5_min_mbps < 10 else "{:,.1f}".format(payload.last_5_min_mbps) }} Mbps
+                    <span class="value" id="stat-last-5-min-volume">
+                        {% if payload.last_5_min_mb > 0 %}
+                            {{ "{:,.1f}".format(payload.last_5_min_mb) }} MB
                         {% endif %}
                     </span>
-                    <span class="detail-note" id="stat-last-5-min-volume">
-                        {% if payload.last_5_min_mb > 0 %}
-                            {{ "{:,.1f}".format(payload.last_5_min_mb) }} MB used
+                    <span class="detail-note" id="stat-last-5-min-rate">
+                        {% if payload.last_5_min_mbps >= 0.05 %}
+                            {{ "{:,.2f}".format(payload.last_5_min_mbps) if payload.last_5_min_mbps < 10 else "{:,.1f}".format(payload.last_5_min_mbps) }} Mbps avg
                         {% endif %}
                     </span>
                 </article>
