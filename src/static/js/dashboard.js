@@ -27,6 +27,7 @@
     const statUsageMonthLabel = document.getElementById('stat-usage-month-label');
     const usageMonthHeader = document.getElementById('usage-month-header');
     const usageCostHeader = document.getElementById('usage-cost-header');
+    const selectedActivityHeader = document.getElementById('selected-activity-header');
     const costGroupHeader = document.getElementById('cost-group-header');
     const topConsumersTitle = document.getElementById('top-consumers-title');
     const topCurrentConsumersCanvas = document.getElementById('top-current-consumers-chart');
@@ -39,7 +40,7 @@
         !clientsTable || !preUsageGroupHeader || !usageGroupHeader || !connectedBody ||
         !windowSelect || !activitySpanSelect || !dashboardLoadingStatus || !statUsageToday ||
         !statLast5MinRate || !statLast5MinVolume || !statUsage7Days ||
-        !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader || !usageCostHeader ||
+        !statUsageThisMonth || !statUsageMonthLabel || !usageMonthHeader || !usageCostHeader || !selectedActivityHeader ||
         !costGroupHeader || !topConsumersTitle ||
         !topCurrentConsumersCanvas || !topCurrentConsumersLegend || !topCurrentConsumersEmpty ||
         !ipPrefixHeader || !wanImportStatus
@@ -89,6 +90,12 @@
         last_7_days: '7 Days',
         this_month: 'month'
     };
+    const activityHeaderBySpan = {
+        '1h': '1 Hour',
+        '6h': '6 Hours',
+        '24h': '24 Hours',
+        '7d': '7 Days'
+    };
 
     const applyWindowColumnVisibility = () => {
         const isRealtime = realtimeWindows.has(selectedWindow);
@@ -101,6 +108,7 @@
         if (windowFocusClassByWindow[selectedWindow]) {
             clientsTable.classList.add(windowFocusClassByWindow[selectedWindow]);
         }
+        selectedActivityHeader.textContent = activityHeaderBySpan[selectedActivitySpan] || 'Selected';
         usageCostHeader.textContent = costHeaderByWindow[selectedWindow] || 'Cost';
     };
 
