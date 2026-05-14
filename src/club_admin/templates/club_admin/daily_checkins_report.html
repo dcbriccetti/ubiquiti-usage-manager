@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Daily Check-ins</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Daily Check-ins</h1>
+        <p class="summary">{{ checkins|length }} check-ins</p>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('checkins_report') }}">By User</a>
+        <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+      </nav>
+    </header>
+
+    <form class="report-filters" action="{{ url_for('daily_checkins_report') }}" method="get">
+      <label>
+        Start
+        <input type="date" name="start_date" value="{{ start_date }}">
+      </label>
+      <label>
+        End
+        <input type="date" name="end_date" value="{{ end_date }}">
+      </label>
+      <button type="submit">Run Report</button>
+    </form>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="nowrap">Check-in</th>
+          <th>Last Name</th>
+          <th>First Name</th>
+          <th>Card #</th>
+          <th>Membership</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for checkin in checkins %}
+          <tr>
+            <td class="nowrap">{{ checkin.check_in_at }}</td>
+            <td>{{ checkin.last_name }}</td>
+            <td>{{ checkin.first_name }}</td>
+            <td>{{ checkin.card_number }}</td>
+            <td>{{ checkin.membership }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="5" class="empty">No check-ins in this date range.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

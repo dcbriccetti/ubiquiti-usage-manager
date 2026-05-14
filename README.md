@@ -1,5 +1,52 @@
 UniFi usage dashboard + monitor for tracking client usage and applying policy-based speed limits.
 
+## App Structure
+
+This repo is being migrated gradually from one flat LAN-management app into
+separate app packages:
+
+```text
+src/
+  app.py                 # existing LAN management Flask app, kept for compatibility
+  lan_admin/             # new LAN package boundary; currently wraps src/app.py
+  club_admin/            # new club user management app
+  shared/                # future shared code used by both apps
+```
+
+The LAN app still runs the same way as before, so existing scripts and imports
+do not need to change yet. New club user-management code should go under
+`src/club_admin/`.
+
+Run the LAN app:
+
+```bash
+PYTHONPATH=src python src/app.py
+```
+
+Or through the new package entrypoint:
+
+```bash
+PYTHONPATH=src python -m lan_admin.app
+```
+
+Run the club user app:
+
+```bash
+PYTHONPATH=src python -m club_admin.app
+```
+
+By default the club app stores users in `data/club_users.db`. Override that
+with `CLUB_ADMIN_DB_PATH=/path/to/club_users.db` when needed.
+Set `USER_MANAGEMENT_ORGANIZATION_NAME` in `src/config_local.py` to change the visible
+`<org name> User Management` title shown across club pages.
+
+The club app imports roster CSVs into the `users` table and check-in report
+CSVs into the `checkins` table. Local CSV exports and SQLite user databases are
+ignored by Git so user, member, and visitor data stays off commits.
+SQLite foreign-key enforcement is enabled by the app on every connection. If
+you inspect the DB manually with `sqlite3`, run `PRAGMA foreign_keys=ON;` first;
+the app also refuses to start if it detects broken club-user foreign keys.
+
 ## What This App Does
 
 - Shows live and historical client usage in a Flask web dashboard.

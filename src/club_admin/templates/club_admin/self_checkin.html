@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Self Check-in</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page narrow">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Self Check-in</h1>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('checkins_report') }}">By User</a>
+        <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
+      </nav>
+    </header>
+
+    <form class="self-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+      <label>
+        Phone Number
+        <input type="tel" name="phone" autocomplete="tel" required>
+      </label>
+      <label>
+        Initials
+        <input type="text" name="initials" maxlength="4" autocomplete="off" required>
+      </label>
+      <button type="submit">Check In</button>
+    </form>
+
+    {% if message %}
+      <p class="notice">{{ message }}</p>
+    {% endif %}
+  </main>
+</body>
+</html>
