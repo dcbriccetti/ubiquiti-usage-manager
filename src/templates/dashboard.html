@@ -106,7 +106,9 @@
                                 Internet Usage (MB)
                             </th>
                             <th class="cost-group" id="cost-group-header">Cost</th>
-                            <th colspan="3" class="speed-group">Speed Limit (kbps)</th>
+                            {% if payload.throttling_enabled %}
+                                <th colspan="3" class="speed-group">Speed Limit (kbps)</th>
+                            {% endif %}
                         </tr>
                         <tr>
                             <th class="nowrap-col">User ID</th>
@@ -127,9 +129,11 @@
                             <th class="num usage-col seven-days-col">7&nbsp;Days</th>
                             <th class="num usage-col month-col" id="usage-month-header">{{ payload.current_month_label }}</th>
                             <th class="num usage-col usage-last" id="usage-cost-header">Cost</th>
-                            <th class="nowrap-col speed-col speed-first">Name</th>
-                            <th class="num nowrap-col speed-col">Up</th>
-                            <th class="num nowrap-col speed-col">Dn</th>
+                            {% if payload.throttling_enabled %}
+                                <th class="nowrap-col speed-col speed-first">Name</th>
+                                <th class="num nowrap-col speed-col">Up</th>
+                                <th class="num nowrap-col speed-col">Dn</th>
+                            {% endif %}
                         </tr>
                         </thead>
                         <tbody id="connected-clients-body"></tbody>

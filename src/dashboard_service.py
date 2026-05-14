@@ -166,6 +166,7 @@ class DashboardPayload(TypedDict):
     top_current_consumers: list[TopCurrentConsumer]
     clients: list[DashboardRow]
     live_update_seconds: int
+    throttling_enabled: bool
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -918,6 +919,7 @@ def build_live_dashboard_payload(
         'top_current_consumers': build_top_consumers_for_window(rows, window_name, now),
         'clients': rows,
         'live_update_seconds': live_update_seconds,
+        'throttling_enabled': cfg.THROTTLING_ENABLED,
     }
 
 

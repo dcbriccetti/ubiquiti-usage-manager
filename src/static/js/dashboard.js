@@ -53,6 +53,8 @@
     const snapshotBaseUrl = String(bootstrap.snapshotBaseUrl || '');
     const defaultIpHeader = String(bootstrap.defaultIpHeader || 'IP');
     const initialPayload = bootstrap.initialPayload || {};
+    const throttlingEnabled = initialPayload.throttling_enabled !== false;
+    const tableColumnCount = throttlingEnabled ? 21 : 18;
 
     if (!detailPattern || !streamBaseUrl || !snapshotBaseUrl) {
         return;
@@ -284,7 +286,7 @@
         dashboardLoadingStatus.hidden = !isLoading;
         if (isLoading) {
             dashboardLoadingStatus.textContent = `Loading ${selectedWindowLabel()}...`;
-            connectedBody.innerHTML = '<tr><td colspan="21" class="muted">Loading usage...</td></tr>';
+            connectedBody.innerHTML = `<tr><td colspan="${tableColumnCount}" class="muted">Loading usage...</td></tr>`;
             topCurrentConsumersCanvas.hidden = true;
             topCurrentConsumersLegend.hidden = true;
             topCurrentConsumersEmpty.hidden = false;
@@ -299,7 +301,7 @@
         activitySpanSelect.disabled = false;
         dashboardLoadingStatus.hidden = false;
         dashboardLoadingStatus.textContent = 'Waiting for live update...';
-        connectedBody.innerHTML = '<tr><td colspan="21" class="muted">Still waiting for usage data...</td></tr>';
+        connectedBody.innerHTML = `<tr><td colspan="${tableColumnCount}" class="muted">Still waiting for usage data...</td></tr>`;
         topCurrentConsumersCanvas.hidden = true;
         topCurrentConsumersLegend.hidden = true;
         topCurrentConsumersEmpty.hidden = false;
@@ -323,13 +325,18 @@
         ipPrefixHeader.textContent = ipPrefixes.size === 1 ? `${[...ipPrefixes][0]}.` : defaultIpHeader;
 
         if (!clients.length) {
-            connectedBody.innerHTML = `<tr><td colspan="21" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
+            connectedBody.innerHTML = `<tr><td colspan="${tableColumnCount}" class="muted">${escapeHtml(emptyWindowMessage())}</td></tr>`;
             return;
         }
 
         connectedBody.innerHTML = clients.map((client) => {
             const signal = client.signal === null ? '' : client.signal;
             const detailHref = detailPattern.replace('__MAC__', encodeURIComponent(client.mac));
+            const speedLimitCells = throttlingEnabled ? `
+                    <td class="nowrap-col speed-col speed-first">${escapeHtml(client.speed_limit_name || '')}</td>
+                    <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_up_kbps) ? Math.round(client.speed_limit_up_kbps).toLocaleString() : ''}</td>
+                    <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_down_kbps) ? Math.round(client.speed_limit_down_kbps).toLocaleString() : ''}</td>
+                ` : '';
 
             return `
                 <tr data-client-mac="${escapeHtml(client.mac)}">
@@ -351,9 +358,7 @@
                     <td class="num usage-col seven-days-col">${formatWhole(client.last_7_days_total_mb)}</td>
                     <td class="num usage-col month-col">${formatWhole(client.calendar_month_total_mb)}</td>
                     <td class="num usage-col usage-last">${formatCost(costCentsForSelectedWindow(client))}</td>
-                    <td class="nowrap-col speed-col speed-first">${escapeHtml(client.speed_limit_name || '')}</td>
-                    <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_up_kbps) ? Math.round(client.speed_limit_up_kbps).toLocaleString() : ''}</td>
-                    <td class="num nowrap-col speed-col">${Number.isFinite(client.speed_limit_down_kbps) ? Math.round(client.speed_limit_down_kbps).toLocaleString() : ''}</td>
+                    ${speedLimitCells}
                 </tr>
             `;
         }).join('');
