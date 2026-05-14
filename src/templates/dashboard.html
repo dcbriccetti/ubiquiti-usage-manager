@@ -70,20 +70,13 @@
             <div class="panel-body">
                 <h2>Clients</h2>
                 <div class="control-row">
-                    <label for="window-select" class="muted">Show:</label>
+                    <label for="window-select" class="muted">Client rows:</label>
                     <select id="window-select">
-                        <option value="active_now">Recent Internet</option>
+                        <option value="active_now">Used Internet Last Hour</option>
                         <option value="online_now">Online Now</option>
-                        <option value="today">Today</option>
-                        <option value="last_7_days">7 Days</option>
-                        <option value="this_month">{{ payload.current_month_label }}</option>
-                    </select>
-                    <label for="activity-span-select" class="muted">Activity:</label>
-                    <select id="activity-span-select">
-                        <option value="1h">1 hour</option>
-                        <option value="6h">6 hours</option>
-                        <option value="24h">24 hours</option>
-                        <option value="7d">7 days</option>
+                        <option value="today">Used Internet Today</option>
+                        <option value="last_7_days">Used Internet Last 7 Days</option>
+                        <option value="this_month">Used Internet in {{ payload.current_month_label }}</option>
                     </select>
                     <span id="dashboard-loading-status" class="dashboard-loading-status muted" hidden>Loading…</span>
                 </div>
@@ -120,7 +113,17 @@
                             <th class="num band-col" title="Wi-Fi frequency band.">Band</th>
                             <th class="num channel-col" title="Wi-Fi channel.">Ch</th>
                             <th class="num sig-col">Sig</th>
-                            <th class="activity-col" title="Recent activity bars for the selected range.">Activity</th>
+                            <th class="activity-col" title="Recent activity bars for the selected range.">
+                                <span class="activity-heading">
+                                    <label for="activity-span-select">Activity</label>
+                                    <select id="activity-span-select" aria-label="Activity bars time range">
+                                        <option value="1h">Last hour</option>
+                                        <option value="6h">Last 6 hours</option>
+                                        <option value="24h">Last 24 hours</option>
+                                        <option value="7d">Last 7 days</option>
+                                    </select>
+                                </span>
+                            </th>
                             <th class="nowrap-col" title="How long the client has appeared online or offline.">Connected</th>
                             <th class="num usage-col usage-first last-5-col">Last 5m</th>
                             <th class="num usage-col rate-col">Avg Mbps</th>

@@ -86,11 +86,11 @@
         this_month: 'Month Cost'
     };
     const windowLabelByWindow = {
-        active_now: 'Recent Internet',
+        active_now: 'last-hour Internet users',
         online_now: 'Online Now',
-        today: 'Today',
-        last_7_days: '7 Days',
-        this_month: 'month'
+        today: 'today\'s Internet users',
+        last_7_days: '7-day Internet users',
+        this_month: 'monthly Internet users'
     };
 
     const applyWindowColumnVisibility = () => {
@@ -503,7 +503,7 @@
             usageMonthHeader.textContent = data.current_month_label;
             const monthOption = windowSelect.querySelector('option[value="this_month"]');
             if (monthOption) {
-                monthOption.textContent = data.current_month_label;
+                monthOption.textContent = `Used Internet in ${data.current_month_label}`;
             }
         }
 
