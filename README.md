@@ -55,6 +55,30 @@ To show scanned guest forms on user detail pages, set
 `USER_MANAGEMENT_DOCUMENTS_DIR` in `src/config_local.py`. The app looks inside a
 folder named with the user's card number for the first `.jpg` or `.jpeg` file
 whose name starts with `Guest Form`.
+To customize the printable first-time visitor form, set
+`USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH` in `src/config_local.py` to a local
+TOML file. When no form definition is configured, the app uses a generic
+visitor registration form. Keep organization-specific form text in ignored
+local files.
+
+Example form definition:
+
+```toml
+title = "Guest Registration"
+version = "ORG-1.0"
+
+[labels]
+name = "Name"
+address = "Street Address"
+cell_phone = "Cell Phone"
+
+[agreement]
+title = "Agreement"
+paragraphs = [
+  "I agree to follow the organization's rules and policies.",
+  "I understand this form must be signed before access is granted.",
+]
+```
 To enable the admin ZIP map, add ZIP centroid coordinates to ignored local
 config:
 

@@ -50,6 +50,7 @@ def member_from_row(row: sqlite3.Row) -> Member:
         id=row["id"],
         last_name=row["last_name"],
         first_name=row["first_name"],
+        nickname=row["nickname"],
         card_number=row["card_number"],
         membership=row["membership"],
         address=row["address"],
@@ -86,6 +87,7 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
         INSERT INTO users (
             last_name,
             first_name,
+            nickname,
             card_number,
             membership,
             address,
@@ -98,10 +100,11 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             work_phone,
             cell_phone
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(card_number) DO UPDATE SET
             last_name = excluded.last_name,
             first_name = excluded.first_name,
+            nickname = excluded.nickname,
             membership = excluded.membership,
             address = excluded.address,
             address2 = excluded.address2,
@@ -116,6 +119,7 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
         (
             member.last_name.strip(),
             member.first_name.strip(),
+            _empty_to_none(member.nickname),
             member.card_number.strip(),
             member.membership.strip(),
             _empty_to_none(member.address),
@@ -131,6 +135,48 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
     )
 
 
+def insert_member(connection: sqlite3.Connection, member: Member) -> int:
+    '''Insert a new club user and return its database ID.'''
+    cursor = connection.execute(
+        """
+        INSERT INTO users (
+            last_name,
+            first_name,
+            nickname,
+            card_number,
+            membership,
+            address,
+            address2,
+            city,
+            state,
+            zip,
+            phone,
+            email,
+            work_phone,
+            cell_phone
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            member.last_name.strip(),
+            member.first_name.strip(),
+            _empty_to_none(member.nickname),
+            member.card_number.strip(),
+            member.membership.strip(),
+            _empty_to_none(member.address),
+            _empty_to_none(member.address2),
+            _empty_to_none(member.city),
+            _empty_to_none(member.state),
+            _empty_to_none(member.zip),
+            _empty_to_none(member.phone),
+            _empty_to_none(member.email),
+            _empty_to_none(member.work_phone),
+            _empty_to_none(member.cell_phone),
+        ),
+    )
+    return int(cursor.lastrowid)
+
+
 def list_members(connection: sqlite3.Connection) -> list[Member]:
     '''Return all club users, sorted for roster display.'''
     rows = connection.execute(
@@ -139,6 +185,7 @@ def list_members(connection: sqlite3.Connection) -> list[Member]:
             id,
             last_name,
             first_name,
+            nickname,
             card_number,
             membership,
             address,
@@ -165,6 +212,7 @@ def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReport
             u.id,
             u.last_name,
             u.first_name,
+            u.nickname,
             u.card_number,
             u.membership,
             u.address,
@@ -184,6 +232,7 @@ def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReport
             u.id,
             u.last_name,
             u.first_name,
+            u.nickname,
             u.card_number,
             u.membership,
             u.address,
@@ -225,6 +274,7 @@ def get_member(connection: sqlite3.Connection, member_id: int) -> Member | None:
             id,
             last_name,
             first_name,
+            nickname,
             card_number,
             membership,
             address,
@@ -242,6 +292,48 @@ def get_member(connection: sqlite3.Connection, member_id: int) -> Member | None:
         (member_id,),
     ).fetchone()
     return member_from_row(row) if row is not None else None
+
+
+def get_member_by_card_number(connection: sqlite3.Connection, card_number: str) -> Member | None:
+    '''Return one club user by card number.'''
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            last_name,
+            first_name,
+            nickname,
+            card_number,
+            membership,
+            address,
+            address2,
+            city,
+            state,
+            zip,
+            phone,
+            email,
+            work_phone,
+            cell_phone
+        FROM users
+        WHERE card_number = ?
+        """,
+        (card_number,),
+    ).fetchone()
+    return member_from_row(row) if row is not None else None
+
+
+def largest_numeric_card_number(connection: sqlite3.Connection) -> int | None:
+    '''Return the largest all-digit card number, ignoring nonnumeric card IDs.'''
+    row = connection.execute(
+        """
+        SELECT MAX(CAST(card_number AS INTEGER)) AS largest_card_number
+        FROM users
+        WHERE card_number <> ''
+          AND card_number NOT GLOB '*[^0-9]*'
+        """
+    ).fetchone()
+    value = row["largest_card_number"] if row is not None else None
+    return int(value) if value is not None else None
 
 
 def find_member_by_phone(connection: sqlite3.Connection, phone: str) -> Member | None:
@@ -286,6 +378,7 @@ def find_member_by_phone_and_initials(
         identity_matches = (
             member_initials(member) == target_identity
             or normalize_name_token(member.first_name) == target_identity
+            or normalize_name_token(member.nickname) == target_identity
         )
         if target_digits in member_numbers and identity_matches:
             matches.append(member)
@@ -304,6 +397,7 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
         SET
             last_name = ?,
             first_name = ?,
+            nickname = ?,
             card_number = ?,
             membership = ?,
             address = ?,
@@ -320,6 +414,7 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
         (
             member.last_name.strip(),
             member.first_name.strip(),
+            _empty_to_none(member.nickname),
             member.card_number.strip(),
             member.membership.strip(),
             _empty_to_none(member.address),

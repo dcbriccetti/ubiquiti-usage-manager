@@ -26,6 +26,7 @@ from flask import (
     session,
     url_for,
 )
+from PIL import Image, ImageOps, UnidentifiedImageError
 from werkzeug.security import check_password_hash
 
 import config as cfg
@@ -33,14 +34,17 @@ from club_admin import audit_repository
 from club_admin import checkin_repository
 from club_admin import csv_import
 from club_admin import database
+from club_admin import guest_form
+from club_admin import guest_registration_repository
 from club_admin import member_repository
 from club_admin import zip_repository
-from club_admin.models import CheckIn, Member
+from club_admin.models import CheckIn, GuestRegistration, Member
 
 
 EDITABLE_MEMBER_FIELDS = (
     "last_name",
     "first_name",
+    "nickname",
     "card_number",
     "membership",
     "address",
@@ -54,6 +58,12 @@ EDITABLE_MEMBER_FIELDS = (
     "cell_phone",
 )
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
+DRIVER_LICENSE_DOCUMENT_NAME = "Driver License.jpg"
+DRIVER_LICENSE_IMAGE_SIZE = (1013, 576)
+ID_DOCUMENT_NAME_PATTERN = re.compile(
+    r"^(?:drivers?\s+license|drivers?\s+licence|dl|id|identification)(?:\b|[_\-\s])",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -118,6 +128,7 @@ def _member_from_form(member_id: int, form_data: Any) -> Member:
         id=member_id,
         last_name=form_data.get("last_name", "").strip(),
         first_name=form_data.get("first_name", "").strip(),
+        nickname=form_data.get("nickname", "").strip() or None,
         card_number=form_data.get("card_number", "").strip(),
         membership=form_data.get("membership", "").strip(),
         address=form_data.get("address", "").strip() or None,
@@ -130,6 +141,77 @@ def _member_from_form(member_id: int, form_data: Any) -> Member:
         work_phone=form_data.get("work_phone", "").strip() or None,
         cell_phone=form_data.get("cell_phone", "").strip() or None,
     )
+
+
+def _visitor_text_or_none(form_data: Any, field_name: str) -> str | None:
+    return form_data.get(field_name, "").strip() or None
+
+
+def _visitor_bool(form_data: Any, field_name: str) -> bool:
+    return form_data.get(field_name) in {"1", "true", "yes", "on"}
+
+
+def _visitor_choice(
+    form_data: Any,
+    field_name: str,
+    allowed_values: set[str],
+) -> str | None:
+    value = form_data.get(field_name, "").strip()
+    return value if value in allowed_values else None
+
+
+def _parse_visitor_visit_date(form_data: Any) -> date:
+    value = form_data.get("visit_date", "").strip()
+    if not value:
+        return date.today()
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        abort(400, "Visit date must use YYYY-MM-DD.")
+
+
+def _guest_registration_from_form(
+    form_data: Any,
+    *,
+    card_number: str,
+) -> tuple[Member, GuestRegistration]:
+    other_phone = _visitor_text_or_none(form_data, "other_phone")
+    other_phone_type = _visitor_choice(form_data, "other_phone_type", {"home", "work", "other"})
+    phone = other_phone if other_phone_type != "work" else None
+    work_phone = other_phone if other_phone_type == "work" else None
+
+    member = Member(
+        last_name=form_data.get("last_name", "").strip(),
+        first_name=form_data.get("first_name", "").strip(),
+        nickname=_visitor_text_or_none(form_data, "nickname"),
+        card_number=card_number,
+        membership="Visitor",
+        address=_visitor_text_or_none(form_data, "address"),
+        city=_visitor_text_or_none(form_data, "city"),
+        state=_visitor_text_or_none(form_data, "state"),
+        zip=_visitor_text_or_none(form_data, "zip"),
+        phone=phone,
+        email=_visitor_text_or_none(form_data, "email"),
+        work_phone=work_phone,
+        cell_phone=_visitor_text_or_none(form_data, "cell_phone"),
+    )
+    registration = GuestRegistration(
+        visit_date=_parse_visitor_visit_date(form_data),
+        middle_name=_visitor_text_or_none(form_data, "middle_name"),
+        other_phone=other_phone,
+        other_phone_type=other_phone_type,
+        marital_status=_visitor_choice(
+            form_data,
+            "marital_status",
+            {"single", "married", "recognized_couple"},
+        ),
+        partner_name=_visitor_text_or_none(form_data, "partner_name"),
+        guest_of_member=_visitor_bool(form_data, "guest_of_member"),
+        member_name=_visitor_text_or_none(form_data, "member_name"),
+        heard_about=_visitor_text_or_none(form_data, "heard_about"),
+        newsletter_opt_out=_visitor_bool(form_data, "newsletter_opt_out"),
+    )
+    return member, registration
 
 
 def _safe_next_url(next_url: str | None) -> str:
@@ -201,6 +283,67 @@ def _member_document_names(
             continue
         document_names.append(child.name)
     return tuple(document_names)
+
+
+def _id_document_name_for_member(member: Member, documents_dir: str) -> str | None:
+    managed_document_name: str | None = None
+    fallback_document_name: str | None = None
+    for document_name in _member_document_names(
+        member,
+        documents_dir,
+        include_guest_form=False,
+    ):
+        if not _is_document_image_name(document_name):
+            continue
+        if document_name.casefold() == DRIVER_LICENSE_DOCUMENT_NAME.casefold():
+            managed_document_name = document_name
+            continue
+        normalized_stem = _normalized_filename(Path(document_name).stem)
+        normalized_stem = normalized_stem.replace("'", "").replace("’", "")
+        if ID_DOCUMENT_NAME_PATTERN.match(normalized_stem):
+            fallback_document_name = fallback_document_name or document_name
+    return managed_document_name or fallback_document_name
+
+
+def _id_document_storage_path(member: Member, documents_dir: str) -> Path | None:
+    card_folder_name = member.card_number.strip().strip("'").strip()
+    if (
+        not documents_dir.strip()
+        or not card_folder_name
+        or not _is_safe_document_entry_name(card_folder_name)
+    ):
+        return None
+    base_dir = Path(documents_dir).expanduser().resolve(strict=False)
+    card_dir = base_dir / card_folder_name
+    resolved_card_dir = card_dir.resolve(strict=False)
+    try:
+        resolved_card_dir.relative_to(base_dir)
+    except ValueError:
+        return None
+    return resolved_card_dir / DRIVER_LICENSE_DOCUMENT_NAME
+
+
+def _save_driver_license_image(uploaded_file: Any, destination_path: Path) -> None:
+    try:
+        with Image.open(uploaded_file.stream) as image:
+            normalized = ImageOps.exif_transpose(image)
+            if normalized.mode not in {"RGB", "L"}:
+                normalized = normalized.convert("RGBA")
+                background = Image.new("RGBA", normalized.size, "WHITE")
+                background.alpha_composite(normalized)
+                normalized = background.convert("RGB")
+            else:
+                normalized = normalized.convert("RGB")
+            fitted = ImageOps.fit(
+                normalized,
+                DRIVER_LICENSE_IMAGE_SIZE,
+                method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            fitted.save(destination_path, format="JPEG", quality=92, optimize=True)
+    except (OSError, UnidentifiedImageError) as error:
+        abort(400, f"Could not read that image: {error}")
 
 
 def _document_counts_by_member(members: list[Member], documents_dir: str) -> dict[int, int]:
@@ -578,6 +721,11 @@ def _normalized_filename(value: str) -> str:
     return " ".join(unicodedata.normalize("NFC", value).casefold().split())
 
 
+def _generate_guest_card_number(connection: sqlite3.Connection) -> str:
+    largest_card_number = member_repository.largest_numeric_card_number(connection)
+    return str((largest_card_number or 0) + 1)
+
+
 def create_app(db_path: Path | None = None) -> Flask:
     '''Create the club user management app.'''
     database.init_db(db_path)
@@ -592,6 +740,9 @@ def create_app(db_path: Path | None = None) -> Flask:
     ).strip()
     flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"] = str(
         getattr(cfg, "USER_MANAGEMENT_DOCUMENTS_DIR", "")
+    ).strip()
+    flask_app.config["USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH"] = str(
+        getattr(cfg, "USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH", "")
     ).strip()
     flask_app.config["USER_MANAGEMENT_ZIP_COORDINATES"] = getattr(
         cfg,
@@ -633,6 +784,38 @@ def create_app(db_path: Path | None = None) -> Flask:
     @flask_app.route("/")
     def index():
         return redirect(url_for("self_checkin"))
+
+    @flask_app.route("/guest-registration", methods=["GET", "POST"])
+    def guest_registration():
+        if request.method == "POST":
+            with open_connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                card_number = _generate_guest_card_number(connection)
+                member, registration = _guest_registration_from_form(
+                    request.form,
+                    card_number=card_number,
+                )
+                if not member.first_name or not member.last_name:
+                    abort(400, "First and last name are required.")
+                if not member.cell_phone and not member.phone and not member.email:
+                    abort(400, "Phone or email is required.")
+
+                member_id = member_repository.insert_member(connection, member)
+                guest_registration_repository.insert_guest_registration(
+                    connection,
+                    replace(registration, user_id=member_id),
+                )
+                connection.commit()
+            return redirect(url_for("guest_registration_thanks"))
+
+        return render_template(
+            "club_admin/guest_registration.html",
+            today=date.today(),
+        )
+
+    @flask_app.route("/guest-registration/thanks")
+    def guest_registration_thanks():
+        return render_template("club_admin/guest_registration_thanks.html")
 
     @flask_app.route("/admin/login", methods=["GET", "POST"])
     def admin_login():
@@ -875,6 +1058,9 @@ def create_app(db_path: Path | None = None) -> Flask:
         default_start_date = today
         start_date_raw = request.args.get("start_date", default_start_date.isoformat())
         end_date_raw = request.args.get("end_date", today.isoformat())
+        active_view = request.args.get("view", "by_user")
+        if active_view not in {"by_user", "daily"}:
+            abort(400, "Unknown check-in report view.")
         try:
             start_date = date.fromisoformat(start_date_raw)
             end_date = date.fromisoformat(end_date_raw)
@@ -890,31 +1076,6 @@ def create_app(db_path: Path | None = None) -> Flask:
                 start_date,
                 end_date,
             )
-
-        return render_template(
-            "club_admin/checkins_report.html",
-            summaries=summaries,
-            start_date=start_date,
-            end_date=end_date,
-            total_checkins=sum(summary.checkin_count for summary in summaries),
-        )
-
-    @flask_app.route("/checkins/daily")
-    @require_admin
-    def daily_checkins_report():
-        today = date.today()
-        start_date_raw = request.args.get("start_date", today.isoformat())
-        end_date_raw = request.args.get("end_date", today.isoformat())
-        try:
-            start_date = date.fromisoformat(start_date_raw)
-            end_date = date.fromisoformat(end_date_raw)
-        except ValueError:
-            abort(400, "Date range must use YYYY-MM-DD dates.")
-
-        if start_date > end_date:
-            abort(400, "Start date must be on or before end date.")
-
-        with open_connection() as connection:
             checkins = checkin_repository.list_checkins_for_date_range(
                 connection,
                 start_date,
@@ -922,10 +1083,13 @@ def create_app(db_path: Path | None = None) -> Flask:
             )
 
         return render_template(
-            "club_admin/daily_checkins_report.html",
+            "club_admin/checkins_report.html",
+            summaries=summaries,
             checkins=checkins,
             start_date=start_date,
             end_date=end_date,
+            active_view=active_view,
+            total_checkins=sum(summary.checkin_count for summary in summaries),
         )
 
     @flask_app.route("/documents/report")
@@ -950,6 +1114,60 @@ def create_app(db_path: Path | None = None) -> Flask:
         if image_path is None:
             abort(404)
         return send_file(image_path, conditional=True)
+
+    @flask_app.route("/guest-registrations")
+    @require_admin
+    def guest_registrations():
+        with open_connection() as connection:
+            records = guest_registration_repository.list_guest_registration_records(connection)
+        return render_template(
+            "club_admin/guest_registrations.html",
+            records=records,
+        )
+
+    @flask_app.route("/guest-registrations/<int:registration_id>/form")
+    @require_admin
+    def filled_guest_registration_form(registration_id: int):
+        with open_connection() as connection:
+            record = guest_registration_repository.get_guest_registration_record(
+                connection,
+                registration_id,
+            )
+        if record is None:
+            abort(404)
+        return render_template(
+            "club_admin/filled_guest_registration_form.html",
+            record=record,
+            id_document_name=_id_document_name_for_member(
+                record.member,
+                flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
+            ),
+            form_spec=guest_form.load_guest_form_spec(
+                flask_app.config["USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH"]
+            ),
+        )
+
+    @flask_app.post("/guest-registrations/<int:registration_id>/driver-license")
+    @require_admin
+    def upload_guest_registration_driver_license(registration_id: int):
+        uploaded_file = request.files.get("driver_license")
+        if uploaded_file is None or not uploaded_file.filename:
+            abort(400, "Driver license image is required.")
+        with open_connection() as connection:
+            record = guest_registration_repository.get_guest_registration_record(
+                connection,
+                registration_id,
+            )
+        if record is None:
+            abort(404)
+        destination_path = _id_document_storage_path(
+            record.member,
+            flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
+        )
+        if destination_path is None:
+            abort(400, "Document storage is not configured.")
+        _save_driver_license_image(uploaded_file, destination_path)
+        return redirect(url_for("filled_guest_registration_form", registration_id=registration_id))
 
     @flask_app.route("/self-checkin", methods=["GET", "POST"])
     def self_checkin():

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Registration Submitted</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page narrow">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Registration Submitted</h1>
+      </div>
+      <nav class="nav-links" aria-label="User management navigation">
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+      </nav>
+    </header>
+
+    <p class="notice">Thank you. Please see the front desk to finish registration.</p>
+  </main>
+</body>
+</html>

@@ -17,10 +17,10 @@
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('guest_registrations') }}">Guests</a>
         <a href="{{ url_for('members_map') }}">Map</a>
         <a href="{{ url_for('documents_report') }}">Documents</a>
-        <a href="{{ url_for('checkins_report') }}">By User</a>
-        <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
+        <a href="{{ url_for('checkins_report') }}">Check-ins</a>
         <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
       </nav>
     </header>
@@ -33,10 +33,6 @@
       <div>
         <span>Users With ZIP</span>
         <strong>{{ report.users_with_zip }}</strong>
-      </div>
-      <div>
-        <span>Unmapped ZIPs</span>
-        <strong>{{ report.unmapped_zip_counts|length }}</strong>
       </div>
     </section>
 
@@ -60,28 +56,6 @@
         <p class="notice">No users have ZIP codes yet.</p>
       {% endif %}
     </section>
-
-    <h2>ZIPs Needing Coordinates</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>ZIP</th>
-          <th class="numeric">Users</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for zip_count in report.unmapped_zip_counts %}
-          <tr>
-            <td>{{ zip_count.zip_code }}</td>
-            <td class="numeric">{{ zip_count.count }}</td>
-          </tr>
-        {% else %}
-          <tr>
-            <td colspan="2" class="empty">All ZIPs with users have configured coordinates.</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
   </main>
   {% if report.users_with_zip %}
     <script id="zip-map-data" type="application/json">
@@ -195,14 +169,8 @@
               // The map can still render even when caching back to SQLite fails.
             }
           }
-          if (statusElement) {
-            if (lookupZips.length && located) {
-              statusElement.textContent = `Auto-located ${located} ZIP${located === 1 ? "" : "s"} by ZIP code only, but could not save them locally.`;
-            } else if (lookupZips.length && !located && !points.length) {
-              statusElement.textContent = "No ZIP coordinates could be loaded. Check internet access or add USER_MANAGEMENT_ZIP_COORDINATES in local config.";
-            } else if (lookupZips.length && !located) {
-              statusElement.textContent = "Some ZIPs still need coordinates. Add them to local config for reliable pins.";
-            }
+          if (!points.length && !located && statusElement) {
+            statusElement.textContent = "No saved ZIP coordinates match the current user ZIPs.";
           }
         };
 

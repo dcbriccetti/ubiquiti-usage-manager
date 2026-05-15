@@ -31,6 +31,7 @@ USER_MANAGEMENT_ORGANIZATION_NAME = 'Example Organization'
 USER_MANAGEMENT_ADMIN_PASSWORD_HASH = ''
 USER_MANAGEMENT_SESSION_SECRET = ''
 USER_MANAGEMENT_DOCUMENTS_DIR = ''
+USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH = ''
 # Optional ZIP centroid coordinates for the admin user map.
 # Values are (latitude, longitude). Keep real organization-specific coverage in src/config_local.py.
 USER_MANAGEMENT_ZIP_COORDINATES = {}

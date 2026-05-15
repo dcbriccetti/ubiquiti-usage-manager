@@ -96,6 +96,18 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertEqual(checkins[0].first_name, "John")
         self.assertEqual(checkins[0].card_number, "1861")
 
+    def test_reads_checkins_csv_strips_trailing_parenthesized_nickname(self) -> None:
+        source = io.StringIO(
+            "Member ID,Last Name,First Name,Card #,Check-in Date,Check-in Time,Check-out Time,Total Check-ins,Duration,Membership,Result,Date of Birth\n"
+            "880,Doe,John (Johnny),'1861',5/3/2026,3:59:20 PM,N/A,1,N/A,Visitor,Check-in OK\n"
+            "35,Roe,(none),'1024',5/3/2026,2:33:15 PM,N/A,1,N/A,Visitor,Check-in OK\n"
+        )
+
+        checkins = csv_import.read_checkins_csv(source)
+
+        self.assertEqual(checkins[0].first_name, "John")
+        self.assertEqual(checkins[1].first_name, "(none)")
+
     def test_checkins_table_is_created(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -196,7 +208,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             database.init_db(db_path)
-            with sqlite3.connect(db_path) as raw_connection:
+            with closing(sqlite3.connect(db_path)) as raw_connection:
                 raw_connection.execute("PRAGMA foreign_keys = OFF")
                 raw_connection.execute("DROP TABLE users")
                 raw_connection.commit()
@@ -262,13 +274,17 @@ class ClubCheckInImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
+        self.assertIn("Check-ins", body)
+        self.assertIn('class="report-tabs"', body)
+        self.assertIn(">By User</a>", body)
+        self.assertIn(">Daily</a>", body)
         self.assertIn("John", body)
         self.assertIn(">2<", body)
         self.assertIn("2026-05-01 09:00:00", body)
         self.assertIn("2026-05-03 15:59:20", body)
         self.assertNotIn("Jane", body)
 
-    def test_club_app_renders_daily_checkins_for_date_range(self) -> None:
+    def test_club_app_renders_daily_view_in_combined_checkin_report(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
@@ -280,11 +296,13 @@ class ClubCheckInImportTests(unittest.TestCase):
                 connection.commit()
 
             response = client.get(
-                "/checkins/daily?start_date=2026-05-04&end_date=2026-05-04"
+                "/checkins/report?view=daily&start_date=2026-05-04&end_date=2026-05-04"
             )
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
+        self.assertIn('class="active" aria-current="page"', body)
+        self.assertIn("Check-in</th>", body)
         self.assertIn("Jane", body)
         self.assertNotIn("John", body)
 
@@ -433,6 +451,47 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("Check-in recorded.", response.get_data(as_text=True))
         self.assertEqual(len(checkins), 1)
         self.assertEqual(checkins[0].first_name, "Jane")
+
+    def test_self_checkin_accepts_nickname_when_initials_are_ambiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        nickname="Johnny",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Dane",
+                        first_name="Jane",
+                        card_number="1024",
+                        membership="Full Member",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "5105105100", "initials": "Johnny"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Check-in recorded.", response.get_data(as_text=True))
+        self.assertEqual(len(checkins), 1)
+        self.assertEqual(checkins[0].first_name, "John")
 
     def test_self_checkin_rejects_ambiguous_household_initials(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     last_name TEXT NOT NULL,
     first_name TEXT NOT NULL,
+    nickname TEXT,
     card_number TEXT NOT NULL UNIQUE,
     membership TEXT NOT NULL,
     address TEXT,
@@ -31,6 +32,25 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE INDEX IF NOT EXISTS ix_users_name
 ON users (last_name, first_name);
+
+CREATE TABLE IF NOT EXISTS guest_registrations (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
+    visit_date TEXT NOT NULL CHECK (visit_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    middle_name TEXT,
+    other_phone TEXT,
+    other_phone_type TEXT CHECK (other_phone_type IS NULL OR other_phone_type IN ('home', 'work', 'other')),
+    marital_status TEXT CHECK (marital_status IS NULL OR marital_status IN ('single', 'married', 'recognized_couple')),
+    partner_name TEXT,
+    guest_of_member INTEGER NOT NULL DEFAULT 0 CHECK (guest_of_member IN (0, 1)),
+    member_name TEXT,
+    heard_about TEXT,
+    newsletter_opt_out INTEGER NOT NULL DEFAULT 0 CHECK (newsletter_opt_out IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS ix_guest_registrations_created_at
+ON guest_registrations (created_at);
 
 CREATE TABLE IF NOT EXISTS checkins (
     id INTEGER PRIMARY KEY,

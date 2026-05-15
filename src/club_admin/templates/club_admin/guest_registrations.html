@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Guest Registrations</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page guest-registrations-page">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Guest Registrations</h1>
+        <p class="summary">{{ records|length }} recent submissions</p>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('guest_registrations') }}">Guests</a>
+        <a href="{{ url_for('members_map') }}">Map</a>
+        <a href="{{ url_for('documents_report') }}">Documents</a>
+        <a href="{{ url_for('checkins_report') }}">Check-ins</a>
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+      </nav>
+    </header>
+
+    <table class="guest-registrations-table">
+      <thead>
+        <tr>
+          <th>Submitted</th>
+          <th>Name</th>
+          <th>Visit Date</th>
+          <th>Card #</th>
+          <th>Email</th>
+          <th class="nowrap">Cell Phone</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in records %}
+          <tr>
+            <td class="nowrap">{{ record.registration.created_at or '' }}</td>
+            <td>
+              <a href="{{ url_for('member_detail', member_id=record.member.id) }}">
+                {{ record.member.last_name }}, {{ record.member.first_name }}
+              </a>
+            </td>
+            <td class="nowrap">{{ record.registration.visit_date }}</td>
+            <td>{{ record.member.card_number }}</td>
+            <td class="nowrap">{{ record.member.email or '' }}</td>
+            <td class="nowrap">{{ record.member.cell_phone or '' }}</td>
+            <td class="guest-actions-cell">
+              <div class="guest-actions">
+                <a class="button-link secondary" href="{{ url_for('filled_guest_registration_form', registration_id=record.registration.id) }}">Print Form</a>
+                <form
+                  class="inline-upload-form"
+                  action="{{ url_for('upload_guest_registration_driver_license', registration_id=record.registration.id) }}"
+                  method="post"
+                  enctype="multipart/form-data"
+                >
+                  <input type="file" name="driver_license" accept="image/*" required>
+                  <button type="submit">Attach ID</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="7" class="empty">No guest registrations submitted yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

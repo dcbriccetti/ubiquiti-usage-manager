@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Filled Guest Form</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body class="print-body">
+  <main class="print-page">
+    <div class="print-actions">
+      <a href="{{ url_for('guest_registrations') }}">Guest Registrations</a>
+      <form
+        class="id-upload-form"
+        action="{{ url_for('upload_guest_registration_driver_license', registration_id=record.registration.id) }}"
+        method="post"
+        enctype="multipart/form-data"
+      >
+        <input type="file" name="driver_license" accept="image/*" required>
+        <button type="submit">{{ 'Replace ID Image' if id_document_name else 'Attach ID Image' }}</button>
+      </form>
+      <button type="button" onclick="window.print()">Print</button>
+    </div>
+
+    {% set member = record.member %}
+    {% set registration = record.registration %}
+    {% set labels = form_spec.labels %}
+    {% set marital_status_label = labels.get(registration.marital_status or '', '') %}
+
+    <article class="generated-guest-form">
+      <section class="generated-form-top">
+        <div class="driver-license-slot">
+          {% if id_document_name and member.id %}
+            <img
+              src="{{ url_for('member_document', member_id=member.id, name=id_document_name) }}"
+              alt="Driver license or ID image"
+            >
+          {% else %}
+            <span>Driver license / ID</span>
+          {% endif %}
+        </div>
+
+        <header class="generated-form-header">
+          <p class="app-title">{{ organization_name }}</p>
+          <h1>{{ form_spec.title }}</h1>
+          {% if form_spec.subtitle %}
+            <p>{{ form_spec.subtitle }}</p>
+          {% endif %}
+        </header>
+      </section>
+
+      <section class="generated-form-grid" aria-label="Guest information">
+        <div class="form-line span-8">
+          <span>{{ labels.name }}</span>
+          <strong>{{ member.last_name }}, {{ member.first_name }} {{ registration.middle_name or '' }}</strong>
+        </div>
+        <div class="form-line span-4">
+          <span>{{ labels.nickname }}</span>
+          <strong>{{ member.nickname or '' }}</strong>
+        </div>
+        <div class="form-line span-7">
+          <span>{{ labels.address }}</span>
+          <strong>{{ member.address or '' }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>{{ labels.city }}</span>
+          <strong>{{ member.city or '' }}</strong>
+        </div>
+        <div class="form-line">
+          <span>{{ labels.state }}</span>
+          <strong>{{ member.state or '' }}</strong>
+        </div>
+        <div class="form-line">
+          <span>{{ labels.zip }}</span>
+          <strong>{{ member.zip or '' }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>{{ labels.cell_phone }}</span>
+          <strong>{{ member.cell_phone or '' }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>{{ labels.other_phone }}</span>
+          <strong>{{ registration.other_phone or '' }}{% if registration.other_phone_type %} ({{ registration.other_phone_type }}){% endif %}</strong>
+        </div>
+        <div class="form-line span-6">
+          <span>{{ labels.email }}</span>
+          <strong>{{ member.email or '' }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>{{ labels.marital_status }}</span>
+          <strong>{{ marital_status_label }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>{{ labels.partner_name }}</span>
+          <strong>{{ registration.partner_name or '' }}</strong>
+        </div>
+        <div class="form-line span-2">
+          <span>{{ labels.guest_of_member }}</span>
+          <strong>{{ 'Yes' if registration.guest_of_member else 'No' }}</strong>
+        </div>
+        <div class="form-line span-4">
+          <span>{{ labels.member_name }}</span>
+          <strong>{{ registration.member_name or '' }}</strong>
+        </div>
+        <div class="form-line span-12">
+          <span>{{ labels.heard_about }}</span>
+          <strong>{{ registration.heard_about or '' }}</strong>
+        </div>
+      </section>
+
+      <p class="generated-checkbox">
+        <span class="box">{% if registration.newsletter_opt_out %}X{% endif %}</span>
+        {{ labels.newsletter_opt_out }}
+      </p>
+
+      <section class="generated-agreement">
+        <h2>{{ form_spec.agreement_title }}</h2>
+        {% for paragraph in form_spec.agreement_paragraphs %}
+          <p>{{ paragraph }}</p>
+        {% endfor %}
+      </section>
+
+      <section class="signature-grid" aria-label="Signature lines">
+        <div class="signature-line">
+          <strong>{{ member.first_name }} {{ member.last_name }}</strong>
+          <span>{{ labels.printed_name }}</span>
+        </div>
+        <div class="signature-line">
+          <strong></strong>
+          <span>{{ labels.signature }}</span>
+        </div>
+        <div class="signature-line">
+          <strong>{{ registration.visit_date }}</strong>
+          <span>{{ labels.date }}</span>
+        </div>
+      </section>
+
+      <section class="visit-lines" aria-label="Visit dates">
+        {% for visit_number in range(1, 5) %}
+          <div class="signature-line">
+            <strong>{% if visit_number == 1 %}{{ registration.visit_date }}{% endif %}</strong>
+            <span>{{ labels.visit_date }} #{{ visit_number }}</span>
+          </div>
+        {% endfor %}
+      </section>
+
+      {% if form_spec.version %}
+        <p class="form-version">{{ form_spec.version }}</p>
+      {% endif %}
+    </article>
+  </main>
+</body>
+</html>

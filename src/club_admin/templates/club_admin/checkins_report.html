@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ app_title }} | Check-in Report</title>
+  <title>{{ app_title }} | Check-ins</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
 <body>
@@ -11,20 +11,21 @@
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
-        <h1>Check-in Report</h1>
-        <p class="summary">{{ total_checkins }} check-ins</p>
+        <h1>Check-ins</h1>
+        <p class="summary">{{ total_checkins if active_view == 'by_user' else checkins|length }} check-ins</p>
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('guest_registrations') }}">Guests</a>
         <a href="{{ url_for('members_map') }}">Map</a>
         <a href="{{ url_for('documents_report') }}">Documents</a>
-        <a href="{{ url_for('checkins_report') }}">By User</a>
-        <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
+        <a href="{{ url_for('checkins_report') }}">Check-ins</a>
         <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
       </nav>
     </header>
 
     <form class="report-filters" action="{{ url_for('checkins_report') }}" method="get">
+      <input type="hidden" name="view" value="{{ active_view }}">
       <label>
         Start
         <input type="date" name="start_date" value="{{ start_date }}">
@@ -36,40 +37,80 @@
       <button type="submit">Run Report</button>
     </form>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Last Name</th>
-          <th>First Name</th>
-          <th>Card #</th>
-          <th>Membership</th>
-          <th class="numeric">Check-ins</th>
-          <th>Check-in Dates</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for summary in summaries %}
+    <nav class="report-tabs" aria-label="Check-in report views">
+      <a
+        {% if active_view == 'by_user' %}class="active" aria-current="page"{% endif %}
+        href="{{ url_for('checkins_report', view='by_user', start_date=start_date, end_date=end_date) }}"
+      >By User</a>
+      <a
+        {% if active_view == 'daily' %}class="active" aria-current="page"{% endif %}
+        href="{{ url_for('checkins_report', view='daily', start_date=start_date, end_date=end_date) }}"
+      >Daily</a>
+    </nav>
+
+    {% if active_view == 'by_user' %}
+      <table>
+        <thead>
           <tr>
-            <td>{{ summary.last_name }}</td>
-            <td>{{ summary.first_name }}</td>
-            <td>{{ summary.card_number }}</td>
-            <td>{{ summary.membership }}</td>
-            <td class="numeric">{{ summary.checkin_count }}</td>
-            <td>
-              <ol class="inline-list">
-                {% for check_in_at in summary.check_in_dates %}
-                  <li class="nowrap">{{ check_in_at }}</li>
-                {% endfor %}
-              </ol>
-            </td>
+            <th>Last Name</th>
+            <th>First Name</th>
+            <th>Card #</th>
+            <th>Membership</th>
+            <th class="numeric">Check-ins</th>
+            <th>Check-in Dates</th>
           </tr>
-        {% else %}
+        </thead>
+        <tbody>
+          {% for summary in summaries %}
+            <tr>
+              <td>{{ summary.last_name }}</td>
+              <td>{{ summary.first_name }}</td>
+              <td>{{ summary.card_number }}</td>
+              <td>{{ summary.membership }}</td>
+              <td class="numeric">{{ summary.checkin_count }}</td>
+              <td>
+                <ol class="inline-list">
+                  {% for check_in_at in summary.check_in_dates %}
+                    <li class="nowrap">{{ check_in_at }}</li>
+                  {% endfor %}
+                </ol>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="6" class="empty">No check-ins in this date range.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <table>
+        <thead>
           <tr>
-            <td colspan="6" class="empty">No check-ins in this date range.</td>
+            <th class="nowrap">Check-in</th>
+            <th>Last Name</th>
+            <th>First Name</th>
+            <th>Card #</th>
+            <th>Membership</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for checkin in checkins %}
+            <tr>
+              <td class="nowrap">{{ checkin.check_in_at }}</td>
+              <td>{{ checkin.last_name }}</td>
+              <td>{{ checkin.first_name }}</td>
+              <td>{{ checkin.card_number }}</td>
+              <td>{{ checkin.membership }}</td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="5" class="empty">No check-ins in this date range.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
   </main>
 </body>
 </html>

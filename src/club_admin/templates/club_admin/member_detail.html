@@ -17,10 +17,10 @@
       <div class="nav-stack">
         <nav class="nav-links" aria-label="Club admin navigation">
           <a href="{{ url_for('members') }}">Users</a>
+          <a href="{{ url_for('guest_registrations') }}">Guests</a>
           <a href="{{ url_for('members_map') }}">Map</a>
           <a href="{{ url_for('documents_report') }}">Documents</a>
-          <a href="{{ url_for('checkins_report') }}">By User</a>
-          <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
+          <a href="{{ url_for('checkins_report') }}">Check-ins</a>
           <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
         </nav>
         <a class="button-link" href="{{ url_for('edit_member', member_id=member.id) }}">Edit User</a>
@@ -36,6 +36,12 @@
         <span>First Name</span>
         <strong>{{ member.first_name }}</strong>
       </div>
+      {% if member.nickname %}
+        <div>
+          <span>Nickname</span>
+          <strong>{{ member.nickname }}</strong>
+        </div>
+      {% endif %}
       <div>
         <span>Card #</span>
         <strong class="nowrap">{{ member.card_number }}</strong>

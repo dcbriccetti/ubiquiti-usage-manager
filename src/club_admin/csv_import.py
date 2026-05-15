@@ -1,6 +1,7 @@
 '''CSV import support for club user rosters.'''
 
 import csv
+import re
 from datetime import date, datetime
 from pathlib import Path
 from typing import TextIO
@@ -153,6 +154,19 @@ def _member_text_or_none(value: str | None, *, field_name: str | None = None) ->
     return stripped
 
 
+def _split_first_name_nickname(first_name: str) -> tuple[str, str | None]:
+    match = re.match(r"^(?P<first_name>.*?)\s*\((?P<nickname>[^()]*)\)\s*$", first_name)
+    if not match:
+        return first_name.strip(), None
+
+    parsed_first_name = match.group("first_name").strip()
+    if not parsed_first_name:
+        return first_name.strip(), None
+
+    nickname = match.group("nickname").strip()
+    return parsed_first_name, nickname or None
+
+
 def _is_placeholder_address_set(
     address: str | None,
     address2: str | None,
@@ -211,6 +225,8 @@ def parse_optional_int(value: str | None) -> int | None:
 
 def _member_from_csv_row(row: dict[str, object], row_number: int) -> Member:
     normalized = _normalized_csv_row(row, HEADER_MAP)
+    first_name, nickname = _split_first_name_nickname(normalized.get("first_name", ""))
+    normalized["first_name"] = first_name
 
     missing_fields = [
         field_name
@@ -237,6 +253,7 @@ def _member_from_csv_row(row: dict[str, object], row_number: int) -> Member:
     return Member(
         last_name=normalized["last_name"],
         first_name=normalized["first_name"],
+        nickname=nickname,
         card_number=normalize_card_number(normalized["card_number"]),
         membership=normalized["membership"],
         address=address,
@@ -272,6 +289,9 @@ def _normalized_csv_row(row: dict[str, object], header_map: dict[str, str]) -> d
 
 def _checkin_from_csv_row(row: dict[str, object], row_number: int) -> CheckIn:
     normalized = _normalized_csv_row(row, CHECKIN_HEADER_MAP)
+    first_name, _nickname = _split_first_name_nickname(normalized.get("first_name", ""))
+    normalized["first_name"] = first_name
+
     missing_fields = [
         field_name
         for field_name in sorted(CHECKIN_REQUIRED_FIELDS)

@@ -1,7 +1,7 @@
 '''Domain models for club user management.'''
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -12,6 +12,7 @@ class Member:
     first_name: str
     card_number: str
     membership: str
+    nickname: str | None = None
     address: str | None = None
     address2: str | None = None
     city: str | None = None
@@ -38,4 +39,23 @@ class CheckIn:
     total_checkins: int | None = None
     duration: str | None = None
     user_id: int | None = None
+    id: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class GuestRegistration:
+    '''A first-time visitor registration submitted before signing the guest form.'''
+
+    visit_date: date
+    middle_name: str | None = None
+    other_phone: str | None = None
+    other_phone_type: str | None = None
+    marital_status: str | None = None
+    partner_name: str | None = None
+    guest_of_member: bool = False
+    member_name: str | None = None
+    heard_about: str | None = None
+    newsletter_opt_out: bool = False
+    user_id: int | None = None
+    created_at: datetime | None = None
     id: int | None = None

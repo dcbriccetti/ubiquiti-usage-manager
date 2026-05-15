@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Guest Registration</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page narrow">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Guest Registration</h1>
+      </div>
+      <nav class="nav-links" aria-label="User management navigation">
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+      </nav>
+    </header>
+
+    <form class="edit-form guest-registration-form" action="{{ url_for('guest_registration') }}" method="post">
+      <label>
+        Visit Date
+        <input type="date" name="visit_date" value="{{ today }}" required>
+      </label>
+      <label>
+        Last Name
+        <input type="text" name="last_name" autocomplete="family-name" required>
+      </label>
+      <label>
+        First Name
+        <input type="text" name="first_name" autocomplete="given-name" required>
+      </label>
+      <label>
+        Middle
+        <input type="text" name="middle_name" autocomplete="additional-name">
+      </label>
+      <label>
+        Nickname or Preferred Name
+        <input type="text" name="nickname">
+      </label>
+      <label class="detail-wide">
+        Street Address
+        <input type="text" name="address" autocomplete="street-address">
+      </label>
+      <label>
+        City
+        <input type="text" name="city" autocomplete="address-level2">
+      </label>
+      <label>
+        State
+        <input type="text" name="state" autocomplete="address-level1">
+      </label>
+      <label>
+        Zip Code
+        <input type="text" name="zip" autocomplete="postal-code">
+      </label>
+      <label>
+        Cell Phone
+        <input type="tel" name="cell_phone" autocomplete="tel">
+      </label>
+      <label>
+        Other Phone
+        <input type="tel" name="other_phone">
+      </label>
+      <label>
+        Other Phone Type
+        <select name="other_phone_type">
+          <option value=""></option>
+          <option value="home">Home</option>
+          <option value="work">Work</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+      <label class="detail-wide">
+        Email Address
+        <input type="email" name="email" autocomplete="email">
+      </label>
+      <label>
+        Marital Status
+        <select name="marital_status">
+          <option value=""></option>
+          <option value="single">Single</option>
+          <option value="married">Married</option>
+          <option value="recognized_couple">Recognized Couple</option>
+        </select>
+      </label>
+      <label>
+        Partner With Me Today
+        <input type="text" name="partner_name">
+      </label>
+      <label class="checkbox-field">
+        <input type="checkbox" name="guest_of_member" value="1">
+        Guest of a member
+      </label>
+      <label>
+        Member Name
+        <input type="text" name="member_name">
+      </label>
+      <label class="detail-wide">
+        How Did You Hear About Us?
+        <input type="text" name="heard_about">
+      </label>
+      <label class="checkbox-field detail-wide">
+        <input type="checkbox" name="newsletter_opt_out" value="1">
+        Do not sign me up for the newsletter
+      </label>
+      <button type="submit">Submit Registration</button>
+    </form>
+  </main>
+</body>
+</html>

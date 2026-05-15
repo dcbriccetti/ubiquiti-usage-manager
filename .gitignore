@@ -8,6 +8,7 @@ __pycache__/
 /data/*.db-shm
 /data/*.db-wal
 /data/*.csv
+/data/*.toml
 /members.db
 /members.db-shm
 /members.db-wal

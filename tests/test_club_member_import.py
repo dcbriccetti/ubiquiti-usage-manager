@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
+from PIL import Image
 from werkzeug.security import generate_password_hash
 
 
@@ -19,6 +20,7 @@ from club_admin import csv_import
 from club_admin import audit_repository
 from club_admin import checkin_repository
 from club_admin import database
+from club_admin import guest_registration_repository
 from club_admin import member_repository
 from club_admin.app import create_app
 from club_admin.models import CheckIn, Member
@@ -32,6 +34,7 @@ def create_admin_app(
     db_path: Path,
     documents_dir: str = "",
     zip_coordinates: dict[str, tuple[float, float]] | None = None,
+    guest_form_definition_path: str = "",
 ):
     with patch.object(
         cfg,
@@ -41,6 +44,10 @@ def create_admin_app(
         cfg,
         "USER_MANAGEMENT_ZIP_COORDINATES",
         zip_coordinates or {},
+    ), patch.object(
+        cfg,
+        "USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH",
+        guest_form_definition_path,
     ):
         return create_app(db_path)
 
@@ -105,6 +112,23 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(members[0].first_name, "John")
         self.assertEqual(members[0].card_number, "123")
 
+    def test_reads_members_csv_extracts_trailing_parenthesized_nickname(self) -> None:
+        source = io.StringIO(
+            "Last Name,First Name,Card #,Membership\n"
+            "Doe,John (Johnny),123,Visitor\n"
+            "Public,Jane (JP) Smith,456,Full Member\n"
+            "Roe,(none),789,Visitor\n"
+        )
+
+        members = csv_import.read_members_csv(source)
+
+        self.assertEqual(members[0].first_name, "John")
+        self.assertEqual(members[0].nickname, "Johnny")
+        self.assertEqual(members[1].first_name, "Jane (JP) Smith")
+        self.assertIsNone(members[1].nickname)
+        self.assertEqual(members[2].first_name, "(none)")
+        self.assertIsNone(members[2].nickname)
+
     def test_reads_members_csv_treats_placeholder_address_as_blank(self) -> None:
         source = io.StringIO(
             "Last Name,First Name,Card #,Membership,Address,City,State,Zip\n"
@@ -139,6 +163,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                     ),
@@ -148,6 +173,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Member",
                     ),
@@ -185,6 +211,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 }
 
         self.assertNotIn("expiration_date", columns)
+        self.assertIn("nickname", columns)
 
     def test_admin_pages_redirect_to_login_when_not_authenticated(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -233,6 +260,90 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Self Check-in", response.get_data(as_text=True))
 
+    def test_guest_registration_creates_visitor_user_without_admin_login(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Existing",
+                        first_name="User",
+                        card_number="999",
+                        membership="Visitor",
+                    ),
+                )
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Old",
+                        first_name="Guest",
+                        card_number="GUEST-OLD",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "visit_date": "2026-05-14",
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "middle_name": "Q",
+                    "nickname": "Johnny",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                    "cell_phone": "510-510-5100",
+                    "other_phone": "123-123-1234",
+                    "other_phone_type": "home",
+                    "email": "john@example.test",
+                    "marital_status": "single",
+                    "guest_of_member": "1",
+                    "member_name": "Member Name",
+                    "heard_about": "Friend",
+                    "newsletter_opt_out": "1",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                users = member_repository.list_members(connection)
+                records = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/guest-registration/thanks", response.headers["Location"])
+        new_user = next(user for user in users if user.last_name == "Doe")
+        self.assertEqual(len(users), 3)
+        self.assertEqual(new_user.membership, "Visitor")
+        self.assertEqual(new_user.card_number, "1000")
+        self.assertEqual(new_user.nickname, "Johnny")
+        self.assertEqual(new_user.phone, "123-123-1234")
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].registration.middle_name, "Q")
+        self.assertTrue(records[0].registration.guest_of_member)
+        self.assertTrue(records[0].registration.newsletter_opt_out)
+
+    def test_guest_registration_requires_name_and_contact(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Phone or email is required.", response.get_data(as_text=True))
+
     def test_club_app_imports_csv_into_configured_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -267,6 +378,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                         email="john@example.test",
@@ -298,6 +410,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                         address="123 Main St",
@@ -337,6 +450,13 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
+        self.assertIn('class="page-header users-header"', body)
+        self.assertIn('class="nav-links users-nav"', body)
+        self.assertIn('class="file-field"', body)
+        self.assertIn("Users CSV", body)
+        self.assertIn("Check-ins CSV", body)
+        self.assertIn("Nickname", body)
+        self.assertIn("Johnny", body)
         self.assertIn("123 Main St", body)
         self.assertIn("Unit 4", body)
         self.assertIn("Everytown CA 94000", body)
@@ -362,6 +482,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Old Nickname",
                         card_number="123",
                         membership="Visitor",
                         address="123 Main St",
@@ -411,7 +532,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("94000", body)
         self.assertIn("94001", body)
         self.assertIn("99999", body)
-        self.assertIn("ZIPs Needing Coordinates", body)
+        self.assertNotIn("ZIPs Needing Coordinates", body)
+        self.assertNotIn("Unmapped ZIPs", body)
         self.assertNotIn("Mapped ZIPs", body)
         self.assertNotIn("<th>Latitude</th>", body)
         self.assertNotIn("<th>Longitude</th>", body)
@@ -436,6 +558,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                         address="123 Main St",
@@ -452,6 +575,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('id="user-zip-map"', body)
         self.assertIn('"lookupZips": [{"count": 1, "zip_code": "94000"}]', body)
+        self.assertIn('"points": []', body)
+        self.assertIn("api.zippopotam.us/us/", body)
         self.assertNotIn("No ZIP coordinates are configured", body)
         self.assertNotIn("123 Main St", body)
 
@@ -466,6 +591,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                         address="123 Main St",
@@ -509,6 +635,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                         address="123 Main St",
@@ -564,6 +691,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                         address="123 Main St",
@@ -583,6 +711,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertIn("john@example.test", body)
+        self.assertIn("Nickname", body)
+        self.assertIn("Johnny", body)
         self.assertIn("123 Main St", body)
         self.assertIn("(510) 510-5100", body)
 
@@ -812,6 +942,7 @@ class ClubMemberImportTests(unittest.TestCase):
                         first_name="John",
                         card_number="123",
                         membership="Visitor",
+                        nickname="Old Nickname",
                         email="old@example.test",
                     ),
                 )
@@ -823,6 +954,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 data={
                     "last_name": "Doe",
                     "first_name": "John",
+                    "nickname": "Johnny",
                     "card_number": "123",
                     "membership": "Full Member",
                     "address": "",
@@ -849,9 +981,11 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIsNotNone(updated_member)
         assert updated_member is not None
         self.assertEqual(updated_member.membership, "Full Member")
+        self.assertEqual(updated_member.nickname, "Johnny")
         self.assertEqual(updated_member.email, "new@example.test")
         changed_fields = {entry.field_name for entry in audit_entries}
         self.assertIn("membership", changed_fields)
+        self.assertIn("nickname", changed_fields)
         self.assertIn("email", changed_fields)
 
     def test_member_detail_shows_audit_log_entries(self) -> None:
@@ -888,3 +1022,104 @@ class ClubMemberImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Change Log", body)
         self.assertIn("Full Member", body)
+
+    def test_admin_guest_registration_queue_and_filled_form_use_definition_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "club-users.db"
+            documents_dir = temp_path / "documents"
+            documents_dir.mkdir()
+            definition_path = temp_path / "guest-form.toml"
+            definition_path.write_text(
+                "\n".join(
+                    [
+                        'title = "Visitor Intake"',
+                        'subtitle = "Please review before signing"',
+                        'version = "FORM-TEST"',
+                        "",
+                        "[labels]",
+                        'name = "Legal Name"',
+                        'heard_about = "Referral Source"',
+                        "",
+                        "[agreement]",
+                        'title = "House Agreement"',
+                        'paragraphs = ["Custom agreement paragraph."]',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            flask_app = create_admin_app(
+                db_path,
+                documents_dir=str(documents_dir),
+                guest_form_definition_path=str(definition_path),
+            )
+            visitor_client = flask_app.test_client()
+            visitor_client.post(
+                "/guest-registration",
+                data={
+                    "visit_date": "2026-05-14",
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "middle_name": "Q",
+                    "nickname": "Johnny",
+                    "cell_phone": "510-510-5100",
+                    "email": "john@example.test",
+                    "marital_status": "single",
+                    "heard_about": "Friend",
+                },
+            )
+            client = admin_client(flask_app)
+
+            queue_response = client.get("/guest-registrations")
+            queue_body = queue_response.get_data(as_text=True)
+            with closing(database.connect(db_path)) as connection:
+                record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+            upload_image = Image.new("RGB", (1600, 900), "white")
+            upload_buffer = io.BytesIO()
+            upload_image.save(upload_buffer, format="PNG")
+            upload_buffer.seek(0)
+            upload_response = client.post(
+                f"/guest-registrations/{record.registration.id}/driver-license",
+                data={
+                    "driver_license": (upload_buffer, "scan.png"),
+                },
+                content_type="multipart/form-data",
+            )
+            form_response = client.get(
+                f"/guest-registrations/{record.registration.id}/form"
+            )
+            saved_license_path = (
+                documents_dir / record.member.card_number / "Driver License.jpg"
+            )
+            with Image.open(saved_license_path) as saved_license_image:
+                saved_license_size = saved_license_image.size
+
+        self.assertEqual(upload_response.status_code, 302)
+        self.assertEqual(saved_license_size, (1013, 576))
+        self.assertEqual(queue_response.status_code, 200)
+        self.assertIn("Guest Registrations", queue_body)
+        self.assertIn("Print Form", queue_body)
+        self.assertIn("Attach ID", queue_body)
+        self.assertNotIn(str(definition_path), queue_body)
+        self.assertEqual(form_response.status_code, 200)
+        form_body = form_response.get_data(as_text=True)
+        self.assertIn("Visitor Intake", form_body)
+        self.assertIn("Please review before signing", form_body)
+        self.assertIn("Legal Name", form_body)
+        self.assertIn("Referral Source", form_body)
+        self.assertIn("House Agreement", form_body)
+        self.assertIn("Custom agreement paragraph.", form_body)
+        self.assertIn("FORM-TEST", form_body)
+        self.assertIn('class="driver-license-slot"', form_body)
+        self.assertIn(
+            f'/members/{record.member.id}/document?name=Driver+License.jpg',
+            form_body,
+        )
+        self.assertIn("Replace ID Image", form_body)
+        self.assertIn("John", form_body)
+        self.assertIn("Johnny", form_body)
+        self.assertIn("Friend", form_body)
+        self.assertNotIn(str(definition_path), form_body)
+        self.assertNotIn(str(documents_dir), form_body)
