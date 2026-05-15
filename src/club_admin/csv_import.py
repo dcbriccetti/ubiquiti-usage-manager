@@ -139,6 +139,40 @@ def _empty_to_none(value: str | None) -> str | None:
     return stripped
 
 
+def _member_text_or_none(value: str | None, *, field_name: str | None = None) -> str | None:
+    stripped = _empty_to_none(value)
+    if stripped and " ".join(stripped.lower().split()) in {
+        "address, city ca",
+        "address, city ca 12345",
+    }:
+        return None
+    if field_name == "address" and stripped and stripped.lower() == "address":
+        return None
+    if field_name == "city" and stripped and stripped.lower() == "city":
+        return None
+    return stripped
+
+
+def _is_placeholder_address_set(
+    address: str | None,
+    address2: str | None,
+    city: str | None,
+    state: str | None,
+    zip_code: str | None,
+) -> bool:
+    if address2:
+        return False
+    address_text = " ".join((address or "").lower().split())
+    city_state_zip = " ".join(
+        part for part in ((city or "").strip(), (state or "").strip(), (zip_code or "").strip()) if part
+    )
+    city_state_zip_text = " ".join(city_state_zip.lower().split())
+    return address_text == "address" and city_state_zip_text in {
+        "city ca",
+        "city ca 12345",
+    }
+
+
 def normalize_card_number(value: str) -> str:
     '''Strip spreadsheet text markers and whitespace from exported card numbers.'''
     return value.strip().strip("'").strip()
@@ -187,20 +221,33 @@ def _member_from_csv_row(row: dict[str, object], row_number: int) -> Member:
         missing_list = ", ".join(missing_fields)
         raise ValueError(f"Row {row_number} is missing required field(s): {missing_list}")
 
+    raw_address = _member_text_or_none(normalized.get("address"))
+    raw_city = _member_text_or_none(normalized.get("city"))
+    address = _member_text_or_none(normalized.get("address"), field_name="address")
+    address2 = _member_text_or_none(normalized.get("address2"))
+    city = _member_text_or_none(normalized.get("city"), field_name="city")
+    state = _member_text_or_none(normalized.get("state"))
+    zip_code = _member_text_or_none(normalized.get("zip"))
+    if _is_placeholder_address_set(raw_address, address2, raw_city, state, zip_code):
+        address = None
+        city = None
+        state = None
+        zip_code = None
+
     return Member(
         last_name=normalized["last_name"],
         first_name=normalized["first_name"],
         card_number=normalize_card_number(normalized["card_number"]),
         membership=normalized["membership"],
-        address=normalized.get("address"),
-        address2=normalized.get("address2"),
-        city=normalized.get("city"),
-        state=normalized.get("state"),
-        zip=normalized.get("zip"),
-        phone=normalized.get("phone"),
-        email=normalized.get("email"),
-        work_phone=normalized.get("work_phone"),
-        cell_phone=normalized.get("cell_phone"),
+        address=address,
+        address2=address2,
+        city=city,
+        state=state,
+        zip=zip_code,
+        phone=_member_text_or_none(normalized.get("phone")),
+        email=_member_text_or_none(normalized.get("email")),
+        work_phone=_member_text_or_none(normalized.get("work_phone")),
+        cell_phone=_member_text_or_none(normalized.get("cell_phone")),
     )
 
 

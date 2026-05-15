@@ -17,6 +17,8 @@
       <div class="nav-stack">
         <nav class="nav-links" aria-label="Club admin navigation">
           <a href="{{ url_for('members') }}">Users</a>
+          <a href="{{ url_for('members_map') }}">Map</a>
+          <a href="{{ url_for('documents_report') }}">Documents</a>
           <a href="{{ url_for('checkins_report') }}">By User</a>
           <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
           <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
@@ -44,7 +46,7 @@
       </div>
       <div>
         <span>Email</span>
-        <strong>{{ member.email or '' }}</strong>
+        <strong class="nowrap">{{ member.email or '' }}</strong>
       </div>
       {% set phone_rows = [
         ('Phone', member.phone),
@@ -67,6 +69,40 @@
         <strong>{{ address_lines|join('<br>')|safe }}</strong>
       </div>
     </section>
+
+    {% if guest_form_available %}
+      <section class="guest-form-panel">
+        <h2>Guest Form</h2>
+        <img
+          src="{{ url_for('member_guest_form', member_id=member.id) }}"
+          alt="Guest form for {{ member.first_name }} {{ member.last_name }}"
+        >
+      </section>
+    {% endif %}
+
+    <h2>Other Documents</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Document</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for document in other_documents %}
+          <tr>
+            <td>
+              <a href="{{ url_for('member_document', member_id=member.id, name=document.name) }}" target="_blank" rel="noopener">
+                {{ document.name }}
+              </a>
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td class="empty">No other documents found for this user.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
 
     <h2>All Check-ins</h2>
     <table>

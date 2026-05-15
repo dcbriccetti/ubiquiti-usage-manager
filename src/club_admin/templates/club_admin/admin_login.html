@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ app_title }} | Self Check-in</title>
+  <title>{{ app_title }} | Admin Login</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
 <body>
@@ -11,23 +11,20 @@
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
-        <h1>Self Check-in</h1>
+        <h1>Admin Login</h1>
       </div>
       <nav class="nav-links" aria-label="User management navigation">
-        <a href="{{ url_for('admin_login') }}">Admin Login</a>
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
       </nav>
     </header>
 
-    <form class="self-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+    <form class="admin-login-form" action="{{ url_for('admin_login') }}" method="post">
+      <input type="hidden" name="next" value="{{ next_url }}">
       <label>
-        Phone Number
-        <input type="tel" name="phone" autocomplete="tel" required>
+        Password
+        <input type="password" name="password" autocomplete="current-password" required {% if not auth_configured %}disabled{% endif %}>
       </label>
-      <label>
-        Initials or First Name
-        <input type="text" name="initials" maxlength="40" autocomplete="given-name" required>
-      </label>
-      <button type="submit">Check In</button>
+      <button type="submit" {% if not auth_configured %}disabled{% endif %}>Log In</button>
     </form>
 
     {% if message %}

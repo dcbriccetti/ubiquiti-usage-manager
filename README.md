@@ -39,6 +39,38 @@ By default the club app stores users in `data/club_users.db`. Override that
 with `CLUB_ADMIN_DB_PATH=/path/to/club_users.db` when needed.
 Set `USER_MANAGEMENT_ORGANIZATION_NAME` in `src/config_local.py` to change the visible
 `<org name> User Management` title shown across club pages.
+Self check-in is public. User lists, details, reports, imports, and edits
+require admin login. Set `USER_MANAGEMENT_ADMIN_PASSWORD_HASH` in ignored
+`src/config_local.py`; the app fails closed for admin pages when no hash is
+configured. Generate a hash with:
+
+```bash
+PYTHONPATH=src .venv/bin/python -c 'from getpass import getpass; from secrets import token_urlsafe; from werkzeug.security import generate_password_hash; p=getpass("Admin password: "); q=getpass("Confirm password: "); assert p == q, "passwords did not match"; print("USER_MANAGEMENT_ADMIN_PASSWORD_HASH =", repr(generate_password_hash(p))); print("USER_MANAGEMENT_SESSION_SECRET =", repr(token_urlsafe(48)))'
+```
+
+Copy the printed `USER_MANAGEMENT_ADMIN_PASSWORD_HASH` and
+`USER_MANAGEMENT_SESSION_SECRET` lines into `src/config_local.py`. Do not store
+the plain admin password in any file.
+To show scanned guest forms on user detail pages, set
+`USER_MANAGEMENT_DOCUMENTS_DIR` in `src/config_local.py`. The app looks inside a
+folder named with the user's card number for the first `.jpg` or `.jpeg` file
+whose name starts with `Guest Form`.
+To enable the admin ZIP map, add ZIP centroid coordinates to ignored local
+config:
+
+```python
+USER_MANAGEMENT_ZIP_COORDINATES = {
+    "00000": (37.0000, -122.0000),
+}
+```
+
+The map aggregates users by ZIP code and does not call an external geocoding or
+map service for ZIPs with configured coordinates. ZIPs without local coordinates
+are looked up in the browser through Zippopotam.us by ZIP code only so the map
+can still render pins.
+For faster, repeatable report generation, import a ZIP centroid CSV from the
+admin map page. The CSV should include `zip`, `latitude`, and `longitude`
+columns; imported coordinates are stored in the local club-user SQLite database.
 
 The club app imports roster CSVs into the `users` table and check-in report
 CSVs into the `checkins` table. Local CSV exports and SQLite user databases are

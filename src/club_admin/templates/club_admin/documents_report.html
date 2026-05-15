@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Documents Report</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  {% macro document_entry(entry_name, folder_name=None) -%}
+    {% if is_document_image(entry_name) %}
+      {% if folder_name %}
+        <a href="{{ url_for('document_image', folder=folder_name, name=entry_name) }}" target="_blank" rel="noopener">{{ entry_name }}</a>
+      {% else %}
+        <a href="{{ url_for('document_image', name=entry_name) }}" target="_blank" rel="noopener">{{ entry_name }}</a>
+      {% endif %}
+    {% else %}
+      {{ entry_name }}
+    {% endif %}
+  {%- endmacro %}
+
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Documents Report</h1>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('members_map') }}">Map</a>
+        <a href="{{ url_for('documents_report') }}">Documents</a>
+        <a href="{{ url_for('checkins_report') }}">By User</a>
+        <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+      </nav>
+    </header>
+
+    {% if not report.configured %}
+      <p class="notice">Document scanning is not configured.</p>
+    {% elif not report.readable %}
+      <p class="notice">The configured documents directory could not be read.</p>
+    {% endif %}
+
+    <section class="report-counters" aria-label="Document scan summary">
+      <div>
+        <span>Total Users</span>
+        <strong>{{ report.total_users }}</strong>
+      </div>
+      <div>
+        <span>With Guest Form</span>
+        <strong>{{ report.users_with_guest_form }}</strong>
+      </div>
+      <div>
+        <span>Without Guest Form</span>
+        <strong>{{ report.users_without_guest_form }}</strong>
+      </div>
+      <div>
+        <span>Folders Without User</span>
+        <strong>{{ report.card_folders_without_user|length }}</strong>
+      </div>
+      <div>
+        <span>Document Files</span>
+        <strong>{{ report.total_document_files }}</strong>
+      </div>
+    </section>
+
+    <h2>Filename Patterns</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Pattern</th>
+          <th class="numeric">Count</th>
+          <th>Examples</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pattern in report.filename_patterns %}
+          <tr>
+            <td>{{ pattern.pattern }}</td>
+            <td class="numeric">{{ pattern.count }}</td>
+            <td>{{ pattern.examples|join(', ') }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="3" class="empty">No document filenames found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Extension Counts</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Extension</th>
+          <th class="numeric">Count</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for extension in report.extension_counts %}
+          <tr>
+            <td>{{ extension.extension }}</td>
+            <td class="numeric">{{ extension.count }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="2" class="empty">No document filenames found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Users Missing Guest Form</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Last Name</th>
+          <th>First Name</th>
+          <th>Card #</th>
+          <th>Membership</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for member in report.missing_guest_form_users %}
+          <tr>
+            <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.last_name }}</a></td>
+            <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.first_name }}</a></td>
+            <td>{{ member.card_number }}</td>
+            <td>{{ member.membership }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="4" class="empty">Every imported user has a guest form.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Other Entries In User Folders</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>User</th>
+          <th>Card #</th>
+          <th>Other Entries</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for member, names in report.user_folders_with_extra_files %}
+          <tr>
+            <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.last_name }}, {{ member.first_name }}</a></td>
+            <td>{{ member.card_number }}</td>
+            <td>
+              {% for name in names %}
+                {{ document_entry(name, member.card_number) }}{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="3" class="empty">No other entries found in user folders.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Card Folders Without Imported User</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Folder Name</th>
+          <th>Entries</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for folder_name, entry_names in report.card_folders_without_user %}
+          <tr>
+            <td>{{ folder_name }}</td>
+            <td>
+              {% for entry_name in entry_names %}
+                {{ document_entry(entry_name, folder_name) }}{% if not loop.last %}, {% endif %}
+              {% endfor %}
+            </td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="2" class="empty">No unmatched card folders found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Non-Folder Entries At Top Level</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Entry Name</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry_name in report.non_folder_entries %}
+          <tr>
+            <td>{{ document_entry(entry_name) }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td class="empty">No top-level files found.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

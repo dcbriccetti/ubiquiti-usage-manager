@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | User ZIP Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>User ZIP Map</h1>
+        <p class="summary">{{ report.users_with_zip }} users with ZIP codes</p>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('members_map') }}">Map</a>
+        <a href="{{ url_for('documents_report') }}">Documents</a>
+        <a href="{{ url_for('checkins_report') }}">By User</a>
+        <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+      </nav>
+    </header>
+
+    <section class="report-counters" aria-label="ZIP map summary">
+      <div>
+        <span>Total Users</span>
+        <strong>{{ report.total_users }}</strong>
+      </div>
+      <div>
+        <span>Users With ZIP</span>
+        <strong>{{ report.users_with_zip }}</strong>
+      </div>
+      <div>
+        <span>Unmapped ZIPs</span>
+        <strong>{{ report.unmapped_zip_counts|length }}</strong>
+      </div>
+    </section>
+
+    {% if request.args.get('imported') %}
+      <p class="notice">{{ request.args.get('imported') }} ZIP coordinates imported.</p>
+    {% endif %}
+    {% if request.args.get('saved') %}
+      <p class="notice">{{ request.args.get('saved') }} ZIP coordinates auto-located and saved.</p>
+    {% endif %}
+
+    <form class="import-form map-import-form" action="{{ url_for('import_zip_coordinates') }}" method="post" enctype="multipart/form-data">
+      <input type="file" name="zip_coordinates_csv" accept=".csv,text/csv" required>
+      <button type="submit">Import ZIP Coordinates</button>
+    </form>
+
+    <section class="zip-map-panel" aria-label="Map of user ZIP codes">
+      {% if report.users_with_zip %}
+        <div id="user-zip-map" class="zip-map"></div>
+        <p id="zip-map-status" class="summary"></p>
+      {% else %}
+        <p class="notice">No users have ZIP codes yet.</p>
+      {% endif %}
+    </section>
+
+    <h2>ZIPs Needing Coordinates</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ZIP</th>
+          <th class="numeric">Users</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for zip_count in report.unmapped_zip_counts %}
+          <tr>
+            <td>{{ zip_count.zip_code }}</td>
+            <td class="numeric">{{ zip_count.count }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="2" class="empty">All ZIPs with users have configured coordinates.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+  {% if report.users_with_zip %}
+    <script id="zip-map-data" type="application/json">
+      {{ {"points": map_points, "lookupZips": lookup_zips}|tojson }}
+    </script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+      (() => {
+        const mapElement = document.getElementById("user-zip-map");
+        const dataElement = document.getElementById("zip-map-data");
+        const statusElement = document.getElementById("zip-map-status");
+        if (!mapElement || !dataElement || !window.L) {
+          if (statusElement) {
+            statusElement.textContent = "Map library did not load. Check internet access from this browser.";
+          }
+          return;
+        }
+
+        const mapData = JSON.parse(dataElement.textContent || "{}");
+        const points = mapData.points || [];
+        const lookupZips = mapData.lookupZips || [];
+        const map = L.map(mapElement, {
+          scrollWheelZoom: false,
+        });
+
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        }).addTo(map);
+
+        const bounds = [];
+        const addPoint = (point) => {
+          const latLng = [point.latitude, point.longitude];
+          bounds.push(latLng);
+          const marker = L.circleMarker(latLng, {
+            radius: Math.max(9, Math.min(22, 7 + point.count * 2)),
+            color: "#17416f",
+            weight: 2,
+            fillColor: "#245c9f",
+            fillOpacity: 0.88,
+          }).addTo(map);
+          marker.bindTooltip(String(point.count), {
+            className: "zip-map-label",
+            direction: "center",
+            permanent: true,
+          });
+          marker.bindPopup(`<strong>ZIP ${point.zip_code}</strong><br>${point.count} user${point.count === 1 ? "" : "s"}`);
+        };
+
+        for (const point of points) {
+          addPoint(point);
+        }
+
+        const setMapBounds = () => {
+          if (bounds.length === 0) {
+            map.setView([39.5, -98.35], 4);
+          } else if (bounds.length === 1) {
+            map.setView(bounds[0], 11);
+          } else {
+            map.fitBounds(bounds, { padding: [32, 32] });
+          }
+        };
+
+        const lookupMissingZips = async () => {
+          let located = 0;
+          const locatedCoordinates = [];
+          for (const zip of lookupZips) {
+            try {
+              const response = await fetch(`http://api.zippopotam.us/us/${encodeURIComponent(zip.zip_code)}`);
+              if (!response.ok) {
+                continue;
+              }
+              const data = await response.json();
+              const place = (data.places || [])[0];
+              const latitude = Number(place && place.latitude);
+              const longitude = Number(place && place.longitude);
+              if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                continue;
+              }
+              addPoint({
+                zip_code: zip.zip_code,
+                count: zip.count,
+                latitude,
+                longitude,
+              });
+              locatedCoordinates.push({
+                zip_code: zip.zip_code,
+                latitude,
+                longitude,
+              });
+              located += 1;
+            } catch (error) {
+              // Keep the locally configured points visible even when lookup fails.
+            }
+          }
+          setMapBounds();
+          if (locatedCoordinates.length) {
+            try {
+              const saveResponse = await fetch("{{ url_for('save_zip_coordinates') }}", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ coordinates: locatedCoordinates }),
+              });
+              if (saveResponse.ok) {
+                window.location.replace("{{ url_for('members_map') }}?saved=" + encodeURIComponent(locatedCoordinates.length));
+                return;
+              }
+            } catch (error) {
+              // The map can still render even when caching back to SQLite fails.
+            }
+          }
+          if (statusElement) {
+            if (lookupZips.length && located) {
+              statusElement.textContent = `Auto-located ${located} ZIP${located === 1 ? "" : "s"} by ZIP code only, but could not save them locally.`;
+            } else if (lookupZips.length && !located && !points.length) {
+              statusElement.textContent = "No ZIP coordinates could be loaded. Check internet access or add USER_MANAGEMENT_ZIP_COORDINATES in local config.";
+            } else if (lookupZips.length && !located) {
+              statusElement.textContent = "Some ZIPs still need coordinates. Add them to local config for reliable pins.";
+            }
+          }
+        };
+
+        if (lookupZips.length) {
+          setMapBounds();
+          lookupMissingZips();
+        } else {
+          setMapBounds();
+        }
+      })();
+    </script>
+  {% endif %}
+</body>
+</html>

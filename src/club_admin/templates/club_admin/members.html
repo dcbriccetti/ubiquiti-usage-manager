@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
 <body>
-  <main class="page">
+  <main class="page users-page">
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
@@ -16,6 +16,8 @@
       <div class="import-actions">
         <nav class="nav-links" aria-label="Club admin navigation">
           <a href="{{ url_for('members') }}">Users</a>
+          <a href="{{ url_for('members_map') }}">Map</a>
+          <a href="{{ url_for('documents_report') }}">Documents</a>
           <a href="{{ url_for('checkins_report') }}">By User</a>
           <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
           <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
@@ -31,30 +33,42 @@
       </div>
     </header>
 
-    <table>
+    <table class="users-table">
       <thead>
         <tr>
           <th>Last Name</th>
           <th>First Name</th>
           <th>Card #</th>
           <th>Membership</th>
+          <th>Address</th>
           <th>Email</th>
           <th class="nowrap">Cell Phone</th>
+          <th class="numeric nowrap">Docs</th>
+          <th class="numeric nowrap">Check-ins</th>
+          <th class="nowrap">Last Check-in</th>
         </tr>
       </thead>
       <tbody>
-        {% for member in members %}
+        {% for row in members %}
           <tr>
-            <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.last_name }}</a></td>
-            <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.first_name }}</a></td>
-            <td>{{ member.card_number }}</td>
-            <td>{{ member.membership }}</td>
-            <td>{{ member.email or '' }}</td>
-            <td class="nowrap">{{ member.cell_phone or '' }}</td>
+            <td><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.last_name }}</a></td>
+            <td><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.first_name }}</a></td>
+            <td>{{ row.member.card_number }}</td>
+            <td>{{ row.member.membership }}</td>
+            <td>
+              {% for address_line in row.address_lines %}
+                <span class="nowrap">{{ address_line }}</span>{% if not loop.last %}<br>{% endif %}
+              {% endfor %}
+            </td>
+            <td>{{ row.member.email or '' }}</td>
+            <td class="nowrap">{{ row.member.cell_phone or '' }}</td>
+            <td class="numeric">{{ row.document_count or '' }}</td>
+            <td class="numeric">{{ row.checkin_count or '' }}</td>
+            <td class="nowrap">{{ row.last_check_in_at or '' }}</td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="6" class="empty">No users imported yet.</td>
+            <td colspan="10" class="empty">No users imported yet.</td>
           </tr>
         {% endfor %}
       </tbody>

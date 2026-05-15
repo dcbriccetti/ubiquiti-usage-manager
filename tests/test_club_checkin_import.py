@@ -6,6 +6,9 @@ from contextlib import closing
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
+
+from werkzeug.security import generate_password_hash
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +22,26 @@ from club_admin import database
 from club_admin import member_repository
 from club_admin.app import create_app
 from club_admin.models import Member
+import config as cfg
+
+
+ADMIN_PASSWORD = "test-admin-password"
+
+
+def create_admin_app(db_path: Path):
+    with patch.object(
+        cfg,
+        "USER_MANAGEMENT_ADMIN_PASSWORD_HASH",
+        generate_password_hash(ADMIN_PASSWORD),
+    ):
+        return create_app(db_path)
+
+
+def admin_client(flask_app):
+    client = flask_app.test_client()
+    response = client.post("/admin/login", data={"password": ADMIN_PASSWORD})
+    assert response.status_code == 302
+    return client
 
 
 CHECKINS_CSV = (
@@ -214,18 +237,26 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertEqual(summaries[0].first_name, "John")
         self.assertEqual(summaries[0].checkin_count, 2)
         self.assertEqual(summaries[0].last_check_in_at, datetime(2026, 5, 3, 15, 59, 20))
+        self.assertEqual(
+            summaries[0].check_in_dates,
+            (
+                datetime(2026, 5, 3, 15, 59, 20),
+                datetime(2026, 5, 1, 9, 0, 0),
+            ),
+        )
 
     def test_club_app_renders_checkin_report_for_date_range(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
-            flask_app = create_app(db_path)
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
             checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_RANGE_CSV))
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
                 connection.commit()
 
-            response = flask_app.test_client().get(
+            response = client.get(
                 "/checkins/report?start_date=2026-05-01&end_date=2026-05-03"
             )
 
@@ -233,19 +264,22 @@ class ClubCheckInImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("John", body)
         self.assertIn(">2<", body)
+        self.assertIn("2026-05-01 09:00:00", body)
+        self.assertIn("2026-05-03 15:59:20", body)
         self.assertNotIn("Jane", body)
 
     def test_club_app_renders_daily_checkins_for_date_range(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
-            flask_app = create_app(db_path)
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
             checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_RANGE_CSV))
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
                 connection.commit()
 
-            response = flask_app.test_client().get(
+            response = client.get(
                 "/checkins/daily?start_date=2026-05-04&end_date=2026-05-04"
             )
 
@@ -257,7 +291,8 @@ class ClubCheckInImportTests(unittest.TestCase):
     def test_member_detail_lists_that_users_checkins(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
-            flask_app = create_app(db_path)
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
             checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_RANGE_CSV))
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
@@ -269,7 +304,7 @@ class ClubCheckInImportTests(unittest.TestCase):
                     if member.first_name == "John"
                 ][0]
 
-            response = flask_app.test_client().get(f"/members/{john.id}")
+            response = client.get(f"/members/{john.id}")
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
@@ -280,22 +315,24 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("Total", body)
         self.assertNotIn("Duration", body)
 
-    def test_main_users_page_does_not_show_recent_checkins(self) -> None:
+    def test_main_users_page_shows_checkin_summary_but_not_recent_checkins_section(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
-            flask_app = create_app(db_path)
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
             checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
                 connection.commit()
 
-            response = flask_app.test_client().get("/members")
+            response = client.get("/members")
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertNotIn("Recent Check-ins", body)
-        self.assertNotIn("2026-05-03 15:59:20", body)
+        self.assertIn("Last Check-in", body)
+        self.assertIn("2026-05-03 15:59:20", body)
 
     def test_self_checkin_requires_phone_and_initials_to_match(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -357,6 +394,85 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("No matching user was found", response.get_data(as_text=True))
         self.assertEqual(len(checkins), 0)
 
+    def test_self_checkin_accepts_first_name_when_initials_are_ambiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Dane",
+                        first_name="Jane",
+                        card_number="1024",
+                        membership="Full Member",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "5105105100", "initials": "Jane"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Check-in recorded.", response.get_data(as_text=True))
+        self.assertEqual(len(checkins), 1)
+        self.assertEqual(checkins[0].first_name, "Jane")
+
+    def test_self_checkin_rejects_ambiguous_household_initials(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Dane",
+                        first_name="Jane",
+                        card_number="1024",
+                        membership="Full Member",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "5105105100", "initials": "JD"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("No matching user was found", response.get_data(as_text=True))
+        self.assertEqual(len(checkins), 0)
+
     def test_self_checkin_never_shows_current_user_information(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -390,9 +506,10 @@ class ClubCheckInImportTests(unittest.TestCase):
     def test_club_app_imports_checkins_into_configured_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
-            flask_app = create_app(db_path)
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
 
-            response = flask_app.test_client().post(
+            response = client.post(
                 "/checkins/import",
                 data={"checkins_csv": (io.BytesIO(CHECKINS_CSV.encode("utf-8")), "checkins.csv")},
                 content_type="multipart/form-data",

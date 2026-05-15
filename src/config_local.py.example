@@ -28,6 +28,12 @@ ISP_INCLUDED_USAGE_COST_USD = 125.0
 ISP_TOPOFF_USAGE_GB = 50
 ISP_TOPOFF_COST_USD = 25.0
 USER_MANAGEMENT_ORGANIZATION_NAME = 'Example Organization'
+USER_MANAGEMENT_ADMIN_PASSWORD_HASH = ''
+USER_MANAGEMENT_SESSION_SECRET = ''
+USER_MANAGEMENT_DOCUMENTS_DIR = ''
+# Optional ZIP centroid coordinates for the admin user map.
+# Values are (latitude, longitude). Keep real organization-specific coverage in src/config_local.py.
+USER_MANAGEMENT_ZIP_COORDINATES = {}
 PLUS_REPORT_TITLE = ''
 PLUS_NETWORK_NAMES = {'Plus'}
 PLUS_ADMINS = {'replace_me_1', 'replace_me_2'}

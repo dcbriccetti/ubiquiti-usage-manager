@@ -2,8 +2,22 @@
 
 import sqlite3
 import re
+from dataclasses import dataclass
+from datetime import datetime
 
 from club_admin.models import Member
+
+
+@dataclass(frozen=True, kw_only=True)
+class MemberReportRow:
+    '''One row for the admin users report.'''
+
+    member: Member
+    address: str
+    address_lines: tuple[str, ...]
+    checkin_count: int
+    last_check_in_at: datetime | None
+    document_count: int = 0
 
 
 def _empty_to_none(value: str | None) -> str | None:
@@ -18,8 +32,8 @@ def normalize_phone(value: str | None) -> str:
     return re.sub(r"\D+", "", value or "")
 
 
-def normalize_initials(value: str | None) -> str:
-    '''Return uppercase letters from an initials value.'''
+def normalize_name_token(value: str | None) -> str:
+    '''Return uppercase letters from a name/check-in identity value.'''
     return re.sub(r"[^A-Za-z]+", "", value or "").upper()
 
 
@@ -48,6 +62,21 @@ def member_from_row(row: sqlite3.Row) -> Member:
         work_phone=row["work_phone"],
         cell_phone=row["cell_phone"],
     )
+
+
+def format_member_address(member: Member) -> str:
+    '''Return a compact single-line address for report display.'''
+    return ", ".join(format_member_address_lines(member))
+
+
+def format_member_address_lines(member: Member) -> tuple[str, ...]:
+    '''Return address display lines for the admin users report.'''
+    street_parts = [part for part in (member.address, member.address2) if part]
+    city_state_zip = " ".join(part for part in (member.city, member.state, member.zip) if part)
+    parts: list[str] = [*street_parts]
+    if city_state_zip:
+        parts.append(city_state_zip)
+    return tuple(parts)
 
 
 def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
@@ -128,6 +157,66 @@ def list_members(connection: sqlite3.Connection) -> list[Member]:
     return [member_from_row(row) for row in rows]
 
 
+def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReportRow]:
+    '''Return all users with all-time check-in stats for the admin users report.'''
+    rows = connection.execute(
+        """
+        SELECT
+            u.id,
+            u.last_name,
+            u.first_name,
+            u.card_number,
+            u.membership,
+            u.address,
+            u.address2,
+            u.city,
+            u.state,
+            u.zip,
+            u.phone,
+            u.email,
+            u.work_phone,
+            u.cell_phone,
+            COUNT(c.id) AS checkin_count,
+            MAX(c.check_in_at) AS last_check_in_at
+        FROM users u
+        LEFT JOIN checkins c ON c.user_id = u.id
+        GROUP BY
+            u.id,
+            u.last_name,
+            u.first_name,
+            u.card_number,
+            u.membership,
+            u.address,
+            u.address2,
+            u.city,
+            u.state,
+            u.zip,
+            u.phone,
+            u.email,
+            u.work_phone,
+            u.cell_phone
+        ORDER BY u.last_name, u.first_name, u.card_number
+        """
+    ).fetchall()
+    report_rows: list[MemberReportRow] = []
+    for row in rows:
+        member = member_from_row(row)
+        report_rows.append(
+            MemberReportRow(
+                member=member,
+                address=format_member_address(member),
+                address_lines=format_member_address_lines(member),
+                checkin_count=int(row["checkin_count"]),
+                last_check_in_at=(
+                    datetime.fromisoformat(row["last_check_in_at"])
+                    if row["last_check_in_at"]
+                    else None
+                ),
+            )
+        )
+    return report_rows
+
+
 def get_member(connection: sqlite3.Connection, member_id: int) -> Member | None:
     '''Return one club user by database ID.'''
     row = connection.execute(
@@ -179,12 +268,12 @@ def find_member_by_phone_and_initials(
     phone: str,
     initials: str,
 ) -> Member | None:
-    '''Return a member when phone plus first/last initials match exactly one user.'''
+    '''Return a member when phone plus initials or first name match exactly one user.'''
     target_digits = normalize_phone(phone)
-    target_initials = normalize_initials(initials)
+    target_identity = normalize_name_token(initials)
     if len(target_digits) < 7:
         return None
-    if len(target_initials) != 2:
+    if not target_identity:
         return None
 
     matches: list[Member] = []
@@ -194,7 +283,11 @@ def find_member_by_phone_and_initials(
             normalize_phone(member.work_phone),
             normalize_phone(member.cell_phone),
         }
-        if target_digits in member_numbers and member_initials(member) == target_initials:
+        identity_matches = (
+            member_initials(member) == target_identity
+            or normalize_name_token(member.first_name) == target_identity
+        )
+        if target_digits in member_numbers and identity_matches:
             matches.append(member)
 
     return matches[0] if len(matches) == 1 else None

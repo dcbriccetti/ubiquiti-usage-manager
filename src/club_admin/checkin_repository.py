@@ -19,6 +19,7 @@ class UserCheckInSummary:
     checkin_count: int
     first_check_in_at: datetime
     last_check_in_at: datetime
+    check_in_dates: tuple[datetime, ...]
 
 
 def _datetime_to_text(value: datetime | None) -> str | None:
@@ -211,7 +212,7 @@ def summarize_checkins_by_user(
     start_date: date,
     end_date: date,
 ) -> list[UserCheckInSummary]:
-    '''Return check-in counts by user for an inclusive date range.'''
+    '''Return check-in counts and dates by user for an inclusive date range.'''
     start_at, exclusive_end_at = _date_range_bounds(start_date, end_date)
     rows = connection.execute(
         """
@@ -221,27 +222,58 @@ def summarize_checkins_by_user(
             u.first_name,
             u.card_number,
             u.membership,
-            COUNT(*) AS checkin_count,
-            MIN(c.check_in_at) AS first_check_in_at,
-            MAX(c.check_in_at) AS last_check_in_at
+            c.check_in_at
         FROM checkins c
         JOIN users u ON u.id = c.user_id
         WHERE c.check_in_at >= ? AND c.check_in_at < ?
-        GROUP BY c.user_id, u.last_name, u.first_name, u.card_number, u.membership
-        ORDER BY checkin_count DESC, u.last_name, u.first_name, u.card_number
+        ORDER BY c.check_in_at DESC, u.last_name, u.first_name, u.card_number
         """,
         (start_at, exclusive_end_at),
     ).fetchall()
-    return [
-        UserCheckInSummary(
-            user_id=row["user_id"],
-            last_name=row["last_name"],
-            first_name=row["first_name"],
-            card_number=row["card_number"],
-            membership=row["membership"],
-            checkin_count=row["checkin_count"],
-            first_check_in_at=datetime.fromisoformat(row["first_check_in_at"]),
-            last_check_in_at=datetime.fromisoformat(row["last_check_in_at"]),
+
+    summaries_by_user: dict[int, dict[str, object]] = {}
+    for row in rows:
+        user_id = int(row["user_id"])
+        summary = summaries_by_user.setdefault(
+            user_id,
+            {
+                "user_id": user_id,
+                "last_name": row["last_name"],
+                "first_name": row["first_name"],
+                "card_number": row["card_number"],
+                "membership": row["membership"],
+                "check_in_dates": [],
+            },
         )
-        for row in rows
-    ]
+        check_in_dates = summary["check_in_dates"]
+        assert isinstance(check_in_dates, list)
+        check_in_dates.append(datetime.fromisoformat(row["check_in_at"]))
+
+    summaries = []
+    for summary in summaries_by_user.values():
+        check_in_dates = summary["check_in_dates"]
+        assert isinstance(check_in_dates, list)
+        typed_check_in_dates = tuple(check_in_dates)
+        summaries.append(
+            UserCheckInSummary(
+                user_id=int(summary["user_id"]),
+                last_name=str(summary["last_name"]),
+                first_name=str(summary["first_name"]),
+                card_number=str(summary["card_number"]),
+                membership=str(summary["membership"]),
+                checkin_count=len(typed_check_in_dates),
+                first_check_in_at=min(typed_check_in_dates),
+                last_check_in_at=max(typed_check_in_dates),
+                check_in_dates=typed_check_in_dates,
+            )
+        )
+
+    return sorted(
+        summaries,
+        key=lambda summary: (
+            -summary.checkin_count,
+            summary.last_name,
+            summary.first_name,
+            summary.card_number,
+        ),
+    )

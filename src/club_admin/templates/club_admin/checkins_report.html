@@ -16,6 +16,8 @@
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('members_map') }}">Map</a>
+        <a href="{{ url_for('documents_report') }}">Documents</a>
         <a href="{{ url_for('checkins_report') }}">By User</a>
         <a href="{{ url_for('daily_checkins_report') }}">Daily Check-ins</a>
         <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
@@ -42,8 +44,7 @@
           <th>Card #</th>
           <th>Membership</th>
           <th class="numeric">Check-ins</th>
-          <th class="nowrap">First Check-in</th>
-          <th class="nowrap">Last Check-in</th>
+          <th>Check-in Dates</th>
         </tr>
       </thead>
       <tbody>
@@ -54,12 +55,17 @@
             <td>{{ summary.card_number }}</td>
             <td>{{ summary.membership }}</td>
             <td class="numeric">{{ summary.checkin_count }}</td>
-            <td class="nowrap">{{ summary.first_check_in_at }}</td>
-            <td class="nowrap">{{ summary.last_check_in_at }}</td>
+            <td>
+              <ol class="inline-list">
+                {% for check_in_at in summary.check_in_dates %}
+                  <li class="nowrap">{{ check_in_at }}</li>
+                {% endfor %}
+              </ol>
+            </td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="7" class="empty">No check-ins in this date range.</td>
+            <td colspan="6" class="empty">No check-ins in this date range.</td>
           </tr>
         {% endfor %}
       </tbody>
