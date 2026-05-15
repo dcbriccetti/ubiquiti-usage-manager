@@ -1,5 +1,8 @@
 '''Flask app for club user management.'''
 
+import base64
+import hashlib
+import hmac
 import io
 import os
 import re
@@ -63,6 +66,23 @@ DRIVER_LICENSE_IMAGE_SIZE = (1013, 576)
 ID_DOCUMENT_NAME_PATTERN = re.compile(
     r"^(?:drivers?\s+license|drivers?\s+licence|dl|id|identification)(?:\b|[_\-\s])",
     re.IGNORECASE,
+)
+BARCODE_TOKEN_VERSION = "UM1"
+CODE128_PATTERNS = (
+    "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312",
+    "132212", "221213", "221312", "231212", "112232", "122132", "122231", "113222",
+    "123122", "123221", "223211", "221132", "221231", "213212", "223112", "312131",
+    "311222", "321122", "321221", "312212", "322112", "322211", "212123", "212321",
+    "232121", "111323", "131123", "131321", "112313", "132113", "132311", "211313",
+    "231113", "231311", "112133", "112331", "132131", "113123", "113321", "133121",
+    "313121", "211331", "231131", "213113", "213311", "213131", "311123", "311321",
+    "331121", "312113", "312311", "332111", "314111", "221411", "431111", "111224",
+    "111422", "121124", "121421", "141122", "141221", "112214", "112412", "122114",
+    "122411", "142112", "142211", "241211", "221114", "413111", "241112", "134111",
+    "111242", "121142", "121241", "114212", "124112", "124211", "411212", "421112",
+    "421211", "212141", "214121", "412121", "111143", "111341", "131141", "114113",
+    "114311", "411113", "411311", "113141", "114131", "311141", "411131", "211412",
+    "211214", "211232", "2331112",
 )
 
 
@@ -726,6 +746,91 @@ def _generate_guest_card_number(connection: sqlite3.Connection) -> str:
     return str((largest_card_number or 0) + 1)
 
 
+def _barcode_secret_bytes(secret_key: object) -> bytes:
+    return str(secret_key or "").encode("utf-8")
+
+
+def _barcode_signature(card_number: str, secret_key: object) -> str:
+    digest = hmac.new(
+        _barcode_secret_bytes(secret_key),
+        card_number.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(digest[:9]).decode("ascii").rstrip("=")
+
+
+def _barcode_token_for_card_number(card_number: str, secret_key: object) -> str:
+    signature = _barcode_signature(card_number, secret_key)
+    return f"{BARCODE_TOKEN_VERSION}:{signature}"
+
+
+def _member_from_barcode_token(
+    connection: sqlite3.Connection,
+    token: str,
+    secret_key: object,
+) -> Member | None:
+    parts = token.strip().split(":")
+    if len(parts) != 2 or parts[0] != BARCODE_TOKEN_VERSION:
+        return None
+    for member in member_repository.list_members(connection):
+        if hmac.compare_digest(
+            token.strip(),
+            _barcode_token_for_card_number(member.card_number, secret_key),
+        ):
+            return member
+    return None
+
+
+def _code128b_svg(value: str) -> str:
+    if not value or any(not 32 <= ord(character) <= 127 for character in value):
+        raise ValueError("Code 128B barcodes require printable ASCII text.")
+    codes = [104, *(ord(character) - 32 for character in value)]
+    weighted_data_sum = sum(
+        index * code
+        for index, code in enumerate(codes[1:], start=1)
+    )
+    checksum = (codes[0] + weighted_data_sum) % 103
+    codes.extend((checksum, 106))
+
+    bar_width = 2
+    height = 84
+    quiet_zone = 20
+    x_position = quiet_zone
+    rects: list[str] = []
+    for code in codes:
+        pattern = CODE128_PATTERNS[code]
+        draw_bar = True
+        for width_text in pattern:
+            width = int(width_text) * bar_width
+            if draw_bar:
+                rects.append(f'<rect x="{x_position}" y="0" width="{width}" height="{height}"/>')
+            x_position += width
+            draw_bar = not draw_bar
+    svg_width = x_position + quiet_zone
+    return (
+        f'<svg class="checkin-barcode" role="img" aria-label="Self check-in barcode" '
+        f'viewBox="0 0 {svg_width} {height}" xmlns="http://www.w3.org/2000/svg">'
+        f'<rect width="{svg_width}" height="{height}" fill="#fff"/>'
+        f'<g fill="#111827">{"".join(rects)}</g>'
+        "</svg>"
+    )
+
+
+def _record_self_checkin(connection: sqlite3.Connection, member: Member) -> None:
+    checkin_repository.upsert_checkin(
+        connection,
+        CheckIn(
+            user_id=member.id,
+            member_id=str(member.id),
+            last_name=member.last_name,
+            first_name=member.first_name,
+            card_number=member.card_number,
+            check_in_at=datetime.now().replace(microsecond=0),
+            membership=member.membership,
+        ),
+    )
+
+
 def create_app(db_path: Path | None = None) -> Flask:
     '''Create the club user management app.'''
     database.init_db(db_path)
@@ -1172,38 +1277,44 @@ def create_app(db_path: Path | None = None) -> Flask:
     @flask_app.route("/self-checkin", methods=["GET", "POST"])
     def self_checkin():
         message = ""
+        barcode_svg = ""
         if request.method == "POST":
-            phone = request.form.get("phone", "").strip()
-            initials = request.form.get("initials", "").strip()
+            barcode_token = request.form.get("barcode_token", "").strip()
+            member = None
             with open_connection() as connection:
-                member = member_repository.find_member_by_phone_and_initials(
-                    connection,
-                    phone,
-                    initials,
-                )
-                if member is not None:
-                    checkin_repository.upsert_checkin(
+                if barcode_token:
+                    member = _member_from_barcode_token(
                         connection,
-                        CheckIn(
-                            user_id=member.id,
-                            member_id=str(member.id),
-                            last_name=member.last_name,
-                            first_name=member.first_name,
-                            card_number=member.card_number,
-                            check_in_at=datetime.now().replace(microsecond=0),
-                            membership=member.membership,
-                        ),
+                        barcode_token,
+                        flask_app.secret_key,
                     )
+                else:
+                    phone = request.form.get("phone", "").strip()
+                    initials = request.form.get("initials", "").strip()
+                    member = member_repository.find_member_by_phone_and_initials(
+                        connection,
+                        phone,
+                        initials,
+                    )
+                if member is not None:
+                    _record_self_checkin(connection, member)
                     connection.commit()
+                    if not barcode_token:
+                        token = _barcode_token_for_card_number(
+                            member.card_number,
+                            flask_app.secret_key,
+                        )
+                        barcode_svg = _code128b_svg(token)
             message = (
                 "Check-in recorded."
                 if member is not None
-                else "No matching user was found. Please check your phone number and initials or first name."
+                else "No matching user was found. Please check your barcode, phone number, and initials or first name."
             )
 
         return render_template(
             "club_admin/self_checkin.html",
             message=message,
+            barcode_svg=barcode_svg,
         )
 
     @flask_app.post("/members/import")

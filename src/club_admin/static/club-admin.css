@@ -424,6 +424,11 @@ th {
 
 .self-checkin-form {
   grid-template-columns: 1fr 140px;
+  margin-bottom: 14px;
+}
+
+.barcode-checkin-form {
+  grid-template-columns: minmax(260px, 1fr) 140px;
 }
 
 .admin-login-form {
@@ -475,6 +480,37 @@ th {
   border-left: 4px solid #245c9f;
   margin-top: 16px;
   padding: 12px 14px;
+}
+
+.checkin-barcode-card {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
+  margin-top: 16px;
+  padding: 16px;
+}
+
+.checkin-barcode-card h2 {
+  font-size: 22px;
+  margin: 0 0 4px;
+}
+
+.checkin-barcode-card p {
+  color: #4b5563;
+  margin: 0 0 14px;
+}
+
+.checkin-barcode-frame {
+  background: #fff;
+  border: 1px solid #d8dee8;
+  display: inline-block;
+  max-width: 100%;
+  padding: 16px;
+}
+
+.checkin-barcode {
+  display: block;
+  height: 84px;
+  max-width: 100%;
 }
 
 .zip-map-panel {
@@ -799,6 +835,11 @@ th {
   table {
     display: block;
     overflow-x: auto;
+  }
+
+  .self-checkin-form,
+  .barcode-checkin-form {
+    grid-template-columns: 1fr;
   }
 
   .generated-form-top {

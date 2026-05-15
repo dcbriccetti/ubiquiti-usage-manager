@@ -19,6 +19,14 @@
       </nav>
     </header>
 
+    <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+      <label>
+        Barcode
+        <input type="text" name="barcode_token" autocomplete="off" autofocus>
+      </label>
+      <button type="submit">Check In</button>
+    </form>
+
     <form class="self-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
       <label>
         Phone Number
@@ -33,6 +41,16 @@
 
     {% if message %}
       <p class="notice">{{ message }}</p>
+    {% endif %}
+
+    {% if barcode_svg %}
+      <section class="checkin-barcode-card" aria-label="Saved self check-in barcode">
+        <h2>Your Check-in Barcode</h2>
+        <p>Save this barcode for next time.</p>
+        <div class="checkin-barcode-frame">
+          {{ barcode_svg|safe }}
+        </div>
+      </section>
     {% endif %}
   </main>
 </body>

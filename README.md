@@ -51,6 +51,17 @@ PYTHONPATH=src .venv/bin/python -c 'from getpass import getpass; from secrets im
 Copy the printed `USER_MANAGEMENT_ADMIN_PASSWORD_HASH` and
 `USER_MANAGEMENT_SESSION_SECRET` lines into `src/config_local.py`. Do not store
 the plain admin password in any file.
+Check-in procedure:
+
+1. A user can check in on the public self check-in page with phone number plus
+   initials, first name, or nickname.
+2. After a successful phone/name check-in, the app shows a signed Code 128
+   barcode the user can keep on their phone.
+3. On later visits, the user can display that barcode. A barcode scanner should
+   act like a keyboard, type the barcode into the focused barcode field, and
+   send Enter/Return to submit the check-in.
+4. Plain card numbers are not accepted as barcode check-ins.
+
 To show scanned guest forms on user detail pages, set
 `USER_MANAGEMENT_DOCUMENTS_DIR` in `src/config_local.py`. The app looks inside a
 folder named with the user's card number for the first `.jpg` or `.jpeg` file

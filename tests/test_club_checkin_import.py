@@ -20,7 +20,7 @@ from club_admin import checkin_repository
 from club_admin import csv_import
 from club_admin import database
 from club_admin import member_repository
-from club_admin.app import create_app
+from club_admin.app import _barcode_token_for_card_number, create_app
 from club_admin.models import Member
 import config as cfg
 
@@ -381,7 +381,75 @@ class ClubCheckInImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Check-in recorded.", body)
         self.assertNotIn("John", body)
+        self.assertNotIn("1861", body)
+        self.assertNotIn("UM1:", body)
+        self.assertIn("checkin-barcode", body)
         self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_accepts_signed_barcode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            token = _barcode_token_for_card_number("1861", flask_app.secret_key)
+            self.assertNotIn("1861", token)
+            self.assertNotIn("MTg2MQ", token)
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"barcode_token": token},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Check-in recorded.", body)
+        self.assertNotIn("John", body)
+        self.assertNotIn("1861", body)
+        self.assertNotIn("UM1:", body)
+        self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_rejects_plain_card_number_barcode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"barcode_token": "1861"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("No matching user was found", response.get_data(as_text=True))
+        self.assertEqual(len(checkins), 0)
 
     def test_self_checkin_reports_no_match_for_wrong_initials(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -560,6 +628,8 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("Check-in recorded.", body)
         self.assertNotIn("John Doe", body)
         self.assertNotIn("john@example.test", body)
+        self.assertNotIn("1861", body)
+        self.assertNotIn("UM1:", body)
         self.assertNotIn("Review my current information", body)
 
     def test_club_app_imports_checkins_into_configured_database(self) -> None:
