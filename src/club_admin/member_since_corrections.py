@@ -25,7 +25,7 @@ SUSPECT_MEMBER_SINCE_DATES = {
 class CorrectionRow:
     row_number: int
     raw_name: str
-    member_since: date
+    member_since: date | None
     name_key: tuple[str, str] | None
 
 
@@ -102,13 +102,12 @@ def read_corrections(path: Path) -> list[CorrectionRow]:
             raw_date = (row.get(date_header) or "").strip()
             if not raw_name and not raw_date:
                 continue
-            if not raw_name or not raw_date:
-                raise ValueError(f"Row {row_number} must include both name and date joined.")
+            parsed_date = parse_correction_date(raw_date) if raw_date else None
             corrections.append(
                 CorrectionRow(
                     row_number=row_number,
                     raw_name=raw_name,
-                    member_since=parse_correction_date(raw_date),
+                    member_since=parsed_date,
                     name_key=name_key_from_correction(raw_name),
                 )
             )
@@ -137,6 +136,15 @@ def plan_corrections(
 
     results = []
     for correction in corrections:
+        if correction.member_since is None:
+            results.append(
+                CorrectionResult(
+                    row=correction,
+                    status="skipped",
+                    message="missing date joined",
+                )
+            )
+            continue
         if correction.name_key is None:
             results.append(
                 CorrectionResult(
@@ -223,6 +231,7 @@ def apply_corrections(connection: sqlite3.Connection, results: Sequence[Correcti
             continue
         connection.execute(
             "UPDATE users SET member_since = ? WHERE id = ?",
+            # The row date is guaranteed by the ready status in plan_corrections.
             (result.row.member_since.isoformat(), result.member.id),
         )
         audit_repository.record_field_change(
@@ -240,6 +249,7 @@ def apply_corrections(connection: sqlite3.Connection, results: Sequence[Correcti
 
 def _result_line(result: CorrectionResult) -> str:
     member = result.member
+    new_date = result.row.member_since.isoformat() if result.row.member_since else ""
     member_text = (
         f"user_id={member.id} {member.first_name} {member.last_name} "
         f"old={member.member_since or ''}"
@@ -248,7 +258,7 @@ def _result_line(result: CorrectionResult) -> str:
     )
     return (
         f"{result.status.upper():9} row={result.row.row_number} "
-        f"name={result.row.raw_name!r} new={result.row.member_since} "
+        f"name={result.row.raw_name!r} new={new_date} "
         f"{member_text} reason={result.message}"
     )
 

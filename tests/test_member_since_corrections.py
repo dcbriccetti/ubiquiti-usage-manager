@@ -110,6 +110,21 @@ class MemberSinceCorrectionTests(unittest.TestCase):
         self.assertEqual(statuses["Missing, Person"], "skipped")
         self.assertEqual(messages["Missing, Person"], "no user match")
 
+    def test_plans_incomplete_rows_as_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            corrections_path = Path(temp_dir) / "corrections.csv"
+            corrections_path.write_text(
+                "Customer full name,Date Joined\n"
+                '" Sunday, January 18, 2026 05:09 PM GMTZ",\n',
+                encoding="utf-8",
+            )
+
+            results = plan_corrections([], read_corrections(corrections_path))
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].status, "skipped")
+        self.assertEqual(results[0].message, "missing date joined")
+
     def test_apply_updates_ready_rows_and_records_audit_log(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
