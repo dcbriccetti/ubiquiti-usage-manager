@@ -27,6 +27,34 @@
       </div>
     </header>
 
+    <section class="users-list-controls" aria-label="User list search">
+      <label class="users-search-field">
+        <span>Search</span>
+        <input
+          id="users-search"
+          type="search"
+          autocomplete="off"
+          placeholder="Dave"
+          data-table-search
+        >
+      </label>
+      <label class="users-search-column">
+        <span>In</span>
+        <select data-table-search-column>
+          <option value="all">All Columns</option>
+          <option value="0">Last Name</option>
+          <option value="1">First Name</option>
+          <option value="2">Nickname</option>
+          <option value="3">Card #</option>
+          <option value="4">Membership</option>
+          <option value="5">Address</option>
+          <option value="6">Email</option>
+          <option value="7">Cell Phone</option>
+        </select>
+      </label>
+      <output class="users-search-count" data-table-search-count for="users-search"></output>
+    </section>
+
     <table class="users-table" data-sortable-table>
       <thead>
         <tr>
@@ -45,7 +73,7 @@
       </thead>
       <tbody>
         {% for row in members %}
-          <tr>
+          <tr data-user-row>
             <td data-sort-value="{{ row.member.last_name }}"><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.last_name }}</a></td>
             <td data-sort-value="{{ row.member.first_name }}"><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.first_name }}</a></td>
             <td data-sort-value="{{ row.member.nickname or '' }}">{{ row.member.nickname or '' }}</td>
@@ -63,10 +91,13 @@
             <td class="nowrap" data-sort-value="{{ row.last_check_in_at.isoformat() if row.last_check_in_at else '' }}">{{ row.last_check_in_at or '' }}</td>
           </tr>
         {% else %}
-          <tr>
+          <tr data-empty-row>
             <td colspan="11" class="empty">No users imported yet.</td>
           </tr>
         {% endfor %}
+        <tr data-search-placeholder hidden>
+          <td colspan="11" class="empty">No users match this search.</td>
+        </tr>
       </tbody>
     </table>
   </main>

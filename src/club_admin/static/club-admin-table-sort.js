@@ -48,6 +48,69 @@
     return direction === "asc" ? comparison : -comparison;
   };
 
+  const searchableRows = (table) =>
+    Array.from(table.tBodies[0]?.querySelectorAll("tr[data-user-row]") ?? []);
+
+  const searchableCellValue = (row, columnIndex) => {
+    const cell = row.cells[columnIndex];
+    return (cell?.dataset.sortValue ?? cell?.textContent ?? "").trim().toLowerCase();
+  };
+
+  const rowMatchesQuery = (row, query, columnValue) => {
+    if (!query) {
+      return true;
+    }
+    if (columnValue === "all") {
+      return Array.from(row.cells).some((_, columnIndex) =>
+        searchableCellValue(row, columnIndex).includes(query),
+      );
+    }
+
+    const columnIndex = Number.parseInt(columnValue, 10);
+    return (
+      !Number.isNaN(columnIndex) &&
+      searchableCellValue(row, columnIndex).includes(query)
+    );
+  };
+
+  const updateSearchCount = (countElement, visibleCount, totalCount) => {
+    if (!countElement) {
+      return;
+    }
+    if (totalCount === 0) {
+      countElement.value = "";
+      countElement.textContent = "";
+      return;
+    }
+    const userLabel = visibleCount === 1 ? "user" : "users";
+    countElement.value = `${visibleCount} ${userLabel}`;
+    countElement.textContent =
+      visibleCount === totalCount
+        ? `${visibleCount} ${userLabel}`
+        : `${visibleCount} of ${totalCount} ${userLabel}`;
+  };
+
+  const applySearch = (table, searchInput, columnSelect, countElement) => {
+    const query = searchInput.value.trim().toLowerCase();
+    const columnValue = columnSelect?.value || "all";
+    const rows = searchableRows(table);
+    let visibleCount = 0;
+
+    rows.forEach((row) => {
+      const isVisible = rowMatchesQuery(row, query, columnValue);
+      row.hidden = !isVisible;
+      if (isVisible) {
+        visibleCount += 1;
+      }
+    });
+
+    const placeholder = table.tBodies[0]?.querySelector("[data-search-placeholder]");
+    if (placeholder) {
+      placeholder.hidden = !query || visibleCount > 0 || rows.length === 0;
+    }
+    updateSearchCount(countElement, visibleCount, rows.length);
+  };
+
   const updateSortState = (table, activeButton, direction) => {
     table.querySelectorAll("thead th").forEach((header) => {
       header.setAttribute("aria-sort", "none");
@@ -74,7 +137,7 @@
       return;
     }
 
-    const rows = Array.from(tbody.rows);
+    const rows = searchableRows(table);
     if (rows.length < 2) {
       return;
     }
@@ -88,7 +151,11 @@
         compareRows(left, right, columnIndex, sortType, nextDirection),
       );
 
+    const placeholder = tbody.querySelector("[data-search-placeholder]");
     tbody.append(...sortedRows.map(({ row }) => row));
+    if (placeholder) {
+      tbody.append(placeholder);
+    }
     updateSortState(table, button, nextDirection);
   };
 
@@ -97,6 +164,20 @@
       table.querySelectorAll(".sortable-heading").forEach((button) => {
         button.addEventListener("click", () => sortTable(table, button));
       });
+
+      const container = table.closest(".users-page") ?? document;
+      const searchInput = container.querySelector("[data-table-search]");
+      const columnSelect = container.querySelector("[data-table-search-column]");
+      const countElement = container.querySelector("[data-table-search-count]");
+      if (searchInput) {
+        searchInput.addEventListener("input", () =>
+          applySearch(table, searchInput, columnSelect, countElement),
+        );
+        columnSelect?.addEventListener("change", () =>
+          applySearch(table, searchInput, columnSelect, countElement),
+        );
+        applySearch(table, searchInput, columnSelect, countElement);
+      }
     });
   };
 
