@@ -884,6 +884,8 @@ class ClubMemberImportTests(unittest.TestCase):
                         nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
+                        member_since=datetime(2020, 5, 1).date(),
+                        date_of_birth=datetime(1980, 7, 4).date(),
                         address="123 Main St",
                         city="Everytown",
                         state="CA",
@@ -903,6 +905,10 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("john@example.test", body)
         self.assertIn("Nickname", body)
         self.assertIn("Johnny", body)
+        self.assertIn("Member Since", body)
+        self.assertIn("2020-05-01", body)
+        self.assertIn("Date of Birth", body)
+        self.assertIn("1980-07-04", body)
         self.assertIn("123 Main St", body)
         self.assertIn("(510) 510-5100", body)
 

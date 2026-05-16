@@ -52,6 +52,14 @@
         <strong>{{ member.membership }}</strong>
       </div>
       <div>
+        <span>Member Since</span>
+        <strong class="nowrap">{{ member.member_since or '' }}</strong>
+      </div>
+      <div>
+        <span>Date of Birth</span>
+        <strong class="nowrap">{{ member.date_of_birth or '' }}</strong>
+      </div>
+      <div>
         <span>Email</span>
         <strong class="nowrap">{{ member.email or '' }}</strong>
       </div>
