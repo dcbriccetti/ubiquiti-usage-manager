@@ -603,6 +603,7 @@ th {
 }
 
 .edit-form input,
+.edit-form select,
 .self-checkin-form input,
 .guest-registration-form input,
 .guest-registration-form select {

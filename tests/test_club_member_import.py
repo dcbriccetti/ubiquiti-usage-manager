@@ -1126,6 +1126,82 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("nickname", changed_fields)
         self.assertIn("email", changed_fields)
 
+    def test_edit_member_renders_membership_dropdown(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Associate Member",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.get(f"/members/{member.id}/edit")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('<select name="membership" required>', body)
+        self.assertIn('<option value="AANR Member"', body)
+        self.assertIn('<option value="Associate Member" selected', body)
+        self.assertIn('<option value="Full Member"', body)
+        self.assertIn('<option value="Visitor"', body)
+        self.assertNotIn('name="membership" value=', body)
+
+    def test_edit_member_rejects_unknown_membership(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.post(
+                f"/members/{member.id}/edit",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "nickname": "",
+                    "card_number": "123",
+                    "membership": "Invented Member",
+                    "address": "",
+                    "address2": "",
+                    "city": "",
+                    "state": "",
+                    "zip": "",
+                    "phone": "",
+                    "email": "",
+                    "work_phone": "",
+                    "cell_phone": "",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                unchanged_member = member_repository.get_member(connection, member.id)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Choose a valid membership.", response.get_data(as_text=True))
+        self.assertIsNotNone(unchanged_member)
+        assert unchanged_member is not None
+        self.assertEqual(unchanged_member.membership, "Visitor")
+
     def test_member_detail_shows_audit_log_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"

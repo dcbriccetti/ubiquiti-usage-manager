@@ -43,7 +43,15 @@
       ] %}
         <label>
           {{ label }}
-          <input type="{{ input_type }}" name="{{ field }}" value="{{ member|attr(field) or '' }}">
+          {% if field == 'membership' %}
+            <select name="membership" required>
+              {% for option in membership_options %}
+                <option value="{{ option }}" {% if member.membership == option %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
+          {% else %}
+            <input type="{{ input_type }}" name="{{ field }}" value="{{ member|attr(field) or '' }}">
+          {% endif %}
         </label>
       {% endfor %}
       <button type="submit">Save Changes</button>

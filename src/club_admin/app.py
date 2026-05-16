@@ -60,6 +60,12 @@ EDITABLE_MEMBER_FIELDS = (
     "work_phone",
     "cell_phone",
 )
+MEMBERSHIP_OPTIONS = (
+    "AANR Member",
+    "Associate Member",
+    "Full Member",
+    "Visitor",
+)
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 DRIVER_LICENSE_DOCUMENT_NAME = "Driver License.jpg"
 DRIVER_LICENSE_IMAGE_SIZE = (2026, 1152)
@@ -1265,6 +1271,8 @@ def create_app(db_path: Path | None = None) -> Flask:
                     abort(400, "First and last name are required.")
                 if not updated_member.card_number or not updated_member.membership:
                     abort(400, "Card number and membership are required.")
+                if updated_member.membership not in MEMBERSHIP_OPTIONS:
+                    abort(400, "Choose a valid membership.")
 
                 member_repository.update_member(connection, updated_member)
                 for field_name in EDITABLE_MEMBER_FIELDS:
@@ -1283,7 +1291,11 @@ def create_app(db_path: Path | None = None) -> Flask:
                 connection.commit()
                 return redirect(url_for("member_detail", member_id=member_id))
 
-        return render_template("club_admin/member_edit.html", member=member)
+        return render_template(
+            "club_admin/member_edit.html",
+            member=member,
+            membership_options=MEMBERSHIP_OPTIONS,
+        )
 
     @flask_app.route("/checkins/report")
     @require_admin
