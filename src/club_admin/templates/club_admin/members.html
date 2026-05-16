@@ -20,24 +20,9 @@
           <a href="{{ url_for('members_map') }}">Map</a>
           <a href="{{ url_for('documents_report') }}">Documents</a>
           <a href="{{ url_for('checkins_report') }}">Check-ins</a>
+          <a href="{{ url_for('imports') }}">Imports</a>
           <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
         </nav>
-        <div class="import-actions">
-          <form class="import-form" action="{{ url_for('import_members') }}" method="post" enctype="multipart/form-data">
-            <label class="file-field">
-              <span>Users CSV</span>
-              <input type="file" name="members_csv" accept=".csv,text/csv" required>
-            </label>
-            <button type="submit">Import Users</button>
-          </form>
-          <form class="import-form" action="{{ url_for('import_checkins') }}" method="post" enctype="multipart/form-data">
-            <label class="file-field">
-              <span>Check-ins CSV</span>
-              <input type="file" name="checkins_csv" accept=".csv,text/csv" required>
-            </label>
-            <button type="submit">Import Check-ins</button>
-          </form>
-        </div>
       </div>
     </header>
 

@@ -963,6 +963,11 @@ def create_app(db_path: Path | None = None) -> Flask:
         ]
         return render_template("club_admin/members.html", members=roster)
 
+    @flask_app.route("/imports")
+    @require_admin
+    def imports():
+        return render_template("club_admin/imports.html")
+
     @flask_app.route("/members/map")
     @require_admin
     def members_map():

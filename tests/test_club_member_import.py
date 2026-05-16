@@ -260,6 +260,25 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Self Check-in", response.get_data(as_text=True))
 
+    def test_import_forms_live_on_dedicated_admin_page(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+
+            members_response = client.get("/members")
+            imports_response = client.get("/imports")
+
+        self.assertEqual(members_response.status_code, 200)
+        members_body = members_response.get_data(as_text=True)
+        self.assertIn("Imports", members_body)
+        self.assertNotIn('name="members_csv"', members_body)
+        self.assertNotIn('name="checkins_csv"', members_body)
+        self.assertEqual(imports_response.status_code, 200)
+        imports_body = imports_response.get_data(as_text=True)
+        self.assertIn('name="members_csv"', imports_body)
+        self.assertIn('name="checkins_csv"', imports_body)
+
     def test_guest_registration_creates_visitor_user_without_admin_login(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -452,9 +471,10 @@ class ClubMemberImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn('class="page-header users-header"', body)
         self.assertIn('class="nav-links users-nav"', body)
-        self.assertIn('class="file-field"', body)
-        self.assertIn("Users CSV", body)
-        self.assertIn("Check-ins CSV", body)
+        self.assertIn('href="/imports"', body)
+        self.assertNotIn('class="file-field"', body)
+        self.assertNotIn("Users CSV", body)
+        self.assertNotIn("Check-ins CSV", body)
         self.assertIn("Nickname", body)
         self.assertIn("Johnny", body)
         self.assertIn("123 Main St", body)

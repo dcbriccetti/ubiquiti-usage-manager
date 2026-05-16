@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Imports</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page narrow">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Imports</h1>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('guest_registrations') }}">Guests</a>
+        <a href="{{ url_for('members_map') }}">Map</a>
+        <a href="{{ url_for('documents_report') }}">Documents</a>
+        <a href="{{ url_for('checkins_report') }}">Check-ins</a>
+        <a class="active" href="{{ url_for('imports') }}" aria-current="page">Imports</a>
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+      </nav>
+    </header>
+
+    <section class="imports-panel" aria-label="CSV imports">
+      <form class="import-form stacked-import-form" action="{{ url_for('import_members') }}" method="post" enctype="multipart/form-data">
+        <label class="file-field">
+          <span>Users CSV</span>
+          <input type="file" name="members_csv" accept=".csv,text/csv" required>
+        </label>
+        <button type="submit">Import Users</button>
+      </form>
+      <form class="import-form stacked-import-form" action="{{ url_for('import_checkins') }}" method="post" enctype="multipart/form-data">
+        <label class="file-field">
+          <span>Check-ins CSV</span>
+          <input type="file" name="checkins_csv" accept=".csv,text/csv" required>
+        </label>
+        <button type="submit">Import Check-ins</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

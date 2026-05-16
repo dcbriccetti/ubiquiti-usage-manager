@@ -32,8 +32,8 @@ body {
 .users-header {
   align-items: start;
   display: grid;
-  gap: 28px;
-  grid-template-columns: minmax(180px, 0.8fr) minmax(640px, 1.2fr);
+  gap: 24px;
+  grid-template-columns: minmax(180px, 1fr) auto;
   margin-bottom: 22px;
 }
 
@@ -67,36 +67,10 @@ h1 {
   gap: 10px;
 }
 
-.users-page .import-actions {
-  align-items: stretch;
-  gap: 10px;
-  max-width: none;
-  width: 100%;
-}
-
-.users-page .import-form {
-  align-items: center;
-  display: grid;
-  gap: 14px;
-  grid-template-columns: minmax(360px, 1fr) minmax(150px, auto);
-}
-
 .users-toolbar {
-  background: #fff;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgb(16 24 40 / 6%);
-  display: grid;
-  gap: 12px;
+  display: flex;
   justify-self: end;
-  max-width: 780px;
-  padding: 12px;
-  width: 100%;
-}
-
-.users-page .import-form button {
-  min-height: 42px;
-  min-width: 150px;
+  padding-top: 8px;
 }
 
 .file-field {
@@ -143,6 +117,25 @@ h1 {
   padding: 14px;
 }
 
+.imports-panel {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.stacked-import-form {
+  align-items: center;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 1fr) minmax(150px, auto);
+}
+
+.stacked-import-form button {
+  min-height: 42px;
+}
+
 .nav-stack,
 .nav-links {
   align-items: flex-end;
@@ -160,10 +153,8 @@ h1 {
 }
 
 .users-page .nav-links {
-  border-bottom: 1px solid #e2e8f0;
   gap: 0;
   justify-content: flex-end;
-  padding-bottom: 10px;
 }
 
 .users-nav a {
@@ -302,7 +293,7 @@ th {
     max-width: none;
   }
 
-  .users-page .import-form {
+  .stacked-import-form {
     grid-template-columns: 1fr;
   }
 
