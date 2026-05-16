@@ -29,7 +29,7 @@ from flask import (
     session,
     url_for,
 )
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
 from werkzeug.security import check_password_hash
 
 import config as cfg
@@ -63,6 +63,7 @@ EDITABLE_MEMBER_FIELDS = (
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 DRIVER_LICENSE_DOCUMENT_NAME = "Driver License.jpg"
 DRIVER_LICENSE_IMAGE_SIZE = (1013, 576)
+DRIVER_LICENSE_CROP_THRESHOLD = 24
 ID_DOCUMENT_NAME_PATTERN = re.compile(
     r"^(?:drivers?\s+license|drivers?\s+licence|dl|id|identification)(?:\b|[_\-\s])",
     re.IGNORECASE,
@@ -380,25 +381,64 @@ def _id_document_storage_path(member: Member, documents_dir: str) -> Path | None
     return resolved_card_dir / DRIVER_LICENSE_DOCUMENT_NAME
 
 
+def _image_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
+    rgb_image = image.convert("RGB")
+    white_background = Image.new("RGB", rgb_image.size, "WHITE")
+    difference = ImageChops.difference(rgb_image, white_background).convert("L")
+    mask = difference.point(
+        lambda value: 255 if value > DRIVER_LICENSE_CROP_THRESHOLD else 0
+    )
+    bbox = mask.getbbox()
+    if bbox is None:
+        return None
+
+    left, top, right, bottom = bbox
+    horizontal_padding = max(12, int((right - left) * 0.04))
+    vertical_padding = max(12, int((bottom - top) * 0.04))
+    return (
+        max(0, left - horizontal_padding),
+        max(0, top - vertical_padding),
+        min(image.width, right + horizontal_padding),
+        min(image.height, bottom + vertical_padding),
+    )
+
+
+def _prepare_driver_license_image(image: Image.Image) -> Image.Image:
+    normalized = ImageOps.exif_transpose(image)
+    if normalized.mode not in {"RGB", "L"}:
+        normalized = normalized.convert("RGBA")
+        background = Image.new("RGBA", normalized.size, "WHITE")
+        background.alpha_composite(normalized)
+        normalized = background.convert("RGB")
+    else:
+        normalized = normalized.convert("RGB")
+
+    content_bbox = _image_content_bbox(normalized)
+    if content_bbox is not None:
+        normalized = normalized.crop(content_bbox)
+
+    contained = ImageOps.contain(
+        normalized,
+        DRIVER_LICENSE_IMAGE_SIZE,
+        method=Image.Resampling.LANCZOS,
+    )
+    canvas = Image.new("RGB", DRIVER_LICENSE_IMAGE_SIZE, "WHITE")
+    canvas.paste(
+        contained,
+        (
+            (DRIVER_LICENSE_IMAGE_SIZE[0] - contained.width) // 2,
+            (DRIVER_LICENSE_IMAGE_SIZE[1] - contained.height) // 2,
+        ),
+    )
+    return canvas
+
+
 def _save_driver_license_image(uploaded_file: Any, destination_path: Path) -> None:
     try:
         with Image.open(uploaded_file.stream) as image:
-            normalized = ImageOps.exif_transpose(image)
-            if normalized.mode not in {"RGB", "L"}:
-                normalized = normalized.convert("RGBA")
-                background = Image.new("RGBA", normalized.size, "WHITE")
-                background.alpha_composite(normalized)
-                normalized = background.convert("RGB")
-            else:
-                normalized = normalized.convert("RGB")
-            fitted = ImageOps.fit(
-                normalized,
-                DRIVER_LICENSE_IMAGE_SIZE,
-                method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.5),
-            )
+            prepared = _prepare_driver_license_image(image)
             destination_path.parent.mkdir(parents=True, exist_ok=True)
-            fitted.save(destination_path, format="JPEG", quality=92, optimize=True)
+            prepared.save(destination_path, format="JPEG", quality=92, optimize=True)
     except (OSError, UnidentifiedImageError) as error:
         abort(400, f"Could not read that image: {error}")
 

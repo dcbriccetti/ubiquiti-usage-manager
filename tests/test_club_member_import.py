@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageStat
 from werkzeug.security import generate_password_hash
 
 
@@ -1187,3 +1187,51 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Friend", form_body)
         self.assertNotIn(str(definition_path), form_body)
         self.assertNotIn(str(documents_dir), form_body)
+
+    def test_driver_license_upload_preserves_off_center_image_content(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "club-users.db"
+            documents_dir = temp_path / "documents"
+            documents_dir.mkdir()
+            flask_app = create_admin_app(db_path, documents_dir=str(documents_dir))
+            visitor_client = flask_app.test_client()
+            visitor_client.post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "cell_phone": "510-510-5100",
+                },
+            )
+            with closing(database.connect(db_path)) as connection:
+                record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+
+            upload_image = Image.new("RGB", (2000, 1200), "white")
+            draw = ImageDraw.Draw(upload_image)
+            draw.rectangle((40, 40, 700, 420), fill=(30, 90, 180))
+            draw.rectangle((90, 110, 650, 180), fill=(245, 245, 245))
+            draw.rectangle((90, 240, 460, 300), fill=(245, 245, 245))
+            upload_buffer = io.BytesIO()
+            upload_image.save(upload_buffer, format="PNG")
+            upload_buffer.seek(0)
+
+            response = admin_client(flask_app).post(
+                f"/guest-registrations/{record.registration.id}/driver-license",
+                data={"driver_license": (upload_buffer, "scan.png")},
+                content_type="multipart/form-data",
+            )
+
+            saved_license_path = (
+                documents_dir / record.member.card_number / "Driver License.jpg"
+            )
+            with Image.open(saved_license_path) as saved_license_image:
+                saved_size = saved_license_image.size
+                grayscale = saved_license_image.convert("L")
+                stats = ImageStat.Stat(grayscale)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(saved_size, (1013, 576))
+        self.assertLess(stats.mean[0], 245)
