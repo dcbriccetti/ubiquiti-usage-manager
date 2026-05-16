@@ -54,6 +54,53 @@
           {% endif %}
         </label>
       {% endfor %}
+      <section class="edit-checkins-section" aria-labelledby="edit-checkins-title">
+        <div class="edit-section-heading">
+          <h2 id="edit-checkins-title">Check-ins</h2>
+        </div>
+        <div class="table-scroll">
+          <table class="checkin-edit-table">
+            <thead>
+              <tr>
+                <th scope="col">Date and Time</th>
+                <th scope="col">Delete</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for checkin in checkins %}
+                <tr>
+                  <td>
+                    <label>
+                      <span class="visually-hidden">Check-in date and time</span>
+                      <input
+                        type="datetime-local"
+                        name="checkin_{{ checkin.id }}_check_in_at"
+                        value="{{ checkin.check_in_at.strftime('%Y-%m-%dT%H:%M:%S') }}"
+                        step="1"
+                        required
+                      >
+                    </label>
+                  </td>
+                  <td>
+                    <label class="checkbox-field">
+                      <input type="checkbox" name="delete_checkin_{{ checkin.id }}" value="1">
+                      Remove
+                    </label>
+                  </td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="2" class="empty">No check-ins recorded for this user.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <label class="new-checkin-field">
+          Add Check-in
+          <input type="datetime-local" name="new_checkin_at" step="1">
+        </label>
+      </section>
       <button type="submit">Save Changes</button>
     </form>
   </main>

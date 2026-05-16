@@ -129,6 +129,57 @@ def upsert_checkin(connection: sqlite3.Connection, checkin: CheckIn) -> None:
     )
 
 
+def update_checkin_for_user(connection: sqlite3.Connection, checkin: CheckIn) -> None:
+    '''Update one existing check-in row for the owning user.'''
+    if checkin.id is None or checkin.user_id is None:
+        raise ValueError("Check-in id and user id are required to update a check-in.")
+
+    result = connection.execute(
+        """
+        UPDATE checkins
+        SET
+            member_id = ?,
+            last_name = ?,
+            first_name = ?,
+            card_number = ?,
+            check_in_at = ?,
+            check_out_at = ?,
+            total_checkins = ?,
+            duration = ?,
+            membership = ?
+        WHERE id = ? AND user_id = ?
+        """,
+        (
+            checkin.member_id,
+            checkin.last_name.strip(),
+            checkin.first_name.strip(),
+            checkin.card_number.strip(),
+            _datetime_to_text(checkin.check_in_at),
+            _datetime_to_text(checkin.check_out_at),
+            checkin.total_checkins,
+            checkin.duration,
+            checkin.membership.strip(),
+            checkin.id,
+            checkin.user_id,
+        ),
+    )
+    if result.rowcount != 1:
+        raise ValueError("Check-in was not found for this user.")
+
+
+def delete_checkin_for_user(
+    connection: sqlite3.Connection,
+    *,
+    checkin_id: int,
+    user_id: int,
+) -> None:
+    '''Delete one check-in row for the owning user.'''
+    connection.execute(
+        "DELETE FROM checkins WHERE id = ? AND user_id = ?",
+        (checkin_id, user_id),
+    )
+
+
 def list_checkins(connection: sqlite3.Connection) -> list[CheckIn]:
     '''Return check-ins, newest first.'''
     rows = connection.execute(

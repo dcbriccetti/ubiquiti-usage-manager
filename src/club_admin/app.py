@@ -179,6 +179,10 @@ class GuestRegistrationFormError(ValueError):
     '''Raised when a visitor registration submission cannot be accepted.'''
 
 
+class CheckInFormError(ValueError):
+    '''Raised when admin-edited check-ins cannot be accepted.'''
+
+
 def _member_from_form(member_id: int, form_data: Any) -> Member:
     return Member(
         id=member_id,
@@ -196,6 +200,48 @@ def _member_from_form(member_id: int, form_data: Any) -> Member:
         email=form_data.get("email", "").strip() or None,
         work_phone=form_data.get("work_phone", "").strip() or None,
         cell_phone=form_data.get("cell_phone", "").strip() or None,
+    )
+
+
+def _parse_checkin_datetime(value: str, *, required: bool) -> datetime | None:
+    stripped_value = value.strip()
+    if not stripped_value:
+        if required:
+            raise CheckInFormError("Check-in date and time are required.")
+        return None
+    try:
+        parsed_value = datetime.fromisoformat(stripped_value)
+    except ValueError as error:
+        raise CheckInFormError("Enter a valid check-in date and time.") from error
+    return parsed_value.replace(microsecond=0)
+
+
+def _member_id_for_manual_checkin(member: Member, checkins: list[CheckIn]) -> str:
+    for checkin in checkins:
+        if checkin.member_id:
+            return checkin.member_id
+    return member.card_number
+
+
+def _checkin_for_member(
+    member: Member,
+    *,
+    check_in_at: datetime,
+    member_id: str,
+    existing_checkin: CheckIn | None = None,
+) -> CheckIn:
+    return CheckIn(
+        id=existing_checkin.id if existing_checkin else None,
+        user_id=member.id,
+        member_id=member_id,
+        last_name=member.last_name,
+        first_name=member.first_name,
+        card_number=member.card_number,
+        check_in_at=check_in_at,
+        check_out_at=existing_checkin.check_out_at if existing_checkin else None,
+        total_checkins=existing_checkin.total_checkins if existing_checkin else None,
+        duration=existing_checkin.duration if existing_checkin else None,
+        membership=member.membership,
     )
 
 
@@ -1263,6 +1309,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             member = member_repository.get_member(connection, member_id)
             if member is None:
                 abort(404)
+            checkins = checkin_repository.list_checkins_for_user(connection, member_id)
 
             if request.method == "POST":
                 updated_member = _member_from_form(member_id, request.form)
@@ -1274,26 +1321,86 @@ def create_app(db_path: Path | None = None) -> Flask:
                 if updated_member.membership not in MEMBERSHIP_OPTIONS:
                     abort(400, "Choose a valid membership.")
 
-                member_repository.update_member(connection, updated_member)
-                for field_name in EDITABLE_MEMBER_FIELDS:
-                    old_value = getattr(member, field_name)
-                    new_value = getattr(updated_member, field_name)
-                    if old_value != new_value:
-                        audit_repository.record_field_change(
-                            connection,
-                            entity_type="user",
-                            entity_id=member_id,
-                            action="edit",
-                            field_name=field_name,
-                            old_value=old_value,
-                            new_value=new_value,
+                try:
+                    edited_checkins = []
+                    deleted_checkin_ids = set()
+                    for checkin in checkins:
+                        if checkin.id is None:
+                            continue
+                        if request.form.get(f"delete_checkin_{checkin.id}") == "1":
+                            deleted_checkin_ids.add(checkin.id)
+                            continue
+
+                        check_in_at = _parse_checkin_datetime(
+                            request.form.get(f"checkin_{checkin.id}_check_in_at", ""),
+                            required=True,
                         )
-                connection.commit()
+                        assert check_in_at is not None
+                        edited_checkins.append(
+                            _checkin_for_member(
+                                updated_member,
+                                check_in_at=check_in_at,
+                                member_id=checkin.member_id or updated_member.card_number,
+                                existing_checkin=checkin,
+                            )
+                        )
+
+                    new_check_in_at = _parse_checkin_datetime(
+                        request.form.get("new_checkin_at", ""),
+                        required=False,
+                    )
+                    new_checkin = (
+                        _checkin_for_member(
+                            updated_member,
+                            check_in_at=new_check_in_at,
+                            member_id=_member_id_for_manual_checkin(updated_member, checkins),
+                        )
+                        if new_check_in_at is not None
+                        else None
+                    )
+
+                    member_repository.update_member(connection, updated_member)
+                    for checkin_id in deleted_checkin_ids:
+                        checkin_repository.delete_checkin_for_user(
+                            connection,
+                            checkin_id=checkin_id,
+                            user_id=member_id,
+                        )
+                    for edited_checkin in edited_checkins:
+                        checkin_repository.update_checkin_for_user(connection, edited_checkin)
+                    if new_checkin is not None:
+                        checkin_repository.upsert_checkin(connection, new_checkin)
+
+                    for field_name in EDITABLE_MEMBER_FIELDS:
+                        old_value = getattr(member, field_name)
+                        new_value = getattr(updated_member, field_name)
+                        if old_value != new_value:
+                            audit_repository.record_field_change(
+                                connection,
+                                entity_type="user",
+                                entity_id=member_id,
+                                action="edit",
+                                field_name=field_name,
+                                old_value=old_value,
+                                new_value=new_value,
+                            )
+                    connection.commit()
+                except CheckInFormError as error:
+                    abort(400, str(error))
+                except sqlite3.IntegrityError as error:
+                    connection.rollback()
+                    error_message = str(error)
+                    if "checkins" in error_message:
+                        abort(400, "A check-in already exists for that date and time.")
+                    if "users.card_number" in error_message:
+                        abort(400, "Another user already has that card number.")
+                    abort(400, "Could not save the user or check-ins.")
                 return redirect(url_for("member_detail", member_id=member_id))
 
         return render_template(
             "club_admin/member_edit.html",
             member=member,
+            checkins=checkins,
             membership_options=MEMBERSHIP_OPTIONS,
         )
 

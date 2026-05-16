@@ -1202,6 +1202,152 @@ class ClubMemberImportTests(unittest.TestCase):
         assert unchanged_member is not None
         self.assertEqual(unchanged_member.membership, "Visitor")
 
+    def test_edit_member_renders_checkin_editor(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                checkin_repository.upsert_checkin(
+                    connection,
+                    CheckIn(
+                        member_id="880",
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        check_in_at=datetime(2026, 5, 3, 15, 59, 20),
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                checkin = checkin_repository.list_checkins_for_user(connection, member.id)[0]
+
+            response = client.get(f"/members/{member.id}/edit")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Check-ins", body)
+        self.assertIn(f'name="checkin_{checkin.id}_check_in_at"', body)
+        self.assertIn('value="2026-05-03T15:59:20"', body)
+        self.assertIn(f'name="delete_checkin_{checkin.id}"', body)
+        self.assertIn('name="new_checkin_at"', body)
+
+    def test_edit_member_can_modify_add_and_delete_checkins(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                for check_in_at in (
+                    datetime(2026, 5, 1, 9, 0, 0),
+                    datetime(2026, 5, 3, 15, 59, 20),
+                ):
+                    checkin_repository.upsert_checkin(
+                        connection,
+                        CheckIn(
+                            member_id="880",
+                            last_name="Doe",
+                            first_name="John",
+                            card_number="123",
+                            check_in_at=check_in_at,
+                            membership="Visitor",
+                        ),
+                    )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                checkins = checkin_repository.list_checkins_for_user(connection, member.id)
+                deleted_checkin = checkins[0]
+                edited_checkin = checkins[1]
+
+            response = client.post(
+                f"/members/{member.id}/edit",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "nickname": "",
+                    "card_number": "123",
+                    "membership": "Full Member",
+                    "address": "",
+                    "address2": "",
+                    "city": "",
+                    "state": "",
+                    "zip": "",
+                    "phone": "",
+                    "email": "",
+                    "work_phone": "",
+                    "cell_phone": "",
+                    f"checkin_{deleted_checkin.id}_check_in_at": "2026-05-03T15:59:20",
+                    f"delete_checkin_{deleted_checkin.id}": "1",
+                    f"checkin_{edited_checkin.id}_check_in_at": "2026-05-02T10:30:00",
+                    "new_checkin_at": "2026-05-04T18:45:00",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                saved_member = member_repository.get_member(connection, member.id)
+                saved_checkins = checkin_repository.list_checkins_for_user(connection, member.id)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNotNone(saved_member)
+        assert saved_member is not None
+        self.assertEqual(saved_member.membership, "Full Member")
+        self.assertEqual(
+            {checkin.check_in_at for checkin in saved_checkins},
+            {
+                datetime(2026, 5, 2, 10, 30, 0),
+                datetime(2026, 5, 4, 18, 45, 0),
+            },
+        )
+        self.assertEqual({checkin.membership for checkin in saved_checkins}, {"Full Member"})
+        self.assertEqual({checkin.member_id for checkin in saved_checkins}, {"880"})
+
+    def test_edit_member_rejects_bad_checkin_datetime(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                checkin_repository.upsert_checkin(
+                    connection,
+                    CheckIn(
+                        member_id="880",
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        check_in_at=datetime(2026, 5, 1, 9, 0, 0),
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                checkin = checkin_repository.list_checkins_for_user(connection, member.id)[0]
+
+            response = client.post(
+                f"/members/{member.id}/edit",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "nickname": "",
+                    "card_number": "123",
+                    "membership": "Visitor",
+                    "address": "",
+                    "address2": "",
+                    "city": "",
+                    "state": "",
+                    "zip": "",
+                    "phone": "",
+                    "email": "",
+                    "work_phone": "",
+                    "cell_phone": "",
+                    f"checkin_{checkin.id}_check_in_at": "not a date",
+                    "new_checkin_at": "",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Enter a valid check-in date and time.", response.get_data(as_text=True))
+
     def test_member_detail_shows_audit_log_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
