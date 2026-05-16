@@ -361,7 +361,51 @@ class ClubMemberImportTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("Phone or email is required.", response.get_data(as_text=True))
+        body = response.get_data(as_text=True)
+        self.assertIn("Phone or email is required.", body)
+        self.assertIn("Guest Registration", body)
+        self.assertIn('value="Doe"', body)
+        self.assertIn('value="John"', body)
+
+    def test_guest_registration_missing_name_rerenders_form(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "first_name": "John",
+                    "email": "john@example.test",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.get_data(as_text=True)
+        self.assertIn("First and last name are required.", body)
+        self.assertIn('value="John"', body)
+        self.assertIn('value="john@example.test"', body)
+
+    def test_guest_registration_bad_visit_date_rerenders_form(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "visit_date": "May 14",
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "email": "john@example.test",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.get_data(as_text=True)
+        self.assertIn("Visit date must use YYYY-MM-DD.", body)
+        self.assertIn('value="May 14"', body)
+        self.assertIn('value="Doe"', body)
 
     def test_club_app_imports_csv_into_configured_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

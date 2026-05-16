@@ -168,6 +168,10 @@ class DocumentsScanReport:
     non_folder_entries: tuple[str, ...]
 
 
+class GuestRegistrationFormError(ValueError):
+    '''Raised when a visitor registration submission cannot be accepted.'''
+
+
 def _member_from_form(member_id: int, form_data: Any) -> Member:
     return Member(
         id=member_id,
@@ -212,7 +216,15 @@ def _parse_visitor_visit_date(form_data: Any) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError:
-        abort(400, "Visit date must use YYYY-MM-DD.")
+        raise GuestRegistrationFormError("Visit date must use YYYY-MM-DD.")
+
+
+def _guest_registration_validation_message(member: Member) -> str | None:
+    if not member.first_name or not member.last_name:
+        return "First and last name are required."
+    if not member.cell_phone and not member.phone and not member.email:
+        return "Phone or email is required."
+    return None
 
 
 def _guest_registration_from_form(
@@ -926,17 +938,32 @@ def create_app(db_path: Path | None = None) -> Flask:
     @flask_app.route("/guest-registration", methods=["GET", "POST"])
     def guest_registration():
         if request.method == "POST":
+            try:
+                member, registration = _guest_registration_from_form(
+                    request.form,
+                    card_number="",
+                )
+            except GuestRegistrationFormError as exc:
+                return render_template(
+                    "club_admin/guest_registration.html",
+                    today=date.today(),
+                    message=str(exc),
+                    form_data=request.form,
+                ), 400
+
+            validation_message = _guest_registration_validation_message(member)
+            if validation_message is not None:
+                return render_template(
+                    "club_admin/guest_registration.html",
+                    today=date.today(),
+                    message=validation_message,
+                    form_data=request.form,
+                ), 400
+
             with open_connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 card_number = _generate_guest_card_number(connection)
-                member, registration = _guest_registration_from_form(
-                    request.form,
-                    card_number=card_number,
-                )
-                if not member.first_name or not member.last_name:
-                    abort(400, "First and last name are required.")
-                if not member.cell_phone and not member.phone and not member.email:
-                    abort(400, "Phone or email is required.")
+                member = replace(member, card_number=card_number)
 
                 member_id = member_repository.insert_member(connection, member)
                 guest_registration_repository.insert_guest_registration(
@@ -949,6 +976,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         return render_template(
             "club_admin/guest_registration.html",
             today=date.today(),
+            form_data={},
         )
 
     @flask_app.route("/guest-registration/thanks")
