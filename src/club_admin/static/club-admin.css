@@ -770,8 +770,9 @@ th {
 }
 
 .form-line {
-  border-bottom: 1px solid #6b7280;
-  min-height: 33px;
+  display: flex;
+  flex-direction: column;
+  min-height: 38px;
 }
 
 .form-line span,
@@ -791,6 +792,16 @@ th {
   font-weight: 500;
   min-height: 20px;
   overflow-wrap: anywhere;
+}
+
+.form-line span {
+  order: 2;
+}
+
+.form-line strong {
+  border-bottom: 1px solid #6b7280;
+  order: 1;
+  padding-bottom: 2px;
 }
 
 .span-2 { grid-column: span 2; }
