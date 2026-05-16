@@ -263,6 +263,25 @@ def _checkin_for_member(
     )
 
 
+def _record_checkin_change(
+    connection: sqlite3.Connection,
+    *,
+    member_id: int,
+    field_name: str,
+    old_value: datetime | None,
+    new_value: datetime | None,
+) -> None:
+    audit_repository.record_field_change(
+        connection,
+        entity_type="user",
+        entity_id=member_id,
+        action="edit",
+        field_name=field_name,
+        old_value=old_value,
+        new_value=new_value,
+    )
+
+
 def _visitor_text_or_none(form_data: Any, field_name: str) -> str | None:
     return form_data.get(field_name, "").strip() or None
 
@@ -1382,15 +1401,43 @@ def create_app(db_path: Path | None = None) -> Flask:
 
                     member_repository.update_member(connection, updated_member)
                     for checkin_id in deleted_checkin_ids:
+                        deleted_checkin = next(
+                            checkin for checkin in checkins if checkin.id == checkin_id
+                        )
                         checkin_repository.delete_checkin_for_user(
                             connection,
                             checkin_id=checkin_id,
                             user_id=member_id,
                         )
+                        _record_checkin_change(
+                            connection,
+                            member_id=member_id,
+                            field_name="check-in deleted",
+                            old_value=deleted_checkin.check_in_at,
+                            new_value=None,
+                        )
                     for edited_checkin in edited_checkins:
                         checkin_repository.update_checkin_for_user(connection, edited_checkin)
+                        original_checkin = next(
+                            checkin for checkin in checkins if checkin.id == edited_checkin.id
+                        )
+                        if original_checkin.check_in_at != edited_checkin.check_in_at:
+                            _record_checkin_change(
+                                connection,
+                                member_id=member_id,
+                                field_name="check-in edited",
+                                old_value=original_checkin.check_in_at,
+                                new_value=edited_checkin.check_in_at,
+                            )
                     if new_checkin is not None:
                         checkin_repository.upsert_checkin(connection, new_checkin)
+                        _record_checkin_change(
+                            connection,
+                            member_id=member_id,
+                            field_name="check-in added",
+                            old_value=None,
+                            new_value=new_checkin.check_in_at,
+                        )
 
                     for field_name in EDITABLE_MEMBER_FIELDS:
                         old_value = getattr(member, field_name)

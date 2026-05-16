@@ -1339,6 +1339,13 @@ class ClubMemberImportTests(unittest.TestCase):
             with closing(database.connect(db_path)) as connection:
                 saved_member = member_repository.get_member(connection, member.id)
                 saved_checkins = checkin_repository.list_checkins_for_user(connection, member.id)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+            detail_response = client.get(f"/members/{member.id}")
 
         self.assertEqual(response.status_code, 302)
         self.assertIsNotNone(saved_member)
@@ -1353,6 +1360,24 @@ class ClubMemberImportTests(unittest.TestCase):
         )
         self.assertEqual({checkin.membership for checkin in saved_checkins}, {"Full Member"})
         self.assertEqual({checkin.member_id for checkin in saved_checkins}, {"880"})
+        checkin_audit = {
+            entry.field_name: (entry.old_value, entry.new_value)
+            for entry in audit_entries
+            if entry.field_name.startswith("check-in ")
+        }
+        self.assertEqual(
+            checkin_audit,
+            {
+                "check-in deleted": ("2026-05-03 15:59:20", None),
+                "check-in edited": ("2026-05-01 09:00:00", "2026-05-02 10:30:00"),
+                "check-in added": (None, "2026-05-04 18:45:00"),
+            },
+        )
+        self.assertEqual(detail_response.status_code, 200)
+        detail_body = detail_response.get_data(as_text=True)
+        self.assertIn("check-in deleted", detail_body)
+        self.assertIn("check-in edited", detail_body)
+        self.assertIn("check-in added", detail_body)
 
     def test_edit_member_rejects_bad_checkin_datetime(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
