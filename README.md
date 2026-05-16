@@ -39,6 +39,9 @@ By default the club app stores users in `data/club_users.db`. Override that
 with `CLUB_ADMIN_DB_PATH=/path/to/club_users.db` when needed.
 Set `USER_MANAGEMENT_ORGANIZATION_NAME` in `src/config_local.py` to change the visible
 `<org name> User Management` title shown across club pages.
+When deploying behind the same Nginx server as the LAN app, set
+`USER_MANAGEMENT_URL_PREFIX = '/users'` so user-management links and static
+assets stay under `/users/...`.
 Self check-in is public. User lists, details, reports, imports, and edits
 require admin login. Set `USER_MANAGEMENT_ADMIN_PASSWORD_HASH` in ignored
 `src/config_local.py`; the app fails closed for admin pages when no hash is

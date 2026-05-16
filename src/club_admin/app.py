@@ -86,6 +86,31 @@ CODE128_PATTERNS = (
 )
 
 
+def _normalize_url_prefix(prefix: object) -> str:
+    normalized = str(prefix or "").strip()
+    if not normalized or normalized == "/":
+        return ""
+    return "/" + normalized.strip("/")
+
+
+class UrlPrefixMiddleware:
+    '''Mount this app under a reverse-proxy path prefix.'''
+
+    def __init__(self, app: Any, prefix: str) -> None:
+        self.app = app
+        self.prefix = prefix
+
+    def __call__(self, environ: dict[str, Any], start_response: Any) -> Any:
+        path = str(environ.get("PATH_INFO") or "")
+        if path == self.prefix:
+            environ["SCRIPT_NAME"] = self.prefix
+            environ["PATH_INFO"] = "/"
+        elif path.startswith(f"{self.prefix}/"):
+            environ["SCRIPT_NAME"] = self.prefix
+            environ["PATH_INFO"] = path[len(self.prefix) :] or "/"
+        return self.app(environ, start_response)
+
+
 @dataclass(frozen=True, kw_only=True)
 class DocumentFilenamePattern:
     pattern: str
@@ -859,13 +884,21 @@ def create_app(db_path: Path | None = None) -> Flask:
         or os.getenv("USER_MANAGEMENT_SESSION_SECRET", "").strip()
         or token_hex(32)
     )
+    url_prefix = _normalize_url_prefix(
+        os.getenv("USER_MANAGEMENT_URL_PREFIX")
+        or getattr(cfg, "USER_MANAGEMENT_URL_PREFIX", "")
+    )
+    flask_app.config["USER_MANAGEMENT_URL_PREFIX"] = url_prefix
+    if url_prefix:
+        flask_app.wsgi_app = UrlPrefixMiddleware(flask_app.wsgi_app, url_prefix)
 
     def require_admin(view):
         @wraps(view)
         def wrapped(*args, **kwargs):
             if session.get("user_management_admin_authenticated") is True:
                 return view(*args, **kwargs)
-            return redirect(url_for("admin_login", next=request.full_path.rstrip("?")))
+            next_url = f"{request.script_root}{request.full_path}".rstrip("?")
+            return redirect(url_for("admin_login", next=next_url))
 
         return wrapped
 
