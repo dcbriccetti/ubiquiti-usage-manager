@@ -62,7 +62,7 @@ EDITABLE_MEMBER_FIELDS = (
 )
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 DRIVER_LICENSE_DOCUMENT_NAME = "Driver License.jpg"
-DRIVER_LICENSE_IMAGE_SIZE = (1013, 576)
+DRIVER_LICENSE_IMAGE_SIZE = (2026, 1152)
 DRIVER_LICENSE_CROP_THRESHOLD = 24
 ID_DOCUMENT_NAME_PATTERN = re.compile(
     r"^(?:drivers?\s+license|drivers?\s+licence|dl|id|identification)(?:\b|[_\-\s])",

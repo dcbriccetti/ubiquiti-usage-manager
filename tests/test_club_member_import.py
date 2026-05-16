@@ -1161,7 +1161,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 saved_license_size = saved_license_image.size
 
         self.assertEqual(upload_response.status_code, 302)
-        self.assertEqual(saved_license_size, (1013, 576))
+        self.assertEqual(saved_license_size, (2026, 1152))
         self.assertEqual(queue_response.status_code, 200)
         self.assertIn("Guest Registrations", queue_body)
         self.assertIn("Print Form", queue_body)
@@ -1236,9 +1236,9 @@ class ClubMemberImportTests(unittest.TestCase):
                 stats = ImageStat.Stat(grayscale)
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(saved_size, (1013, 576))
+        self.assertEqual(saved_size, (2026, 1152))
         self.assertIsNotNone(content_bbox)
         assert content_bbox is not None
-        self.assertGreater(content_bbox[2] - content_bbox[0], 800)
-        self.assertGreater(content_bbox[3] - content_bbox[1], 450)
+        self.assertGreater(content_bbox[2] - content_bbox[0], 1600)
+        self.assertGreater(content_bbox[3] - content_bbox[1], 900)
         self.assertLess(stats.mean[0], 245)
