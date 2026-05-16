@@ -21,6 +21,14 @@ HEADER_MAP = {
     "card no.": "card_number",
     "card number": "card_number",
     "membership": "membership",
+    "member since": "member_since",
+    "member start": "member_since",
+    "member start date": "member_since",
+    "join date": "member_since",
+    "date joined": "member_since",
+    "date of birth": "date_of_birth",
+    "birth date": "date_of_birth",
+    "dob": "date_of_birth",
     "address": "address",
     "address2": "address2",
     "city": "city",
@@ -223,6 +231,11 @@ def parse_optional_int(value: str | None) -> int | None:
     return int(stripped) if stripped else None
 
 
+def parse_optional_report_date(value: str | None) -> date | None:
+    stripped = _empty_to_none(value)
+    return parse_report_date(stripped) if stripped else None
+
+
 def _member_from_csv_row(row: dict[str, object], row_number: int) -> Member:
     normalized = _normalized_csv_row(row, HEADER_MAP)
     first_name, nickname = _split_first_name_nickname(normalized.get("first_name", ""))
@@ -256,6 +269,8 @@ def _member_from_csv_row(row: dict[str, object], row_number: int) -> Member:
         nickname=nickname,
         card_number=normalize_card_number(normalized["card_number"]),
         membership=normalized["membership"],
+        member_since=parse_optional_report_date(normalized.get("member_since")),
+        date_of_birth=parse_optional_report_date(normalized.get("date_of_birth")),
         address=address,
         address2=address2,
         city=city,

@@ -3,7 +3,7 @@
 import sqlite3
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 from club_admin.models import Member
 
@@ -25,6 +25,14 @@ def _empty_to_none(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _date_to_text(value: date | None) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _text_to_date(value: str | None) -> date | None:
+    return date.fromisoformat(value) if value else None
 
 
 def normalize_phone(value: str | None) -> str:
@@ -53,6 +61,8 @@ def member_from_row(row: sqlite3.Row) -> Member:
         nickname=row["nickname"],
         card_number=row["card_number"],
         membership=row["membership"],
+        member_since=_text_to_date(row["member_since"]),
+        date_of_birth=_text_to_date(row["date_of_birth"]),
         address=row["address"],
         address2=row["address2"],
         city=row["city"],
@@ -90,6 +100,8 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             nickname,
             card_number,
             membership,
+            member_since,
+            date_of_birth,
             address,
             address2,
             city,
@@ -100,12 +112,14 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             work_phone,
             cell_phone
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(card_number) DO UPDATE SET
             last_name = excluded.last_name,
             first_name = excluded.first_name,
             nickname = excluded.nickname,
             membership = excluded.membership,
+            member_since = excluded.member_since,
+            date_of_birth = excluded.date_of_birth,
             address = excluded.address,
             address2 = excluded.address2,
             city = excluded.city,
@@ -122,6 +136,8 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             _empty_to_none(member.nickname),
             member.card_number.strip(),
             member.membership.strip(),
+            _date_to_text(member.member_since),
+            _date_to_text(member.date_of_birth),
             _empty_to_none(member.address),
             _empty_to_none(member.address2),
             _empty_to_none(member.city),
@@ -145,6 +161,8 @@ def insert_member(connection: sqlite3.Connection, member: Member) -> int:
             nickname,
             card_number,
             membership,
+            member_since,
+            date_of_birth,
             address,
             address2,
             city,
@@ -155,7 +173,7 @@ def insert_member(connection: sqlite3.Connection, member: Member) -> int:
             work_phone,
             cell_phone
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             member.last_name.strip(),
@@ -163,6 +181,8 @@ def insert_member(connection: sqlite3.Connection, member: Member) -> int:
             _empty_to_none(member.nickname),
             member.card_number.strip(),
             member.membership.strip(),
+            _date_to_text(member.member_since),
+            _date_to_text(member.date_of_birth),
             _empty_to_none(member.address),
             _empty_to_none(member.address2),
             _empty_to_none(member.city),
@@ -188,6 +208,8 @@ def list_members(connection: sqlite3.Connection) -> list[Member]:
             nickname,
             card_number,
             membership,
+            member_since,
+            date_of_birth,
             address,
             address2,
             city,
@@ -215,6 +237,8 @@ def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReport
             u.nickname,
             u.card_number,
             u.membership,
+            u.member_since,
+            u.date_of_birth,
             u.address,
             u.address2,
             u.city,
@@ -235,6 +259,8 @@ def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReport
             u.nickname,
             u.card_number,
             u.membership,
+            u.member_since,
+            u.date_of_birth,
             u.address,
             u.address2,
             u.city,
@@ -277,6 +303,8 @@ def get_member(connection: sqlite3.Connection, member_id: int) -> Member | None:
             nickname,
             card_number,
             membership,
+            member_since,
+            date_of_birth,
             address,
             address2,
             city,
@@ -305,6 +333,8 @@ def get_member_by_card_number(connection: sqlite3.Connection, card_number: str) 
             nickname,
             card_number,
             membership,
+            member_since,
+            date_of_birth,
             address,
             address2,
             city,
@@ -400,6 +430,8 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
             nickname = ?,
             card_number = ?,
             membership = ?,
+            member_since = ?,
+            date_of_birth = ?,
             address = ?,
             address2 = ?,
             city = ?,
@@ -417,6 +449,8 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
             _empty_to_none(member.nickname),
             member.card_number.strip(),
             member.membership.strip(),
+            _date_to_text(member.member_since),
+            _date_to_text(member.date_of_birth),
             _empty_to_none(member.address),
             _empty_to_none(member.address2),
             _empty_to_none(member.city),

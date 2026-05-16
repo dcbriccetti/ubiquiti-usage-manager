@@ -50,6 +50,8 @@ EDITABLE_MEMBER_FIELDS = (
     "nickname",
     "card_number",
     "membership",
+    "member_since",
+    "date_of_birth",
     "address",
     "address2",
     "city",
@@ -179,8 +181,22 @@ class GuestRegistrationFormError(ValueError):
     '''Raised when a visitor registration submission cannot be accepted.'''
 
 
+class MemberFormError(ValueError):
+    '''Raised when admin-edited user fields cannot be accepted.'''
+
+
 class CheckInFormError(ValueError):
     '''Raised when admin-edited check-ins cannot be accepted.'''
+
+
+def _parse_member_form_date(form_data: Any, field_name: str) -> date | None:
+    value = form_data.get(field_name, "").strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as error:
+        raise MemberFormError("Enter valid user dates.") from error
 
 
 def _member_from_form(member_id: int, form_data: Any) -> Member:
@@ -191,6 +207,8 @@ def _member_from_form(member_id: int, form_data: Any) -> Member:
         nickname=form_data.get("nickname", "").strip() or None,
         card_number=form_data.get("card_number", "").strip(),
         membership=form_data.get("membership", "").strip(),
+        member_since=_parse_member_form_date(form_data, "member_since"),
+        date_of_birth=_parse_member_form_date(form_data, "date_of_birth"),
         address=form_data.get("address", "").strip() or None,
         address2=form_data.get("address2", "").strip() or None,
         city=form_data.get("city", "").strip() or None,
@@ -1312,7 +1330,10 @@ def create_app(db_path: Path | None = None) -> Flask:
             checkins = checkin_repository.list_checkins_for_user(connection, member_id)
 
             if request.method == "POST":
-                updated_member = _member_from_form(member_id, request.form)
+                try:
+                    updated_member = _member_from_form(member_id, request.form)
+                except MemberFormError as error:
+                    abort(400, str(error))
 
                 if not updated_member.last_name or not updated_member.first_name:
                     abort(400, "First and last name are required.")

@@ -12,6 +12,8 @@ class Member:
     first_name: str
     card_number: str
     membership: str
+    member_since: date | None = None
+    date_of_birth: date | None = None
     nickname: str | None = None
     address: str | None = None
     address2: str | None = None

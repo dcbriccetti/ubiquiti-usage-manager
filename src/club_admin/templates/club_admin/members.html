@@ -34,7 +34,7 @@
           id="users-search"
           type="search"
           autocomplete="off"
-          placeholder="Dave"
+          placeholder="Search users"
           data-table-search
         >
       </label>
@@ -47,9 +47,11 @@
           <option value="2">Nickname</option>
           <option value="3">Card #</option>
           <option value="4">Membership</option>
-          <option value="5">Address</option>
-          <option value="6">Email</option>
-          <option value="7">Cell Phone</option>
+          <option value="5">Member Since</option>
+          <option value="6">Date of Birth</option>
+          <option value="7">Address</option>
+          <option value="8">Email</option>
+          <option value="9">Cell Phone</option>
         </select>
       </label>
       <output class="users-search-count" data-table-search-count for="users-search"></output>
@@ -63,12 +65,14 @@
           <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="2" data-sort-type="text">Nickname <span class="sort-indicator" aria-hidden="true"></span></button></th>
           <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="3" data-sort-type="text">Card # <span class="sort-indicator" aria-hidden="true"></span></button></th>
           <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="4" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="5" data-sort-type="text">Address <span class="sort-indicator" aria-hidden="true"></span></button></th>
-          <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="6" data-sort-type="text">Email <span class="sort-indicator" aria-hidden="true"></span></button></th>
-          <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="7" data-sort-type="text">Cell Phone <span class="sort-indicator" aria-hidden="true"></span></button></th>
-          <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="8" data-sort-type="number">Docs <span class="sort-indicator" aria-hidden="true"></span></button></th>
-          <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="9" data-sort-type="number">Check-ins <span class="sort-indicator" aria-hidden="true"></span></button></th>
-          <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="10" data-sort-type="date">Last Check-in <span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="5" data-sort-type="date">Member Since <span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="6" data-sort-type="date">Date of Birth <span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="7" data-sort-type="text">Address <span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="8" data-sort-type="text">Email <span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="9" data-sort-type="text">Cell Phone <span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="10" data-sort-type="number">Docs <span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="11" data-sort-type="number">Check-ins <span class="sort-indicator" aria-hidden="true"></span></button></th>
+          <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="12" data-sort-type="date">Last Check-in <span class="sort-indicator" aria-hidden="true"></span></button></th>
         </tr>
       </thead>
       <tbody>
@@ -79,6 +83,8 @@
             <td data-sort-value="{{ row.member.nickname or '' }}">{{ row.member.nickname or '' }}</td>
             <td data-sort-value="{{ row.member.card_number }}">{{ row.member.card_number }}</td>
             <td data-sort-value="{{ row.member.membership }}">{{ row.member.membership }}</td>
+            <td class="nowrap" data-sort-value="{{ row.member.member_since.isoformat() if row.member.member_since else '' }}">{{ row.member.member_since or '' }}</td>
+            <td class="nowrap" data-sort-value="{{ row.member.date_of_birth.isoformat() if row.member.date_of_birth else '' }}">{{ row.member.date_of_birth or '' }}</td>
             <td data-sort-value="{{ row.address }}">
               {% for address_line in row.address_lines %}
                 <span class="nowrap">{{ address_line }}</span>{% if not loop.last %}<br>{% endif %}
@@ -92,11 +98,11 @@
           </tr>
         {% else %}
           <tr data-empty-row>
-            <td colspan="11" class="empty">No users imported yet.</td>
+            <td colspan="13" class="empty">No users imported yet.</td>
           </tr>
         {% endfor %}
         <tr data-search-placeholder hidden>
-          <td colspan="11" class="empty">No users match this search.</td>
+          <td colspan="13" class="empty">No users match this search.</td>
         </tr>
       </tbody>
     </table>

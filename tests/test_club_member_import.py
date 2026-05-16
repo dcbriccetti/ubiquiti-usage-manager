@@ -62,14 +62,16 @@ def admin_client(flask_app):
 class ClubMemberImportTests(unittest.TestCase):
     def test_reads_members_csv_with_roster_headers(self) -> None:
         source = io.StringIO(
-            "Last Name,First Name,Card #,Membership,Expiration,Address,Address2,City,State,Zip,Phone,Email,Work Phone,Cell Phone\n"
-            "Doe,John,123,Visitor,10/31/2025,123 Main St,,Everytown,CA,94000,(123) 123-1234,abc@abc.com,,(510) 510-5100\n"
+            "Last Name,First Name,Card #,Membership,Member Since,Date of Birth,Expiration,Address,Address2,City,State,Zip,Phone,Email,Work Phone,Cell Phone\n"
+            "Doe,John,123,Visitor,5/1/2020,7/4/1980,10/31/2025,123 Main St,,Everytown,CA,94000,(123) 123-1234,abc@abc.com,,(510) 510-5100\n"
         )
 
         members = csv_import.read_members_csv(source)
 
         self.assertEqual(len(members), 1)
         self.assertEqual(members[0].card_number, "123")
+        self.assertEqual(members[0].member_since.isoformat(), "2020-05-01")
+        self.assertEqual(members[0].date_of_birth.isoformat(), "1980-07-04")
         self.assertEqual(members[0].cell_phone, "(510) 510-5100")
 
     def test_reads_members_csv_with_leading_blank_line(self) -> None:
@@ -212,6 +214,46 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertNotIn("expiration_date", columns)
         self.assertIn("nickname", columns)
+        self.assertIn("member_since", columns)
+        self.assertIn("date_of_birth", columns)
+
+    def test_database_adds_user_date_columns_to_existing_database(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            with closing(database.connect(db_path)) as connection:
+                connection.execute(
+                    """
+                    CREATE TABLE users (
+                        id INTEGER PRIMARY KEY,
+                        last_name TEXT NOT NULL,
+                        first_name TEXT NOT NULL,
+                        nickname TEXT,
+                        card_number TEXT NOT NULL UNIQUE,
+                        membership TEXT NOT NULL,
+                        address TEXT,
+                        address2 TEXT,
+                        city TEXT,
+                        state TEXT,
+                        zip TEXT,
+                        phone TEXT,
+                        email TEXT,
+                        work_phone TEXT,
+                        cell_phone TEXT,
+                        imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                connection.commit()
+
+            database.init_db(db_path)
+            with closing(database.connect(db_path)) as connection:
+                columns = {
+                    row["name"]
+                    for row in connection.execute("PRAGMA table_info(users)").fetchall()
+                }
+
+        self.assertIn("member_since", columns)
+        self.assertIn("date_of_birth", columns)
 
     def test_admin_pages_redirect_to_login_when_not_authenticated(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -537,6 +579,8 @@ class ClubMemberImportTests(unittest.TestCase):
                         nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
+                        member_since=datetime(2020, 5, 1).date(),
+                        date_of_birth=datetime(1980, 7, 4).date(),
                         address="123 Main St",
                         address2="Unit 4",
                         city="Everytown",
@@ -582,17 +626,25 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('data-table-search', body)
         self.assertIn('data-table-search-column', body)
         self.assertIn('<option value="1">First Name</option>', body)
+        self.assertIn('placeholder="Search users"', body)
+        self.assertNotIn('placeholder="Dave"', body)
         self.assertIn('data-table-search-count', body)
         self.assertIn('class="users-table" data-sortable-table', body)
         self.assertIn('data-sort-column="0" data-sort-type="text"', body)
-        self.assertIn('data-sort-column="8" data-sort-type="number"', body)
-        self.assertIn('data-sort-column="10" data-sort-type="date"', body)
+        self.assertIn('data-sort-column="5" data-sort-type="date"', body)
+        self.assertIn('data-sort-column="6" data-sort-type="date"', body)
+        self.assertIn('data-sort-column="10" data-sort-type="number"', body)
+        self.assertIn('data-sort-column="12" data-sort-type="date"', body)
         self.assertIn("No users match this search.", body)
         self.assertNotIn('class="file-field"', body)
         self.assertNotIn("Users CSV", body)
         self.assertNotIn("Check-ins CSV", body)
         self.assertIn("Nickname", body)
         self.assertIn("Johnny", body)
+        self.assertIn("Member Since", body)
+        self.assertIn("Date of Birth", body)
+        self.assertIn(">2020-05-01<", body)
+        self.assertIn(">1980-07-04<", body)
         self.assertIn("123 Main St", body)
         self.assertIn("Unit 4", body)
         self.assertIn("Everytown CA 94000", body)

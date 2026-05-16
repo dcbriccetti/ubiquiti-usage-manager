@@ -18,6 +18,8 @@ CREATE TABLE IF NOT EXISTS users (
     nickname TEXT,
     card_number TEXT NOT NULL UNIQUE,
     membership TEXT NOT NULL,
+    member_since TEXT CHECK (member_since IS NULL OR member_since GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+    date_of_birth TEXT CHECK (date_of_birth IS NULL OR date_of_birth GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
     address TEXT,
     address2 TEXT,
     city TEXT,
@@ -148,12 +150,46 @@ def _validate_foreign_keys(connection: sqlite3.Connection) -> None:
         )
 
 
+def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    return {
+        row["name"]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+
+
+def _ensure_user_date_columns(connection: sqlite3.Connection) -> None:
+    columns = _column_names(connection, "users")
+    if "member_since" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE users
+            ADD COLUMN member_since TEXT
+            CHECK (
+                member_since IS NULL
+                OR member_since GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            )
+            """
+        )
+    if "date_of_birth" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE users
+            ADD COLUMN date_of_birth TEXT
+            CHECK (
+                date_of_birth IS NULL
+                OR date_of_birth GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            )
+            """
+        )
+
+
 def init_db(db_path: Path | None = None) -> None:
     '''Create club-user tables if they do not exist.'''
     connection = connect(db_path)
     try:
         _validate_existing_schema(connection)
         connection.executescript(SCHEMA_SQL)
+        _ensure_user_date_columns(connection)
         _validate_foreign_keys(connection)
         connection.commit()
     finally:

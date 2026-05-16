@@ -112,6 +112,8 @@ def _guest_registration_select_sql() -> str:
             u.nickname,
             u.card_number,
             u.membership,
+            u.member_since,
+            u.date_of_birth,
             u.address,
             u.address2,
             u.city,
