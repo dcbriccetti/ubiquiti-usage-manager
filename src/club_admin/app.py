@@ -388,11 +388,27 @@ def _image_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
     mask = difference.point(
         lambda value: 255 if value > DRIVER_LICENSE_CROP_THRESHOLD else 0
     )
-    bbox = mask.getbbox()
-    if bbox is None:
+    mask_pixels = mask.load()
+    width, height = mask.size
+    min_row_pixels = max(5, int(width * 0.005))
+    min_column_pixels = max(5, int(height * 0.005))
+    content_rows = [
+        y
+        for y in range(height)
+        if sum(1 for x in range(width) if mask_pixels[x, y]) >= min_row_pixels
+    ]
+    content_columns = [
+        x
+        for x in range(width)
+        if sum(1 for y in range(height) if mask_pixels[x, y]) >= min_column_pixels
+    ]
+    if not content_rows or not content_columns:
         return None
 
-    left, top, right, bottom = bbox
+    left = min(content_columns)
+    top = min(content_rows)
+    right = max(content_columns) + 1
+    bottom = max(content_rows) + 1
     horizontal_padding = max(12, int((right - left) * 0.04))
     vertical_padding = max(12, int((bottom - top) * 0.04))
     return (

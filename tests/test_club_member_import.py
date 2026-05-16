@@ -1211,6 +1211,7 @@ class ClubMemberImportTests(unittest.TestCase):
 
             upload_image = Image.new("RGB", (2000, 1200), "white")
             draw = ImageDraw.Draw(upload_image)
+            draw.line((520, 0, 520, 1199), fill=(225, 225, 225), width=2)
             draw.rectangle((40, 40, 700, 420), fill=(30, 90, 180))
             draw.rectangle((90, 110, 650, 180), fill=(245, 245, 245))
             draw.rectangle((90, 240, 460, 300), fill=(245, 245, 245))
@@ -1230,8 +1231,14 @@ class ClubMemberImportTests(unittest.TestCase):
             with Image.open(saved_license_path) as saved_license_image:
                 saved_size = saved_license_image.size
                 grayscale = saved_license_image.convert("L")
+                content_mask = grayscale.point(lambda value: 255 if value < 245 else 0)
+                content_bbox = content_mask.getbbox()
                 stats = ImageStat.Stat(grayscale)
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(saved_size, (1013, 576))
+        self.assertIsNotNone(content_bbox)
+        assert content_bbox is not None
+        self.assertGreater(content_bbox[2] - content_bbox[0], 800)
+        self.assertGreater(content_bbox[3] - content_bbox[1], 450)
         self.assertLess(stats.mean[0], 245)
