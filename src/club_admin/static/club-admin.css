@@ -413,6 +413,65 @@ th {
   padding: 16px;
 }
 
+.guest-registration-form {
+  gap: 16px;
+  grid-template-columns: 1fr;
+}
+
+.guest-registration-section {
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 14px;
+}
+
+.guest-registration-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.guest-registration-section h2 {
+  color: #20242c;
+  font-size: 15px;
+  font-weight: 650;
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.guest-registration-section.compact-section {
+  grid-template-columns: minmax(220px, 320px);
+}
+
+.guest-registration-form label > span {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.guest-registration-form label strong {
+  color: #245c9f;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.section-note {
+  color: #5b6472;
+  font-size: 13px;
+  margin: -4px 0 0;
+}
+
+.state-field {
+  max-width: 110px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .self-checkin-form {
   grid-template-columns: 1fr 140px;
   margin-bottom: 14px;
@@ -829,8 +888,14 @@ th {
   }
 
   .self-checkin-form,
-  .barcode-checkin-form {
+  .barcode-checkin-form,
+  .guest-registration-section,
+  .guest-registration-section.compact-section {
     grid-template-columns: 1fr;
+  }
+
+  .state-field {
+    max-width: none;
   }
 
   .generated-form-top {

@@ -23,93 +23,116 @@
     {% endif %}
 
     <form class="edit-form guest-registration-form" action="{{ url_for('guest_registration') }}" method="post">
-      <label>
-        Visit Date
-        <input type="date" name="visit_date" value="{{ form_data.get('visit_date', today) }}" required>
-      </label>
-      <label>
-        Last Name
-        <input type="text" name="last_name" value="{{ form_data.get('last_name', '') }}" autocomplete="family-name" required>
-      </label>
-      <label>
-        First Name
-        <input type="text" name="first_name" value="{{ form_data.get('first_name', '') }}" autocomplete="given-name" required>
-      </label>
-      <label>
-        Middle
-        <input type="text" name="middle_name" value="{{ form_data.get('middle_name', '') }}" autocomplete="additional-name">
-      </label>
-      <label>
-        Nickname or Preferred Name
-        <input type="text" name="nickname" value="{{ form_data.get('nickname', '') }}">
-      </label>
-      <label class="detail-wide">
-        Street Address
-        <input type="text" name="address" value="{{ form_data.get('address', '') }}" autocomplete="street-address">
-      </label>
-      <label>
-        City
-        <input type="text" name="city" value="{{ form_data.get('city', '') }}" autocomplete="address-level2">
-      </label>
-      <label>
-        State
-        <input type="text" name="state" value="{{ form_data.get('state', '') }}" autocomplete="address-level1">
-      </label>
-      <label>
-        Zip Code
-        <input type="text" name="zip" value="{{ form_data.get('zip', '') }}" autocomplete="postal-code">
-      </label>
-      <label>
-        Cell Phone
-        <input type="tel" name="cell_phone" value="{{ form_data.get('cell_phone', '') }}" autocomplete="tel">
-      </label>
-      <label>
-        Other Phone
-        <input type="tel" name="other_phone" value="{{ form_data.get('other_phone', '') }}">
-      </label>
-      <label>
-        Other Phone Type
-        <select name="other_phone_type">
-          <option value=""></option>
-          <option value="home" {% if form_data.get('other_phone_type') == 'home' %}selected{% endif %}>Home</option>
-          <option value="work" {% if form_data.get('other_phone_type') == 'work' %}selected{% endif %}>Work</option>
-          <option value="other" {% if form_data.get('other_phone_type') == 'other' %}selected{% endif %}>Other</option>
-        </select>
-      </label>
-      <label class="detail-wide">
-        Email Address
-        <input type="email" name="email" value="{{ form_data.get('email', '') }}" autocomplete="email">
-      </label>
-      <label>
-        Marital Status
-        <select name="marital_status">
-          <option value=""></option>
-          <option value="single" {% if form_data.get('marital_status') == 'single' %}selected{% endif %}>Single</option>
-          <option value="married" {% if form_data.get('marital_status') == 'married' %}selected{% endif %}>Married</option>
-          <option value="recognized_couple" {% if form_data.get('marital_status') == 'recognized_couple' %}selected{% endif %}>Recognized Couple</option>
-        </select>
-      </label>
-      <label>
-        Partner With Me Today
-        <input type="text" name="partner_name" value="{{ form_data.get('partner_name', '') }}">
-      </label>
-      <label class="checkbox-field">
-        <input type="checkbox" name="guest_of_member" value="1" {% if form_data.get('guest_of_member') %}checked{% endif %}>
-        Guest of a member
-      </label>
-      <label>
-        Member Name
-        <input type="text" name="member_name" value="{{ form_data.get('member_name', '') }}">
-      </label>
-      <label class="detail-wide">
-        How Did You Hear About Us?
-        <input type="text" name="heard_about" value="{{ form_data.get('heard_about', '') }}">
-      </label>
-      <label class="checkbox-field detail-wide">
-        <input type="checkbox" name="newsletter_opt_out" value="1" {% if form_data.get('newsletter_opt_out') %}checked{% endif %}>
-        Do not sign me up for the newsletter
-      </label>
-      <button type="submit">Submit Registration</button>
+      <section class="guest-registration-section compact-section" aria-labelledby="visit-section-title">
+        <h2 id="visit-section-title">Visit</h2>
+        <label>
+          <span>Visit Date <strong>Required</strong></span>
+          <input type="date" name="visit_date" value="{{ form_data.get('visit_date', today) }}" required>
+        </label>
+      </section>
+
+      <section class="guest-registration-section" aria-labelledby="name-section-title">
+        <h2 id="name-section-title">Name</h2>
+        <label>
+          <span>Last Name <strong>Required</strong></span>
+          <input type="text" name="last_name" value="{{ form_data.get('last_name', '') }}" autocomplete="family-name" required>
+        </label>
+        <label>
+          <span>First Name <strong>Required</strong></span>
+          <input type="text" name="first_name" value="{{ form_data.get('first_name', '') }}" autocomplete="given-name" required>
+        </label>
+        <label>
+          <span>Middle</span>
+          <input type="text" name="middle_name" value="{{ form_data.get('middle_name', '') }}" autocomplete="additional-name">
+        </label>
+        <label>
+          <span>Nickname or Preferred Name</span>
+          <input type="text" name="nickname" value="{{ form_data.get('nickname', '') }}">
+        </label>
+      </section>
+
+      <section class="guest-registration-section" aria-labelledby="contact-section-title">
+        <h2 id="contact-section-title">Contact</h2>
+        <p class="section-note detail-wide">At least one phone number or email is required.</p>
+        <label>
+          <span>Cell Phone</span>
+          <input type="tel" name="cell_phone" value="{{ form_data.get('cell_phone', '') }}" autocomplete="tel" inputmode="tel">
+        </label>
+        <label>
+          <span>Other Phone</span>
+          <input type="tel" name="other_phone" value="{{ form_data.get('other_phone', '') }}" inputmode="tel">
+        </label>
+        <label>
+          <span>Other Phone Type</span>
+          <select name="other_phone_type">
+            <option value=""></option>
+            <option value="home" {% if form_data.get('other_phone_type') == 'home' %}selected{% endif %}>Home</option>
+            <option value="work" {% if form_data.get('other_phone_type') == 'work' %}selected{% endif %}>Work</option>
+            <option value="other" {% if form_data.get('other_phone_type') == 'other' %}selected{% endif %}>Other</option>
+          </select>
+        </label>
+        <label>
+          <span>Email Address</span>
+          <input type="email" name="email" value="{{ form_data.get('email', '') }}" autocomplete="email">
+        </label>
+      </section>
+
+      <section class="guest-registration-section" aria-labelledby="address-section-title">
+        <h2 id="address-section-title">Address</h2>
+        <label class="detail-wide">
+          <span>Street Address</span>
+          <input type="text" name="address" value="{{ form_data.get('address', '') }}" autocomplete="street-address">
+        </label>
+        <label>
+          <span>City</span>
+          <input type="text" name="city" value="{{ form_data.get('city', '') }}" autocomplete="address-level2">
+        </label>
+        <label class="state-field">
+          <span>State</span>
+          <input type="text" name="state" value="{{ form_data.get('state', '') }}" autocomplete="address-level1" maxlength="2">
+        </label>
+        <label>
+          <span>Zip Code</span>
+          <input type="text" name="zip" value="{{ form_data.get('zip', '') }}" autocomplete="postal-code" inputmode="numeric">
+        </label>
+      </section>
+
+      <section class="guest-registration-section" aria-labelledby="details-section-title">
+        <h2 id="details-section-title">Visit Details</h2>
+        <label>
+          <span>Marital Status</span>
+          <select name="marital_status">
+            <option value=""></option>
+            <option value="single" {% if form_data.get('marital_status') == 'single' %}selected{% endif %}>Single</option>
+            <option value="married" {% if form_data.get('marital_status') == 'married' %}selected{% endif %}>Married</option>
+            <option value="recognized_couple" {% if form_data.get('marital_status') == 'recognized_couple' %}selected{% endif %}>Recognized Couple</option>
+          </select>
+        </label>
+        <label>
+          <span>Partner With Me Today</span>
+          <input type="text" name="partner_name" value="{{ form_data.get('partner_name', '') }}">
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" name="guest_of_member" value="1" {% if form_data.get('guest_of_member') %}checked{% endif %}>
+          <span>Guest of a member</span>
+        </label>
+        <label>
+          <span>Member Name</span>
+          <input type="text" name="member_name" value="{{ form_data.get('member_name', '') }}">
+        </label>
+        <label class="detail-wide">
+          <span>How Did You Hear About Us?</span>
+          <input type="text" name="heard_about" value="{{ form_data.get('heard_about', '') }}">
+        </label>
+        <label class="checkbox-field detail-wide">
+          <input type="checkbox" name="newsletter_opt_out" value="1" {% if form_data.get('newsletter_opt_out') %}checked{% endif %}>
+          <span>Do not sign me up for the newsletter</span>
+        </label>
+      </section>
+
+      <div class="form-actions">
+        <button type="submit">Submit Registration</button>
+      </div>
     </form>
   </main>
 </body>
