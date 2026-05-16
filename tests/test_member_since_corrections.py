@@ -59,7 +59,7 @@ class MemberSinceCorrectionTests(unittest.TestCase):
                         first_name="Allison",
                         card_number="100",
                         membership="Full Member",
-                        member_since=date(2026, 4, 5),
+                        member_since=date(2025, 4, 5),
                     ),
                     Member(
                         last_name="Flores",
@@ -137,7 +137,7 @@ class MemberSinceCorrectionTests(unittest.TestCase):
                         first_name="Allison",
                         card_number="100",
                         membership="Full Member",
-                        member_since=date(2026, 4, 5),
+                        member_since=date(2025, 4, 5),
                     ),
                 )
                 connection.commit()
@@ -163,7 +163,7 @@ class MemberSinceCorrectionTests(unittest.TestCase):
         self.assertEqual(updated_member.member_since, date(2022, 7, 9))
         self.assertEqual(len(audit_entries), 1)
         self.assertEqual(audit_entries[0].field_name, "member_since")
-        self.assertEqual(audit_entries[0].old_value, "2026-04-05")
+        self.assertEqual(audit_entries[0].old_value, "2025-04-05")
         self.assertEqual(audit_entries[0].new_value, "2022-07-09")
 
     def test_main_defaults_to_dry_run(self) -> None:
@@ -178,7 +178,7 @@ class MemberSinceCorrectionTests(unittest.TestCase):
                         first_name="Allison",
                         card_number="100",
                         membership="Full Member",
-                        member_since=date(2026, 4, 5),
+                        member_since=date(2025, 4, 5),
                     ),
                 )
                 connection.commit()
@@ -196,7 +196,7 @@ class MemberSinceCorrectionTests(unittest.TestCase):
                 member = member_repository.list_members(connection)[0]
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(member.member_since, date(2026, 4, 5))
+        self.assertEqual(member.member_since, date(2025, 4, 5))
         self.assertIn("READY", output.getvalue())
         self.assertIn("Dry run only", output.getvalue())
 

@@ -16,6 +16,8 @@ from club_admin.models import Member
 
 
 SUSPECT_MEMBER_SINCE_DATES = {
+    date(2025, 4, 5),
+    date(2025, 4, 6),
     date(2026, 4, 5),
     date(2026, 4, 6),
 }
