@@ -577,6 +577,11 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('class="page-header users-header"', body)
         self.assertIn('class="nav-links users-nav"', body)
         self.assertIn('href="/imports"', body)
+        self.assertIn('src="/static/club-admin-table-sort.js"', body)
+        self.assertIn('class="users-table" data-sortable-table', body)
+        self.assertIn('data-sort-column="0" data-sort-type="text"', body)
+        self.assertIn('data-sort-column="8" data-sort-type="number"', body)
+        self.assertIn('data-sort-column="10" data-sort-type="date"', body)
         self.assertNotIn('class="file-field"', body)
         self.assertNotIn("Users CSV", body)
         self.assertNotIn("Check-ins CSV", body)
@@ -588,7 +593,9 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("2026-05-03 15:59:20", body)
         self.assertIn("Docs", body)
         self.assertIn(">2<", body)
-        self.assertIn('<td class="numeric"></td>', body)
+        self.assertIn('<td data-sort-value="123">', body)
+        self.assertIn('<td class="numeric" data-sort-value="0"></td>', body)
+        self.assertIn('data-sort-value="2026-05-03T15:59:20"', body)
         self.assertNotIn(">0<", body)
 
     def test_members_map_summarizes_users_by_zip_without_addresses(self) -> None:

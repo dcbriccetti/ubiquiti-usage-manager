@@ -233,6 +233,52 @@ th {
   padding-right: 5px;
 }
 
+.sortable-heading {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 4px;
+  justify-content: inherit;
+  line-height: 1.2;
+  min-height: 28px;
+  padding: 0;
+  text-align: inherit;
+  width: 100%;
+}
+
+.sortable-heading:hover,
+.sortable-heading:focus-visible {
+  color: #17416f;
+  outline: 2px solid #bfdbfe;
+  outline-offset: 2px;
+}
+
+.sort-indicator {
+  color: #245c9f;
+  display: inline-flex;
+  flex: 0 0 0.75rem;
+  font-size: 10px;
+  justify-content: center;
+  line-height: 1;
+}
+
+.sortable-heading[data-sort-direction="asc"] .sort-indicator::before {
+  content: "^";
+}
+
+.sortable-heading[data-sort-direction="desc"] .sort-indicator::before {
+  content: "v";
+}
+
+.numeric .sortable-heading {
+  justify-content: flex-end;
+  text-align: right;
+}
+
 .users-table th:nth-child(1),
 .users-table td:nth-child(1),
 .users-table th:nth-child(2),
