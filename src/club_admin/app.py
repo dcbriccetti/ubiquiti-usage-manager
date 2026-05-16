@@ -220,11 +220,18 @@ def _parse_visitor_visit_date(form_data: Any) -> date:
         raise GuestRegistrationFormError("Visit date must use YYYY-MM-DD.")
 
 
-def _guest_registration_validation_message(member: Member) -> str | None:
+def _guest_registration_validation_message(
+    member: Member,
+    registration: GuestRegistration,
+) -> str | None:
     if not member.first_name or not member.last_name:
         return "First and last name are required."
     if not member.cell_phone and not member.phone and not member.email:
         return "Phone or email is required."
+    if not member.address or not member.city or not member.state or not member.zip:
+        return "Street address, city, state, and zip code are required."
+    if not registration.marital_status:
+        return "Marital status is required."
     return None
 
 
@@ -1007,7 +1014,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                     form_data=request.form,
                 ), 400
 
-            validation_message = _guest_registration_validation_message(member)
+            validation_message = _guest_registration_validation_message(member, registration)
             if validation_message is not None:
                 return render_template(
                     "club_admin/guest_registration.html",

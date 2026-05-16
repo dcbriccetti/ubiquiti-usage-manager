@@ -347,6 +347,24 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertTrue(records[0].registration.guest_of_member)
         self.assertTrue(records[0].registration.newsletter_opt_out)
 
+    def test_guest_registration_marks_required_fields_without_required_badges(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().get("/guest-registration")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Fields marked", body)
+        self.assertNotIn("<strong>Required</strong>", body)
+        self.assertIn('class="detail-wide required-field"', body)
+        self.assertIn('name="address" value="" autocomplete="street-address" required', body)
+        self.assertIn('name="city" value="" autocomplete="address-level2" required', body)
+        self.assertIn('name="state" value="" autocomplete="address-level1" maxlength="2" required', body)
+        self.assertIn('name="zip" value="" autocomplete="postal-code" inputmode="numeric" required', body)
+        self.assertIn('select name="marital_status" required', body)
+
     def test_guest_registration_requires_name_and_contact(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -385,6 +403,49 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("First and last name are required.", body)
         self.assertIn('value="John"', body)
         self.assertIn('value="john@example.test"', body)
+
+    def test_guest_registration_requires_address_fields(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "email": "john@example.test",
+                    "marital_status": "single",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.get_data(as_text=True)
+        self.assertIn("Street address, city, state, and zip code are required.", body)
+        self.assertIn('value="john@example.test"', body)
+
+    def test_guest_registration_requires_marital_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "email": "john@example.test",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.get_data(as_text=True)
+        self.assertIn("Marital status is required.", body)
+        self.assertIn('value="123 Main St"', body)
 
     def test_guest_registration_bad_visit_date_rerenders_form(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1128,6 +1189,10 @@ class ClubMemberImportTests(unittest.TestCase):
                     "nickname": "Johnny",
                     "cell_phone": "510-510-5100",
                     "email": "john@example.test",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
                     "marital_status": "single",
                     "heard_about": "Friend",
                 },
@@ -1202,6 +1267,11 @@ class ClubMemberImportTests(unittest.TestCase):
                     "last_name": "Doe",
                     "first_name": "John",
                     "cell_phone": "510-510-5100",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                    "marital_status": "single",
                 },
             )
             with closing(database.connect(db_path)) as connection:

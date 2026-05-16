@@ -23,22 +23,23 @@
     {% endif %}
 
     <form class="edit-form guest-registration-form" action="{{ url_for('guest_registration') }}" method="post">
+      <p class="required-note">Fields marked <span aria-hidden="true">*</span> are required.</p>
       <section class="guest-registration-section compact-section" aria-labelledby="visit-section-title">
         <h2 id="visit-section-title">Visit</h2>
-        <label>
-          <span>Visit Date <strong>Required</strong></span>
+        <label class="required-field">
+          <span>Visit Date</span>
           <input type="date" name="visit_date" value="{{ form_data.get('visit_date', today) }}" required>
         </label>
       </section>
 
       <section class="guest-registration-section" aria-labelledby="name-section-title">
         <h2 id="name-section-title">Name</h2>
-        <label>
-          <span>Last Name <strong>Required</strong></span>
+        <label class="required-field">
+          <span>Last Name</span>
           <input type="text" name="last_name" value="{{ form_data.get('last_name', '') }}" autocomplete="family-name" required>
         </label>
-        <label>
-          <span>First Name <strong>Required</strong></span>
+        <label class="required-field">
+          <span>First Name</span>
           <input type="text" name="first_name" value="{{ form_data.get('first_name', '') }}" autocomplete="given-name" required>
         </label>
         <label>
@@ -79,29 +80,29 @@
 
       <section class="guest-registration-section" aria-labelledby="address-section-title">
         <h2 id="address-section-title">Address</h2>
-        <label class="detail-wide">
+        <label class="detail-wide required-field">
           <span>Street Address</span>
-          <input type="text" name="address" value="{{ form_data.get('address', '') }}" autocomplete="street-address">
+          <input type="text" name="address" value="{{ form_data.get('address', '') }}" autocomplete="street-address" required>
         </label>
-        <label>
+        <label class="required-field">
           <span>City</span>
-          <input type="text" name="city" value="{{ form_data.get('city', '') }}" autocomplete="address-level2">
+          <input type="text" name="city" value="{{ form_data.get('city', '') }}" autocomplete="address-level2" required>
         </label>
-        <label class="state-field">
+        <label class="state-field required-field">
           <span>State</span>
-          <input type="text" name="state" value="{{ form_data.get('state', '') }}" autocomplete="address-level1" maxlength="2">
+          <input type="text" name="state" value="{{ form_data.get('state', '') }}" autocomplete="address-level1" maxlength="2" required>
         </label>
-        <label>
+        <label class="required-field">
           <span>Zip Code</span>
-          <input type="text" name="zip" value="{{ form_data.get('zip', '') }}" autocomplete="postal-code" inputmode="numeric">
+          <input type="text" name="zip" value="{{ form_data.get('zip', '') }}" autocomplete="postal-code" inputmode="numeric" required>
         </label>
       </section>
 
       <section class="guest-registration-section" aria-labelledby="details-section-title">
         <h2 id="details-section-title">Visit Details</h2>
-        <label>
+        <label class="required-field">
           <span>Marital Status</span>
-          <select name="marital_status">
+          <select name="marital_status" required>
             <option value=""></option>
             <option value="single" {% if form_data.get('marital_status') == 'single' %}selected{% endif %}>Single</option>
             <option value="married" {% if form_data.get('marital_status') == 'married' %}selected{% endif %}>Married</option>
