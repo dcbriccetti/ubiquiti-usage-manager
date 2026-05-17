@@ -1,4 +1,5 @@
 import io
+import os
 import sqlite3
 import sys
 import tempfile
@@ -20,7 +21,11 @@ from club_admin import checkin_repository
 from club_admin import csv_import
 from club_admin import database
 from club_admin import member_repository
-from club_admin.app import _barcode_token_for_card_number, create_app
+from club_admin.app import (
+    _barcode_secret_for_connection,
+    _barcode_token_for_card_number,
+    create_app,
+)
 from club_admin.models import Member
 import config as cfg
 
@@ -355,7 +360,18 @@ class ClubCheckInImportTests(unittest.TestCase):
     def test_self_checkin_requires_phone_and_initials_to_match(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
-            flask_app = create_app(db_path)
+            with patch.dict(
+                os.environ,
+                {
+                    "USER_MANAGEMENT_BARCODE_SECRET": "",
+                    "USER_MANAGEMENT_SESSION_SECRET": "",
+                },
+            ), patch.object(cfg, "USER_MANAGEMENT_BARCODE_SECRET", ""), patch.object(
+                cfg,
+                "USER_MANAGEMENT_SESSION_SECRET",
+                "",
+            ):
+                flask_app = create_app(db_path)
             with closing(database.connect(db_path)) as connection:
                 member_repository.upsert_member(
                     connection,
@@ -376,6 +392,10 @@ class ClubCheckInImportTests(unittest.TestCase):
 
             with closing(database.connect(db_path)) as connection:
                 checkins = checkin_repository.list_checkins(connection)
+                barcode_secret_row = connection.execute(
+                    "SELECT value FROM app_settings WHERE key = ?",
+                    ("self_checkin_barcode_secret",),
+                ).fetchone()
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
@@ -384,6 +404,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("1861", body)
         self.assertNotIn("UM1:", body)
         self.assertIn("checkin-barcode", body)
+        self.assertIsNotNone(barcode_secret_row)
         self.assertEqual(len(checkins), 1)
 
     def test_self_checkin_accepts_signed_barcode(self) -> None:
@@ -403,7 +424,13 @@ class ClubCheckInImportTests(unittest.TestCase):
                 )
                 connection.commit()
 
-            token = _barcode_token_for_card_number("1861", flask_app.secret_key)
+            with closing(database.connect(db_path)) as connection:
+                barcode_secret = _barcode_secret_for_connection(
+                    connection,
+                    flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                )
+                connection.commit()
+            token = _barcode_token_for_card_number("1861", barcode_secret)
             self.assertNotIn("1861", token)
             self.assertNotIn("MTg2MQ", token)
             response = flask_app.test_client().post(
@@ -420,6 +447,64 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("John", body)
         self.assertNotIn("1861", body)
         self.assertNotIn("UM1:", body)
+        self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_barcode_survives_app_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            with patch.dict(
+                os.environ,
+                {
+                    "USER_MANAGEMENT_BARCODE_SECRET": "",
+                    "USER_MANAGEMENT_SESSION_SECRET": "",
+                },
+            ), patch.object(cfg, "USER_MANAGEMENT_BARCODE_SECRET", ""), patch.object(
+                cfg,
+                "USER_MANAGEMENT_SESSION_SECRET",
+                "",
+            ):
+                first_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                barcode_secret = _barcode_secret_for_connection(
+                    connection,
+                    first_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                )
+                connection.commit()
+
+            token = _barcode_token_for_card_number("1861", barcode_secret)
+            with patch.dict(
+                os.environ,
+                {
+                    "USER_MANAGEMENT_BARCODE_SECRET": "",
+                    "USER_MANAGEMENT_SESSION_SECRET": "",
+                },
+            ), patch.object(cfg, "USER_MANAGEMENT_BARCODE_SECRET", ""), patch.object(
+                cfg,
+                "USER_MANAGEMENT_SESSION_SECRET",
+                "",
+            ):
+                second_app = create_app(db_path)
+            second_app.secret_key = "different-session-secret"
+            response = second_app.test_client().post(
+                "/self-checkin",
+                data={"barcode_token": token},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Check-in recorded.", response.get_data(as_text=True))
         self.assertEqual(len(checkins), 1)
 
     def test_self_checkin_rejects_plain_card_number_barcode(self) -> None:

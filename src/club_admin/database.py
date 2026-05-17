@@ -92,6 +92,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS ix_audit_log_entity
 ON audit_log (entity_type, entity_id, changed_at);
 
+CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS zip_coordinates (
     zip TEXT PRIMARY KEY CHECK (zip GLOB '[0-9][0-9][0-9][0-9][0-9]'),
     latitude REAL NOT NULL CHECK (latitude >= -90 AND latitude <= 90),

@@ -7,51 +7,142 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
 <body>
-  <main class="page narrow">
-    <header class="page-header">
+  <main class="page self-checkin-page">
+    <header class="page-header self-checkin-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
         <h1>Self Check-in</h1>
       </div>
-      <nav class="nav-links" aria-label="User management navigation">
+      <nav class="nav-links self-checkin-nav" aria-label="Public check-in navigation">
         <a href="{{ url_for('guest_registration') }}">Guest Registration</a>
-        <a href="{{ url_for('admin_login') }}">Admin Login</a>
       </nav>
     </header>
 
-    <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
-      <label>
-        Barcode
-        <input type="text" name="barcode_token" autocomplete="off" autofocus>
-      </label>
-      <button type="submit">Check In</button>
-    </form>
+    <div class="self-checkin-layout{% if message or barcode_svg %} has-status{% endif %}">
+      <div class="self-checkin-entry">
+        <section class="self-checkin-panel barcode-checkin-panel" aria-labelledby="barcode-checkin-heading">
+          <div>
+            <h2 id="barcode-checkin-heading">Barcode Scan</h2>
+            <p>Scan your saved barcode.</p>
+          </div>
+          <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+            <label>
+              <span>Barcode</span>
+              <input
+                type="text"
+                name="barcode_token"
+                autocomplete="off"
+                {% if not message and not barcode_svg %}autofocus{% endif %}
+              >
+            </label>
+            <button class="visually-hidden" type="submit" tabindex="-1">Submit barcode</button>
+          </form>
+        </section>
 
-    <form class="self-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
-      <label>
-        Phone Number
-        <input type="tel" name="phone" autocomplete="tel" required>
-      </label>
-      <label>
-        Initials or First Name
-        <input type="text" name="initials" maxlength="40" autocomplete="given-name" required>
-      </label>
-      <button type="submit">Check In</button>
-    </form>
+        <section class="self-checkin-panel manual-checkin-panel" aria-labelledby="manual-checkin-heading">
+          <div>
+            <h2 id="manual-checkin-heading">Phone Check-in</h2>
+            <p>Enter your phone number and initials or first name.</p>
+          </div>
+          <form class="self-checkin-form manual-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+            <label>
+              <span>Phone Number</span>
+              <input type="tel" name="phone" autocomplete="tel" required>
+            </label>
+            <label>
+              <span>Initials or First Name</span>
+              <input type="text" name="initials" maxlength="40" autocomplete="given-name" required>
+            </label>
+            <div class="checkin-action-row">
+              <button type="submit" data-manual-checkin-submit disabled>Check In</button>
+              <button
+                class="secondary-action reset-checkin-button"
+                type="button"
+                data-checkin-reset
+                data-reset-url="{{ url_for('self_checkin') }}"
+                {% if not message and not barcode_svg %}disabled{% endif %}
+                {% if message or barcode_svg %}autofocus{% endif %}
+              >Reset</button>
+            </div>
+          </form>
+        </section>
+      </div>
 
-    {% if message %}
-      <p class="notice">{{ message }}</p>
-    {% endif %}
+      {% if message or barcode_svg %}
+        <aside class="self-checkin-status" aria-label="Check-in result">
+          {% if message %}
+            <p class="notice">{{ message }}</p>
+          {% endif %}
 
-    {% if barcode_svg %}
-      <section class="checkin-barcode-card" aria-label="Saved self check-in barcode">
-        <h2>Your Check-in Barcode</h2>
-        <p>Save this barcode for next time.</p>
-        <div class="checkin-barcode-frame">
-          {{ barcode_svg|safe }}
-        </div>
-      </section>
-    {% endif %}
+          {% if barcode_svg %}
+            <section class="checkin-barcode-card" aria-label="Saved self check-in barcode">
+              <h2>Your Check-in Barcode</h2>
+              <p>Save this barcode for next time.</p>
+              <div class="checkin-barcode-frame">
+                {{ barcode_svg|safe }}
+              </div>
+            </section>
+          {% endif %}
+        </aside>
+      {% endif %}
+    </div>
   </main>
+  <script>
+    (() => {
+      const resetButton = document.querySelector("[data-checkin-reset]");
+      const manualSubmitButton = document.querySelector("[data-manual-checkin-submit]");
+      const forms = Array.from(document.querySelectorAll(".self-checkin-form"));
+      const barcodeInput = document.querySelector('input[name="barcode_token"]');
+      const phoneInput = document.querySelector('input[name="phone"]');
+      const initialsInput = document.querySelector('input[name="initials"]');
+      const hasStatus = document.querySelector(".self-checkin-status") !== null;
+
+      if (!resetButton) {
+        return;
+      }
+
+      const formHasValue = () => forms.some((form) => Array.from(form.elements).some((field) => {
+        if (!(field instanceof HTMLInputElement) || field.type === "hidden") {
+          return false;
+        }
+        return field.value.trim() !== "";
+      }));
+
+      const updateResetState = () => {
+        resetButton.disabled = !hasStatus && !formHasValue();
+      };
+
+      const updateSubmitState = () => {
+        if (!manualSubmitButton) {
+          return;
+        }
+        manualSubmitButton.disabled = !phoneInput?.value.trim() || !initialsInput?.value.trim();
+      };
+
+      resetButton.addEventListener("click", () => {
+        if (resetButton.disabled) {
+          return;
+        }
+        if (hasStatus) {
+          window.location.href = resetButton.dataset.resetUrl;
+          return;
+        }
+        forms.forEach((form) => form.reset());
+        barcodeInput?.focus();
+        resetButton.disabled = true;
+        updateSubmitState();
+      });
+
+      forms.forEach((form) => form.addEventListener("input", () => {
+        updateResetState();
+        updateSubmitState();
+      }));
+      updateResetState();
+      updateSubmitState();
+      if (hasStatus) {
+        resetButton.focus();
+      }
+    })();
+  </script>
 </body>
 </html>

@@ -111,6 +111,31 @@
     updateSearchCount(countElement, visibleCount, rows.length);
   };
 
+  const updateSearchResetState = (searchInput, columnSelect, resetButton) => {
+    if (!resetButton) {
+      return;
+    }
+    resetButton.disabled =
+      !searchInput.value.trim() && (!columnSelect || columnSelect.value === "all");
+  };
+
+  const resetSearch = (table, searchInput, columnSelect, countElement, resetButton) => {
+    searchInput.value = "";
+    if (columnSelect) {
+      columnSelect.value = "all";
+    }
+    searchableRows(table).forEach((row) => {
+      row.hidden = false;
+    });
+    const placeholder = table.tBodies[0]?.querySelector("[data-search-placeholder]");
+    if (placeholder) {
+      placeholder.hidden = true;
+    }
+    updateSearchCount(countElement, searchableRows(table).length, searchableRows(table).length);
+    updateSearchResetState(searchInput, columnSelect, resetButton);
+    searchInput.focus();
+  };
+
   const updateSortState = (table, activeButton, direction) => {
     table.querySelectorAll("thead th").forEach((header) => {
       header.setAttribute("aria-sort", "none");
@@ -169,14 +194,21 @@
       const searchInput = container.querySelector("[data-table-search]");
       const columnSelect = container.querySelector("[data-table-search-column]");
       const countElement = container.querySelector("[data-table-search-count]");
+      const resetButton = container.querySelector("[data-table-search-reset]");
       if (searchInput) {
-        searchInput.addEventListener("input", () =>
-          applySearch(table, searchInput, columnSelect, countElement),
-        );
-        columnSelect?.addEventListener("change", () =>
-          applySearch(table, searchInput, columnSelect, countElement),
+        const updateSearch = () => {
+          applySearch(table, searchInput, columnSelect, countElement);
+          updateSearchResetState(searchInput, columnSelect, resetButton);
+        };
+
+        searchInput.addEventListener("input", updateSearch);
+        searchInput.addEventListener("search", updateSearch);
+        columnSelect?.addEventListener("change", updateSearch);
+        resetButton?.addEventListener("click", () =>
+          resetSearch(table, searchInput, columnSelect, countElement, resetButton),
         );
         applySearch(table, searchInput, columnSelect, countElement);
+        updateSearchResetState(searchInput, columnSelect, resetButton);
       }
     });
   };

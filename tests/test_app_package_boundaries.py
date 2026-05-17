@@ -36,7 +36,7 @@ class AppPackageBoundaryTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertIn('/users/static/club-admin.css', body)
             self.assertIn('action="/users/self-checkin"', body)
-            self.assertIn('href="/users/admin/login"', body)
+            self.assertIn('class="page self-checkin-page"', body)
 
     def test_club_admin_prefixed_admin_redirect_keeps_prefix_in_next_url(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

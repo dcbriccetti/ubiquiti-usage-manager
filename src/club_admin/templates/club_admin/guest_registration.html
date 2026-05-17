@@ -7,14 +7,14 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
 <body>
-  <main class="page narrow">
+  <main class="page narrow guest-registration-page">
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
         <h1>Guest Registration</h1>
       </div>
       <nav class="nav-links" aria-label="User management navigation">
-        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+        <a href="{{ url_for('self_checkin') }}">Back to Self Check-in</a>
       </nav>
     </header>
 
@@ -23,7 +23,7 @@
     {% endif %}
 
     <form class="edit-form guest-registration-form" action="{{ url_for('guest_registration') }}" method="post">
-      <p class="required-note">Fields marked <span aria-hidden="true">*</span> are required.</p>
+      <p class="required-note">Fields marked <span aria-hidden="true">•</span> are required.</p>
       <section class="guest-registration-section compact-section" aria-labelledby="visit-section-title">
         <h2 id="visit-section-title">Visit</h2>
         <label class="required-field">

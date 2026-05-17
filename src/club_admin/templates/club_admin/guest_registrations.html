@@ -52,16 +52,42 @@
             <td class="nowrap">{{ record.member.cell_phone or '' }}</td>
             <td class="guest-actions-cell">
               <div class="guest-actions">
+                <button type="button" data-upload-dialog-open="id-upload-dialog-{{ record.registration.id }}">Attach ID</button>
                 <a class="button-link secondary" href="{{ url_for('filled_guest_registration_form', registration_id=record.registration.id) }}">Print Form</a>
-                <form
-                  class="inline-upload-form"
-                  action="{{ url_for('upload_guest_registration_driver_license', registration_id=record.registration.id) }}"
-                  method="post"
-                  enctype="multipart/form-data"
+                <dialog
+                  class="upload-dialog"
+                  id="id-upload-dialog-{{ record.registration.id }}"
+                  aria-labelledby="id-upload-dialog-title-{{ record.registration.id }}"
                 >
-                  <input type="file" name="driver_license" accept="image/*" required>
-                  <button type="submit">Attach ID</button>
-                </form>
+                  <form
+                    class="upload-dialog-form"
+                    action="{{ url_for('upload_guest_registration_driver_license', registration_id=record.registration.id) }}"
+                    method="post"
+                    enctype="multipart/form-data"
+                  >
+                    <header class="upload-dialog-header">
+                      <h2 id="id-upload-dialog-title-{{ record.registration.id }}">Attach ID Image</h2>
+                    </header>
+                    <div class="file-picker">
+                      <input
+                        id="driver-license-{{ record.registration.id }}"
+                        type="file"
+                        name="driver_license"
+                        accept="image/*"
+                        required
+                        data-file-input
+                        hidden
+                      >
+                      <span class="file-picker-context">ID image</span>
+                      <button class="file-picker-button" type="button" data-file-trigger="driver-license-{{ record.registration.id }}">Choose image</button>
+                      <span class="file-picker-name" data-file-name>No file selected</span>
+                    </div>
+                    <div class="upload-dialog-actions">
+                      <button class="button-link secondary" type="button" data-upload-dialog-close>Cancel</button>
+                      <button type="submit" data-file-submit disabled>Attach ID Image</button>
+                    </div>
+                  </form>
+                </dialog>
               </div>
             </td>
           </tr>
@@ -73,5 +99,84 @@
       </tbody>
     </table>
   </main>
+  <script>
+    function resetUploadDialog(dialog) {
+      const form = dialog.querySelector("form");
+      const fileName = dialog.querySelector("[data-file-name]");
+      const submitButton = dialog.querySelector("[data-file-submit]");
+      form?.reset();
+      if (fileName) {
+        fileName.textContent = "No file selected";
+      }
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+    }
+
+    function closeUploadDialog(dialog) {
+      resetUploadDialog(dialog);
+      if (typeof dialog.close === "function") {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+    }
+
+    document.querySelectorAll("[data-upload-dialog-open]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const dialog = document.getElementById(button.dataset.uploadDialogOpen);
+        if (!dialog) {
+          return;
+        }
+        if (typeof dialog.showModal === "function") {
+          dialog.showModal();
+        } else {
+          dialog.setAttribute("open", "");
+        }
+        dialog.querySelector(".file-picker-button")?.focus();
+      });
+    });
+
+    document.querySelectorAll("[data-upload-dialog-close]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const dialog = button.closest("dialog");
+        if (dialog) {
+          closeUploadDialog(dialog);
+        }
+      });
+    });
+
+    document.querySelectorAll(".upload-dialog").forEach((dialog) => {
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) {
+          closeUploadDialog(dialog);
+        }
+      });
+      dialog.addEventListener("close", () => {
+        resetUploadDialog(dialog);
+      });
+    });
+
+    document.querySelectorAll("[data-file-trigger]").forEach((button) => {
+      button.addEventListener("click", () => {
+        document.getElementById(button.dataset.fileTrigger)?.click();
+      });
+    });
+
+    document.querySelectorAll("[data-file-input]").forEach((input) => {
+      input.addEventListener("change", () => {
+        const selectedFile = input.files?.[0];
+        const picker = input.closest(".file-picker");
+        const fileName = picker?.querySelector("[data-file-name]");
+        const submitButton = input.closest("form")?.querySelector("[data-file-submit]");
+        if (fileName) {
+          fileName.textContent = selectedFile?.name || "No file selected";
+        }
+        if (submitButton) {
+          submitButton.disabled = !selectedFile;
+        }
+      });
+    });
+  </script>
 </body>
 </html>

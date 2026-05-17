@@ -300,7 +300,9 @@ class ClubMemberImportTests(unittest.TestCase):
             response = flask_app.test_client().get("/self-checkin")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Self Check-in", response.get_data(as_text=True))
+        body = response.get_data(as_text=True)
+        self.assertIn("Self Check-in", body)
+        self.assertIn('href="/guest-registration"', body)
 
     def test_import_forms_live_on_dedicated_admin_page(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

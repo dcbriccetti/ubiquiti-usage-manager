@@ -25,6 +25,11 @@ body {
   max-width: 680px;
 }
 
+.self-checkin-page {
+  max-width: 820px;
+  padding: 48px 28px;
+}
+
 .users-page {
   max-width: none;
   padding-left: 32px;
@@ -37,6 +42,36 @@ body {
   gap: 16px;
   justify-content: space-between;
   margin-bottom: 20px;
+}
+
+.self-checkin-header {
+  align-items: flex-start;
+  margin-bottom: 28px;
+}
+
+.self-checkin-nav {
+  padding-top: 8px;
+}
+
+.self-checkin-nav a {
+  border-bottom: 2px solid #245c9f;
+  font-size: 18px;
+  font-weight: 650;
+  padding-bottom: 6px;
+  text-decoration: none;
+}
+
+.self-checkin-layout {
+  display: grid;
+  gap: 24px;
+}
+
+.self-checkin-entry {
+  display: grid;
+}
+
+.self-checkin-entry .self-checkin-panel:last-child {
+  margin-bottom: 0;
 }
 
 .users-header {
@@ -57,11 +92,21 @@ h1 {
   margin: 0;
 }
 
+.self-checkin-page h1 {
+  font-size: 44px;
+  line-height: 1.08;
+}
+
 .app-title {
   color: #5b6472;
   font-size: 13px;
   font-weight: 650;
   margin: 0 0 4px;
+}
+
+.self-checkin-page .app-title {
+  font-size: 18px;
+  margin-bottom: 8px;
 }
 
 .import-form {
@@ -84,16 +129,16 @@ h1 {
 }
 
 .file-field {
-  align-items: center;
+  align-items: stretch;
   background: #f8fafc;
   border: 1px solid #d8e0ea;
   border-radius: 6px;
   color: #475569;
   display: grid;
-  gap: 12px;
-  grid-template-columns: 110px minmax(0, 1fr);
-  min-height: 40px;
-  padding: 0 10px;
+  gap: 6px;
+  grid-template-columns: 1fr;
+  min-height: 54px;
+  padding: 8px 10px;
 }
 
 .file-field span {
@@ -105,7 +150,7 @@ h1 {
 .file-field input[type="file"] {
   color: #20242c;
   font: inherit;
-  min-width: 0;
+  min-width: 16rem;
   width: 100%;
 }
 
@@ -207,6 +252,12 @@ button,
   text-decoration: none;
 }
 
+button:disabled {
+  background: #c4cad3;
+  color: #f8fafc;
+  cursor: default;
+}
+
 .button-link.secondary {
   background: #5b6472;
 }
@@ -270,6 +321,17 @@ th {
   padding: 7px 8px;
 }
 
+.users-search-reset {
+  min-height: 36px;
+  padding: 7px 10px;
+}
+
+.users-search-reset:disabled {
+  background: #c4cad3;
+  color: #f8fafc;
+  cursor: default;
+}
+
 .users-search-count {
   color: #5b6472;
   font-size: 13px;
@@ -277,10 +339,28 @@ th {
   padding: 9px 0 0;
 }
 
+.users-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.users-table {
+  max-width: none;
+  min-width: 100%;
+  width: max-content;
+}
+
 .users-table th,
 .users-table td {
-  padding-left: 5px;
-  padding-right: 5px;
+  padding-left: 7px;
+  padding-right: 7px;
+  vertical-align: top;
+}
+
+.users-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .sortable-heading {
@@ -333,9 +413,43 @@ th {
 .users-table td:nth-child(1),
 .users-table th:nth-child(2),
 .users-table td:nth-child(2) {
-  max-width: 9rem;
+  min-width: 8rem;
+  white-space: nowrap;
+}
+
+.users-table th:nth-child(3),
+.users-table td:nth-child(3) {
+  min-width: 7rem;
+}
+
+.users-table th:nth-child(4),
+.users-table td:nth-child(4),
+.users-table th:nth-child(10),
+.users-table td:nth-child(10) {
+  white-space: nowrap;
+}
+
+.users-table th:nth-child(5),
+.users-table td:nth-child(5) {
+  min-width: 9rem;
+}
+
+.users-table th:nth-child(8),
+.users-table td:nth-child(8) {
+  min-width: 13rem;
+}
+
+.users-table th:nth-child(9),
+.users-table td:nth-child(9) {
+  max-width: 16rem;
   overflow-wrap: anywhere;
-  width: 9rem;
+}
+
+.users-table th:nth-child(11),
+.users-table td:nth-child(11),
+.users-table th:nth-child(12),
+.users-table td:nth-child(12) {
+  min-width: 4.5rem;
 }
 
 .guest-registrations-page {
@@ -371,7 +485,8 @@ th {
 }
 
 .guest-actions-cell {
-  width: 19rem;
+  min-width: 14rem;
+  width: 14rem;
 }
 
 @media (max-width: 900px) {
@@ -514,6 +629,10 @@ th {
   grid-template-columns: 1fr;
 }
 
+.page.guest-registration-page {
+  max-width: 760px;
+}
+
 .guest-registration-section {
   border-top: 1px solid #e2e8f0;
   display: grid;
@@ -542,13 +661,15 @@ th {
 }
 
 .required-note span,
-.required-field > span::after {
+.required-field > span::before {
   color: #b42318;
   font-weight: 750;
 }
 
-.required-field > span::after {
-  content: " *";
+.required-field > span::before {
+  content: "•";
+  font-size: 18px;
+  line-height: 1;
 }
 
 .guest-registration-section.compact-section {
@@ -559,7 +680,7 @@ th {
   align-items: baseline;
   display: flex;
   gap: 6px;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 
 .section-note {
@@ -582,8 +703,45 @@ th {
   margin-bottom: 14px;
 }
 
+.self-checkin-panel {
+  background: #fff;
+  box-sizing: border-box;
+  box-shadow: 0 1px 3px rgb(16 24 40 / 10%);
+  display: grid;
+  gap: 22px;
+  margin-bottom: 22px;
+  padding: 28px;
+}
+
+.self-checkin-panel h2 {
+  font-size: 30px;
+  line-height: 1.12;
+  margin: 0 0 8px;
+}
+
+.self-checkin-panel p {
+  color: #4b5563;
+  font-size: 20px;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.manual-checkin-panel {
+  border-top: 6px solid #245c9f;
+}
+
+.barcode-checkin-panel {
+  background: #f8fafc;
+  border: 1px solid #d8e0ea;
+}
+
+.manual-checkin-form,
 .barcode-checkin-form {
-  grid-template-columns: minmax(260px, 1fr) 140px;
+  box-shadow: none;
+  gap: 22px;
+  grid-template-columns: 1fr;
+  margin: 0;
+  padding: 0;
 }
 
 .admin-login-form {
@@ -599,6 +757,13 @@ th {
   flex-direction: column;
   font-size: 13px;
   gap: 4px;
+}
+
+.self-checkin-page .self-checkin-form label {
+  color: #20242c;
+  font-size: 22px;
+  font-weight: 650;
+  gap: 10px;
 }
 
 .self-checkin-form .checkbox-label {
@@ -659,6 +824,55 @@ th {
   padding: 7px 8px;
 }
 
+.self-checkin-page .self-checkin-form input {
+  border-color: #aeb9c7;
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-size: 26px;
+  min-height: 64px;
+  padding: 12px 14px;
+  width: 100%;
+}
+
+.self-checkin-page .self-checkin-form button {
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-size: 26px;
+  font-weight: 650;
+  min-height: 68px;
+  padding: 16px 20px;
+  width: 100%;
+}
+
+.self-checkin-page .self-checkin-form button:disabled {
+  background: #c4cad3;
+  color: #f8fafc;
+  cursor: default;
+}
+
+.self-checkin-page .self-checkin-form button.visually-hidden {
+  border: 0;
+  min-height: 1px;
+  padding: 0;
+  width: 1px;
+}
+
+.checkin-action-row {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.36fr);
+}
+
+.self-checkin-page .secondary-action {
+  background: #5b6472;
+}
+
+.self-checkin-page .secondary-action:disabled {
+  background: #c4cad3;
+  color: #f8fafc;
+  cursor: default;
+}
+
 .self-checkin-form input[type="checkbox"] {
   width: auto;
 }
@@ -674,6 +888,24 @@ th {
   padding: 12px 14px;
 }
 
+.self-checkin-page .notice {
+  border-left-width: 6px;
+  font-size: 24px;
+  line-height: 1.35;
+  margin: 24px 0;
+  padding: 18px 20px;
+}
+
+.self-checkin-status {
+  align-self: start;
+  display: grid;
+  gap: 18px;
+}
+
+.self-checkin-status .notice {
+  margin: 0;
+}
+
 .checkin-barcode-card {
   background: #fff;
   box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
@@ -681,14 +913,30 @@ th {
   padding: 16px;
 }
 
+.self-checkin-page .checkin-barcode-card {
+  margin-top: 0;
+  padding: 28px;
+}
+
 .checkin-barcode-card h2 {
   font-size: 22px;
   margin: 0 0 4px;
 }
 
+.self-checkin-page .checkin-barcode-card h2 {
+  font-size: 30px;
+  margin-bottom: 8px;
+}
+
 .checkin-barcode-card p {
   color: #4b5563;
   margin: 0 0 14px;
+}
+
+.self-checkin-page .checkin-barcode-card p {
+  font-size: 20px;
+  line-height: 1.35;
+  margin-bottom: 18px;
 }
 
 .checkin-barcode-frame {
@@ -699,10 +947,20 @@ th {
   padding: 16px;
 }
 
+.self-checkin-page .checkin-barcode-frame {
+  box-sizing: border-box;
+  padding: 20px;
+  width: 100%;
+}
+
 .checkin-barcode {
   display: block;
   height: 84px;
   max-width: 100%;
+}
+
+.self-checkin-page .checkin-barcode {
+  height: 116px;
 }
 
 .zip-map-panel {
@@ -797,36 +1055,97 @@ th {
   margin-bottom: 12px;
 }
 
-.id-upload-form,
-.inline-upload-form {
-  align-items: center;
-  display: inline-flex;
-  gap: 8px;
-}
-
 .guest-actions {
   align-items: center;
-  display: grid;
+  display: flex;
   gap: 8px;
-  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: flex-end;
+  min-width: 0;
 }
 
-.id-upload-form input[type="file"],
-.inline-upload-form input[type="file"] {
+.file-picker {
+  align-items: center;
+  display: inline-grid;
+  gap: 6px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.file-picker-context {
+  color: #20242c;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.file-picker-button {
+  background: #fff;
+  border: 1px solid #c7d1dd;
+  border-radius: 6px;
+  color: #20242c;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 9px;
+  white-space: nowrap;
+}
+
+.file-picker-button:hover,
+.file-picker-button:focus-visible {
+  border-color: #245c9f;
+  color: #17416f;
+}
+
+.file-picker-name {
   color: #374151;
   font-size: 13px;
-  max-width: 135px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.inline-upload-form {
+.upload-dialog {
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgb(16 24 40 / 28%);
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 0;
+  width: 420px;
+}
+
+.upload-dialog::backdrop {
+  background: rgb(15 23 42 / 45%);
+}
+
+.upload-dialog-form {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.upload-dialog-header h2 {
+  font-size: 22px;
+  margin: 0;
+}
+
+.upload-dialog .file-picker {
   background: #f8fafc;
   border: 1px solid #d8e0ea;
   border-radius: 6px;
-  padding: 6px;
+  box-sizing: border-box;
+  padding: 10px;
+  width: 100%;
 }
 
-.inline-upload-form button {
-  padding: 6px 10px;
+.upload-dialog-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.upload-dialog-actions button {
   white-space: nowrap;
 }
 
@@ -1023,7 +1342,175 @@ th {
   margin: 10px 0 0;
 }
 
+@media (min-width: 820px) and (orientation: landscape) {
+  .self-checkin-page {
+    max-width: 1180px;
+    padding: 32px 28px;
+  }
+
+  .page.guest-registration-page {
+    max-width: 1180px;
+    padding-bottom: 24px;
+    padding-top: 24px;
+  }
+
+  .guest-registration-page .page-header {
+    margin-bottom: 16px;
+  }
+
+  .guest-registration-form {
+    align-items: start;
+    gap: 12px 16px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  .guest-registration-form .required-note,
+  .guest-registration-form .form-actions {
+    grid-column: 1 / -1;
+  }
+
+  .guest-registration-section {
+    align-content: start;
+    gap: 10px 12px;
+    padding-top: 12px;
+  }
+
+  .guest-registration-section:first-of-type,
+  .guest-registration-section:nth-of-type(2) {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .guest-registration-section.compact-section {
+    grid-template-columns: minmax(180px, 260px);
+  }
+
+  .guest-registration-section h2 {
+    font-size: 14px;
+  }
+
+  .guest-registration-form label {
+    gap: 3px;
+  }
+
+  .guest-registration-form input,
+  .guest-registration-form select {
+    padding-bottom: 6px;
+    padding-top: 6px;
+  }
+
+  .guest-registration-form .form-actions {
+    justify-content: flex-end;
+  }
+
+  .self-checkin-header {
+    margin-bottom: 22px;
+  }
+
+  .self-checkin-page h1 {
+    font-size: 40px;
+  }
+
+  .self-checkin-layout.has-status {
+    align-items: start;
+    grid-template-columns: minmax(390px, 1fr) minmax(300px, 420px);
+  }
+
+  .self-checkin-panel {
+    gap: 18px;
+    margin-bottom: 18px;
+    padding: 24px;
+  }
+
+  .barcode-checkin-panel {
+    align-items: end;
+    grid-template-columns: minmax(220px, 0.55fr) minmax(280px, 1fr);
+  }
+
+  .self-checkin-panel h2,
+  .self-checkin-page .checkin-barcode-card h2 {
+    font-size: 28px;
+  }
+
+  .self-checkin-panel p,
+  .self-checkin-page .checkin-barcode-card p {
+    font-size: 19px;
+  }
+
+  .manual-checkin-form,
+  .barcode-checkin-form {
+    gap: 18px;
+  }
+
+  .manual-checkin-form {
+    align-items: end;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .manual-checkin-form .checkin-action-row {
+    grid-column: 1 / -1;
+  }
+
+  .self-checkin-page .self-checkin-form input {
+    min-height: 58px;
+  }
+
+  .self-checkin-page .self-checkin-form button {
+    min-height: 60px;
+  }
+
+  .self-checkin-status {
+    position: sticky;
+    top: 24px;
+  }
+
+  .self-checkin-page .checkin-barcode-card {
+    padding: 24px;
+  }
+
+  .self-checkin-page .checkin-barcode {
+    height: 102px;
+  }
+}
+
 @media (max-width: 720px) {
+  .self-checkin-page {
+    padding: 28px 16px;
+  }
+
+  .self-checkin-page h1 {
+    font-size: 36px;
+  }
+
+  .self-checkin-panel {
+    padding: 22px;
+  }
+
+  .self-checkin-panel h2,
+  .self-checkin-page .checkin-barcode-card h2 {
+    font-size: 26px;
+  }
+
+  .self-checkin-panel p,
+  .self-checkin-page .checkin-barcode-card p {
+    font-size: 18px;
+  }
+
+  .self-checkin-page .self-checkin-form label {
+    font-size: 20px;
+  }
+
+  .self-checkin-page .self-checkin-form input,
+  .self-checkin-page .self-checkin-form button {
+    font-size: 24px;
+    min-height: 62px;
+  }
+
+  .checkin-action-row {
+    grid-template-columns: 1fr;
+  }
+
   .page-header,
   .import-form,
   .import-actions,

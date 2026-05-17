@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
-from secrets import token_hex
+from secrets import token_hex, token_urlsafe
 from typing import Any
 
 from flask import (
@@ -68,6 +68,7 @@ MEMBERSHIP_OPTIONS = (
     "Full Member",
     "Visitor",
 )
+BARCODE_SECRET_SETTING_KEY = "self_checkin_barcode_secret"
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 DRIVER_LICENSE_DOCUMENT_NAME = "Driver License.jpg"
 DRIVER_LICENSE_IMAGE_SIZE = (2026, 1152)
@@ -953,6 +954,41 @@ def _barcode_token_for_card_number(card_number: str, secret_key: object) -> str:
     return f"{BARCODE_TOKEN_VERSION}:{signature}"
 
 
+def _configured_barcode_secret() -> str:
+    return (
+        os.getenv("USER_MANAGEMENT_BARCODE_SECRET", "").strip()
+        or str(getattr(cfg, "USER_MANAGEMENT_BARCODE_SECRET", "")).strip()
+        or os.getenv("USER_MANAGEMENT_SESSION_SECRET", "").strip()
+        or str(getattr(cfg, "USER_MANAGEMENT_SESSION_SECRET", "")).strip()
+    )
+
+
+def _barcode_secret_for_connection(
+    connection: sqlite3.Connection,
+    configured_secret: object = "",
+) -> str:
+    configured_secret_text = str(configured_secret or "").strip()
+    if configured_secret_text:
+        return configured_secret_text
+
+    row = connection.execute(
+        "SELECT value FROM app_settings WHERE key = ?",
+        (BARCODE_SECRET_SETTING_KEY,),
+    ).fetchone()
+    if row is not None:
+        return str(row["value"])
+
+    generated_secret = token_urlsafe(32)
+    connection.execute(
+        """
+        INSERT INTO app_settings (key, value)
+        VALUES (?, ?)
+        """,
+        (BARCODE_SECRET_SETTING_KEY, generated_secret),
+    )
+    return generated_secret
+
+
 def _member_from_barcode_token(
     connection: sqlite3.Connection,
     token: str,
@@ -1032,6 +1068,7 @@ def create_app(db_path: Path | None = None) -> Flask:
     flask_app.config["USER_MANAGEMENT_ADMIN_PASSWORD_HASH"] = str(
         getattr(cfg, "USER_MANAGEMENT_ADMIN_PASSWORD_HASH", "")
     ).strip()
+    flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"] = _configured_barcode_secret()
     flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"] = str(
         getattr(cfg, "USER_MANAGEMENT_DOCUMENTS_DIR", "")
     ).strip()
@@ -1599,10 +1636,14 @@ def create_app(db_path: Path | None = None) -> Flask:
             member = None
             with open_connection() as connection:
                 if barcode_token:
+                    barcode_secret = _barcode_secret_for_connection(
+                        connection,
+                        flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                    )
                     member = _member_from_barcode_token(
                         connection,
                         barcode_token,
-                        flask_app.secret_key,
+                        barcode_secret,
                     )
                 else:
                     phone = request.form.get("phone", "").strip()
@@ -1614,13 +1655,17 @@ def create_app(db_path: Path | None = None) -> Flask:
                     )
                 if member is not None:
                     _record_self_checkin(connection, member)
-                    connection.commit()
                     if not barcode_token:
+                        barcode_secret = _barcode_secret_for_connection(
+                            connection,
+                            flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                        )
                         token = _barcode_token_for_card_number(
                             member.card_number,
-                            flask_app.secret_key,
+                            barcode_secret,
                         )
                         barcode_svg = _code128b_svg(token)
+                    connection.commit()
             message = (
                 "Check-in recorded."
                 if member is not None
@@ -1669,4 +1714,4 @@ def create_app(db_path: Path | None = None) -> Flask:
 if __name__ == "__main__":
     app = create_app()
     flask_debug = os.getenv("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
-    app.run(debug=flask_debug, use_reloader=flask_debug, host="127.0.0.1", port=5052)
+    app.run(debug=flask_debug, use_reloader=flask_debug, host="0.0.0.0", port=5052)
