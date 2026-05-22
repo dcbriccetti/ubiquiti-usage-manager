@@ -1,0 +1,18 @@
+[Unit]
+Description=UniFi usage monitor and WAN flow importer
+After=network-online.target nfdump@default.service nfdump.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=daveb
+Group=daveb
+WorkingDirectory=/home/daveb/devel/ubiquiti-usage-manager
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/daveb/devel/ubiquiti-usage-manager/src
+ExecStart=/home/daveb/devel/ubiquiti-usage-manager/venv/bin/python src/monitor.py
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

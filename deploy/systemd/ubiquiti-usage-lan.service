@@ -1,0 +1,19 @@
+[Unit]
+Description=UniFi usage manager LAN dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=daveb
+Group=daveb
+WorkingDirectory=/home/daveb/devel/ubiquiti-usage-manager
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/daveb/devel/ubiquiti-usage-manager/src
+Environment=DEV_FORCE_PLUS_ADMIN=false
+ExecStart=/home/daveb/devel/ubiquiti-usage-manager/venv/bin/python src/app.py
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

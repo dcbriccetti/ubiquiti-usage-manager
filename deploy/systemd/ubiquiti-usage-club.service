@@ -1,0 +1,18 @@
+[Unit]
+Description=UniFi usage manager club user app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=daveb
+Group=daveb
+WorkingDirectory=/home/daveb/devel/ubiquiti-usage-manager
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/daveb/devel/ubiquiti-usage-manager/src
+ExecStart=/home/daveb/devel/ubiquiti-usage-manager/venv/bin/python -m club_admin.app
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

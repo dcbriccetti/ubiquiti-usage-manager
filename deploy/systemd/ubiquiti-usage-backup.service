@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up UniFi usage manager SQLite databases
+
+[Service]
+Type=oneshot
+User=daveb
+Group=daveb
+WorkingDirectory=/home/daveb/devel/ubiquiti-usage-manager
+ExecStart=/home/daveb/devel/ubiquiti-usage-manager/deploy/scripts/backup-prod-databases.sh
