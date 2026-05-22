@@ -29,7 +29,7 @@ for service in "${services[@]}"; do
     systemctl --no-pager status "${service}"
 done
 
-curl -fsS http://127.0.0.1:5051/my-usage >/dev/null
-curl -fsS http://127.0.0.1:5052/self-checkin >/dev/null
+curl --max-time 10 -fsS http://127.0.0.1:5051/my-usage >/dev/null
+curl --max-time 10 -fsS http://127.0.0.1:5052/self-checkin >/dev/null
 
 echo "Production deploy completed."

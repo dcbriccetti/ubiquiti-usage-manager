@@ -1714,4 +1714,5 @@ def create_app(db_path: Path | None = None) -> Flask:
 if __name__ == "__main__":
     app = create_app()
     flask_debug = os.getenv("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes", "on"}
-    app.run(debug=flask_debug, use_reloader=flask_debug, host="0.0.0.0", port=5052)
+    flask_host = os.getenv("CLUB_ADMIN_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    app.run(debug=flask_debug, use_reloader=flask_debug, host=flask_host, port=5052)
