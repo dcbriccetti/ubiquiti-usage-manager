@@ -95,7 +95,21 @@
       </section>
     {% endif %}
 
-    <h2>Other Documents</h2>
+    <div class="section-heading-row">
+      <h2>Other Documents</h2>
+      <form
+        class="member-document-upload"
+        action="{{ url_for('upload_member_document', member_id=member.id) }}"
+        method="post"
+        enctype="multipart/form-data"
+      >
+        <label class="file-field compact-file-field">
+          <span>Document</span>
+          <input type="file" name="member_document" required>
+        </label>
+        <button type="submit">Attach Document</button>
+      </form>
+    </div>
     <table>
       <thead>
         <tr>

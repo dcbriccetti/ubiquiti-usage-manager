@@ -169,6 +169,15 @@ h1 {
   padding: 5px 9px;
 }
 
+.compact-file-field {
+  min-height: 0;
+  padding: 7px 9px;
+}
+
+.compact-file-field input[type="file"] {
+  min-width: 14rem;
+}
+
 .map-import-form {
   background: #fff;
   box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
@@ -1095,6 +1104,29 @@ th {
   overflow-wrap: anywhere;
 }
 
+.section-heading-row {
+  align-items: end;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 24px 0 10px;
+}
+
+.section-heading-row h2 {
+  margin: 0;
+}
+
+.member-document-upload {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+}
+
+.member-document-upload button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
 .detail-wide {
   grid-column: 1 / -1;
 }
@@ -1576,9 +1608,11 @@ th {
   .page-header,
   .import-form,
   .import-actions,
+  .member-document-upload,
   .nav-stack,
   .nav-links,
   .report-filters,
+  .section-heading-row,
   .self-checkin-form {
     align-items: stretch;
     flex-direction: column;

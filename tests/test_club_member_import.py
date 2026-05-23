@@ -1159,6 +1159,69 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(document_response.status_code, 200)
         self.assertEqual(document_bytes, b"synthetic waiver")
 
+    def test_member_detail_can_attach_document_to_user_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "club-users.db"
+            documents_dir = temp_path / "documents"
+            flask_app = create_admin_app(db_path, str(documents_dir))
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.post(
+                f"/members/{member.id}/documents",
+                data={
+                    "member_document": (
+                        io.BytesIO(b"synthetic insurance card"),
+                        "Insurance Card.pdf",
+                    ),
+                },
+                content_type="multipart/form-data",
+                follow_redirects=True,
+            )
+            duplicate_response = client.post(
+                f"/members/{member.id}/documents",
+                data={
+                    "member_document": (
+                        io.BytesIO(b"replacement insurance card"),
+                        "Insurance Card.pdf",
+                    ),
+                },
+                content_type="multipart/form-data",
+                follow_redirects=True,
+            )
+
+            saved_document_path = documents_dir / "123" / "Insurance Card.pdf"
+            duplicate_document_path = documents_dir / "123" / "Insurance Card 2.pdf"
+            saved_document_bytes = saved_document_path.read_bytes()
+            duplicate_document_bytes = duplicate_document_path.read_bytes()
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Attach Document", body)
+        self.assertIn("Insurance Card.pdf", body)
+        self.assertIn(
+            f'/members/{member.id}/document?name=Insurance+Card.pdf',
+            body,
+        )
+        self.assertEqual(saved_document_bytes, b"synthetic insurance card")
+        self.assertEqual(duplicate_response.status_code, 200)
+        self.assertEqual(
+            duplicate_document_bytes,
+            b"replacement insurance card",
+        )
+
     def test_member_detail_guest_form_lookup_uses_card_folder_and_guest_form_prefix(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

@@ -435,6 +435,47 @@ def _member_document_path(member: Member, documents_dir: str, document_name: str
     return candidate if candidate.is_file() else None
 
 
+def _member_document_upload_path(
+    member: Member,
+    documents_dir: str,
+    document_name: str,
+) -> Path | None:
+    card_folder_name = member.card_number.strip().strip("'").strip()
+    if (
+        not documents_dir.strip()
+        or not card_folder_name
+        or not _is_safe_document_entry_name(card_folder_name)
+        or not _is_safe_document_entry_name(document_name)
+    ):
+        return None
+    base_dir = Path(documents_dir).expanduser().resolve(strict=False)
+    card_dir = base_dir / card_folder_name
+    resolved_card_dir = card_dir.resolve(strict=False)
+    try:
+        resolved_card_dir.relative_to(base_dir)
+    except ValueError:
+        return None
+
+    candidate = resolved_card_dir / document_name
+    if not candidate.exists():
+        return candidate
+
+    stem = candidate.stem
+    suffix = candidate.suffix
+    for index in range(2, 1000):
+        deduped_candidate = resolved_card_dir / f"{stem} {index}{suffix}"
+        if not deduped_candidate.exists():
+            return deduped_candidate
+    return None
+
+
+def _uploaded_document_name(filename: str) -> str | None:
+    document_name = filename.replace("\\", "/").rsplit("/", 1)[-1].strip()
+    document_name = unicodedata.normalize("NFKC", document_name)
+    document_name = "".join(character for character in document_name if character.isprintable()).strip()
+    return document_name if _is_safe_document_entry_name(document_name) else None
+
+
 def _member_document_names(
     member: Member,
     documents_dir: str,
@@ -696,6 +737,7 @@ def _is_document_image_name(entry_name: str) -> bool:
 def _is_safe_document_entry_name(entry_name: str) -> bool:
     return (
         bool(entry_name)
+        and entry_name not in {".", ".."}
         and Path(entry_name).name == entry_name
         and "/" not in entry_name
         and "\\" not in entry_name
@@ -1440,6 +1482,33 @@ def create_app(db_path: Path | None = None) -> Flask:
         if document_path is None:
             abort(404)
         return send_file(document_path, conditional=True)
+
+    @flask_app.post("/members/<int:member_id>/documents")
+    @require_admin
+    def upload_member_document(member_id: int):
+        uploaded_file = request.files.get("member_document")
+        if uploaded_file is None or not uploaded_file.filename:
+            abort(400, "Document file is required.")
+
+        with open_connection() as connection:
+            member = member_repository.get_member(connection, member_id)
+            if member is None:
+                abort(404)
+
+        document_name = _uploaded_document_name(uploaded_file.filename)
+        if document_name is None:
+            abort(400, "The document filename is not valid.")
+        destination_path = _member_document_upload_path(
+            member,
+            flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
+            document_name,
+        )
+        if destination_path is None:
+            abort(400, "The document could not be stored for this user.")
+
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
+        uploaded_file.save(destination_path)
+        return redirect(url_for("member_detail", member_id=member_id))
 
     @flask_app.route("/members/<int:member_id>/edit", methods=["GET", "POST"])
     @require_admin
