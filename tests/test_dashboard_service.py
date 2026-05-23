@@ -1,5 +1,6 @@
 import sys
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,9 @@ import dashboard_service
 
 
 class DashboardActivitySpanTests(unittest.TestCase):
+    def tearDown(self) -> None:
+        dashboard_service.clear_dashboard_wan_cache()
+
     def test_wan_import_status_uses_just_now_for_zero_and_negative_age(self) -> None:
         self.assertEqual(
             dashboard_service.render_wan_import_status(None),
@@ -144,6 +148,38 @@ class DashboardActivitySpanTests(unittest.TestCase):
 
         self.assertEqual([consumer["label"] for consumer in consumers], ["alex", "Phone"])
         self.assertEqual([consumer["interval_mb"] for consumer in consumers], [2.0, 1.0])
+
+    def test_dashboard_wan_cache_spans_normal_stream_tick(self) -> None:
+        wan_data = dashboard_service.DashboardWanData(
+            last_5_min_rows=[],
+            recent_rows=[],
+            today_rows=[],
+            seven_day_rows=[],
+            month_rows=[],
+            last_5_min_totals_by_mac={},
+            recent_totals_by_mac={},
+            today_totals_by_mac={},
+            seven_day_totals_by_mac={},
+            month_totals_by_mac={},
+            total_today_mb=0.0,
+            total_last_7_days_mb=0.0,
+            total_calendar_month_mb=0.0,
+            last_5_min_mb=0.0,
+            last_5_min_mbps=0.0,
+            wan_import_status="Internet data updated just now",
+            wan_import_stale=False,
+        )
+
+        with (
+            patch.object(dashboard_service, "_build_dashboard_wan_data", return_value=wan_data) as build_wan_data,
+            patch.object(dashboard_service.monotonic_time, "monotonic", side_effect=[0.0, 0.0, 0.0, 61.0]),
+        ):
+            first = dashboard_service.get_dashboard_wan_data(datetime(2026, 5, 22, 12, 0))
+            second = dashboard_service.get_dashboard_wan_data(datetime(2026, 5, 22, 12, 1, 1))
+
+        self.assertIs(first, wan_data)
+        self.assertIs(second, wan_data)
+        build_wan_data.assert_called_once()
 
 
 if __name__ == "__main__":

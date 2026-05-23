@@ -55,7 +55,7 @@ ALLOWED_ACTIVITY_SPANS: frozenset[ActivitySpan] = frozenset({
     ACTIVITY_SPAN_24_HOUR,
     ACTIVITY_SPAN_7_DAY,
 })
-DASHBOARD_WAN_CACHE_SECONDS = 30.0
+DASHBOARD_WAN_CACHE_SECONDS = 180.0
 RECENT_INTERNET_WINDOW_SECONDS = 3600
 SPEED_LIMIT_CACHE_SECONDS = 300.0
 INSIGHTS_CACHE_SECONDS_CURRENT = 30.0
@@ -192,6 +192,7 @@ class DashboardWanData:
 
 
 _dashboard_wan_cache_lock = Lock()
+_dashboard_wan_build_lock = Lock()
 _dashboard_wan_cache: tuple[float, DashboardWanData] | None = None
 _speed_limits_cache_lock = Lock()
 _speed_limits_cache: tuple[float, dict[str, SpeedLimit]] | None = None
@@ -456,13 +457,19 @@ def get_dashboard_wan_data(now: datetime) -> DashboardWanData:
         if _dashboard_wan_cache and _dashboard_wan_cache[0] > now_monotonic:
             return _dashboard_wan_cache[1]
 
-    wan_data = _build_dashboard_wan_data(now)
-    with _dashboard_wan_cache_lock:
-        _dashboard_wan_cache = (
-            monotonic_time.monotonic() + DASHBOARD_WAN_CACHE_SECONDS,
-            wan_data,
-        )
-    return wan_data
+    with _dashboard_wan_build_lock:
+        now_monotonic = monotonic_time.monotonic()
+        with _dashboard_wan_cache_lock:
+            if _dashboard_wan_cache and _dashboard_wan_cache[0] > now_monotonic:
+                return _dashboard_wan_cache[1]
+
+        wan_data = _build_dashboard_wan_data(now)
+        with _dashboard_wan_cache_lock:
+            _dashboard_wan_cache = (
+                monotonic_time.monotonic() + DASHBOARD_WAN_CACHE_SECONDS,
+                wan_data,
+            )
+        return wan_data
 
 
 def build_rows_for_online_clients(
