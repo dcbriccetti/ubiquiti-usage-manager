@@ -92,3 +92,24 @@ deploy/scripts/backup-prod-databases.sh
 ```
 
 Adjust retention with `BACKUP_RETENTION_DAYS`; the default is 30 days.
+
+## Meter Database Pruning
+
+Use the prune tool to remove old raw WAN-flow rows while preserving active Plus
+voucher accounting. The cutoff is the oldest unconsumed voucher generation time.
+If there are no active vouchers, it falls back to 90 days by default.
+
+Report only:
+
+```bash
+deploy/scripts/prune-meter-db.py
+```
+
+Apply after taking a backup:
+
+```bash
+deploy/scripts/backup-prod-databases.sh
+sudo systemctl stop ubiquiti-usage-monitor.service ubiquiti-usage-lan.service ubiquiti-usage-club.service
+deploy/scripts/prune-meter-db.py --apply --vacuum --yes-i-have-a-backup
+sudo systemctl start ubiquiti-usage-monitor.service ubiquiti-usage-lan.service ubiquiti-usage-club.service
+```
