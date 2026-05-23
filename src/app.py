@@ -321,6 +321,25 @@ def create_app() -> Flask:
         return False
     @flask_app.route("/")
     def dashboard():
+        'Render a fast loading screen before the dashboard snapshot is built.'
+        if not requester_is_plus_admin():
+            return redirect(url_for("my_usage"))
+
+        dashboard_args = {}
+        if window_value := request.args.get('window'):
+            dashboard_args['window'] = window_value
+        if activity_span_value := request.args.get('activity_span'):
+            dashboard_args['activity_span'] = activity_span_value
+
+        return render_template(
+            "loading.html",
+            loading_title="Loading Dashboard",
+            loading_message="Collecting live clients and Internet activity...",
+            target_url=url_for("dashboard_report", **dashboard_args),
+        )
+
+    @flask_app.route("/dashboard")
+    def dashboard_report():
         'Render the dashboard with live snapshots and daily usage summaries.'
         if not requester_is_plus_admin():
             return redirect(url_for("my_usage"))
