@@ -151,6 +151,30 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIsNotNone(checkins[0].user_id)
         self.assertEqual(checkins[0].card_number, "1861")
 
+    def test_upsert_checkin_does_not_replace_existing_user_membership(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            database.init_db(db_path)
+            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Full Member",
+                    ),
+                )
+                checkin_repository.upsert_checkin(connection, checkin)
+                connection.commit()
+
+                users = member_repository.list_members(connection)
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(users[0].membership, "Full Member")
+        self.assertEqual(checkins[0].membership, "Visitor")
+
     def test_upsert_checkin_creates_user_when_roster_is_not_imported(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"

@@ -51,8 +51,7 @@ def _ensure_user_for_checkin(connection: sqlite3.Connection, checkin: CheckIn) -
         VALUES (?, ?, ?, ?)
         ON CONFLICT(card_number) DO UPDATE SET
             last_name = excluded.last_name,
-            first_name = excluded.first_name,
-            membership = excluded.membership
+            first_name = excluded.first_name
         """,
         (
             checkin.last_name.strip(),
