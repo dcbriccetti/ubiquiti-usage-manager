@@ -1000,6 +1000,7 @@ def get_client_wan_detail_context(
     mac: str,
     flow_activity_range: FlowActivityRange = FLOW_ACTIVITY_RANGE_THIS_MONTH,
     now: datetime | None = None,
+    recent_usage_limit: int = 25,
 ) -> ClientWanDetailContext:
     'Build deferred WAN detail panels for one client.'
     resolved_now = now or datetime.now()
@@ -1013,6 +1014,7 @@ def get_client_wan_detail_context(
             mac_identity_wan_flows,
             month_start,
             resolved_now,
+            limit=recent_usage_limit,
         ),
         'flow_activity_rows': build_flow_activity_context(
             mac_identity_wan_flows,

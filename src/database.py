@@ -40,6 +40,7 @@ SessionLocal = sessionmaker(bind=engine)
 
 PERFORMANCE_INDEX_SPECS = [
     ("ix_wan_flow_usage_client_started", "wan_flow_usage", ("client_ip", "started_at")),
+    ("ix_wan_flow_usage_client_ended", "wan_flow_usage", ("client_ip", "ended_at")),
     ("ix_client_ip_identities_ip_observed", "client_ip_identities", ("ip_address", "observed_at")),
     ("ix_client_ip_identities_mac_observed", "client_ip_identities", ("mac", "observed_at")),
     ("ix_client_ip_identities_user_observed", "client_ip_identities", ("user_id", "observed_at")),

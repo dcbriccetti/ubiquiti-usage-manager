@@ -34,16 +34,16 @@
                 data-wan-details-url="{{ wan_details_url }}"
                 data-flow-activity-url="{{ flow_activity_url or '' }}"
                 data-reverse-dns-url="{{ url_for('reverse_dns_labels') }}"
+                aria-live="polite"
             >
-                <article class="panel">
+                <article class="panel" data-wan-details-prompt>
                     <div class="panel-body">
-                        <h2>Internet Usage</h2>
-                        <p class="muted">Loading Internet totals, charts, and recent activity…</p>
+                        <h2>Internet Details</h2>
+                        <p class="muted">Optional recent activity and host details.</p>
+                        <button type="button" data-load-wan-details>Show Internet Details</button>
                     </div>
                 </article>
             </section>
-            <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
-            <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>
             <script src="{{ url_for('static', filename='js/client-usage-detail.js') }}"></script>
         {% else %}
             {% include "_client_deferred_usage_panels.html" %}

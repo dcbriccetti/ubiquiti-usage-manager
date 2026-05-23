@@ -37,6 +37,7 @@ from reverse_dns import resolve_host_labels
 from usage_context import (
     get_client_flow_activity_context,
     get_client_usage_context,
+    get_client_wan_detail_context,
     normalize_flow_activity_range,
     speed_limit_option_label,
 )
@@ -672,9 +673,10 @@ def create_app() -> Flask:
         if not requester_is_plus_admin():
             abort(403)
 
-        context: dict[str, object] = dict(get_client_usage_context(mac))
+        context: dict[str, object] = dict(get_client_usage_context(mac, include_wan_details=False))
+        context.update(get_client_wan_detail_context(mac))
         return render_template(
-            "_client_deferred_usage_panels.html",
+            "_client_wan_detail_panels.html",
             flow_activity_url=url_for('client_flow_activities', mac=mac),
             **context,
         )
@@ -816,9 +818,12 @@ def create_app() -> Flask:
         if lookup_error or detected_mac is None:
             abort(404)
 
-        context: dict[str, object] = dict(get_client_usage_context(detected_mac))
+        context: dict[str, object] = dict(
+            get_client_usage_context(detected_mac, include_wan_details=False)
+        )
+        context.update(get_client_wan_detail_context(detected_mac))
         return render_template(
-            "_client_deferred_usage_panels.html",
+            "_client_wan_detail_panels.html",
             flow_activity_url=url_for('my_usage_flow_activities'),
             **context,
         )

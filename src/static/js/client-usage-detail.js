@@ -10,6 +10,9 @@
     }
     const reverseDnsUrl = container.dataset.reverseDnsUrl || '';
     const flowActivityUrl = container.dataset.flowActivityUrl || '';
+    const loadButton = container.querySelector('[data-load-wan-details]');
+    const storageKey = `wan-details-expanded:${window.location.pathname}`;
+    let detailsLoaded = false;
 
     const renderError = () => {
         container.innerHTML = `
@@ -17,28 +20,50 @@
                 <div class="panel-body">
                     <h2>Internet Details</h2>
                     <p class="muted">Internet details are not available right now.</p>
+                    <button type="button" data-load-wan-details>Try Again</button>
                 </div>
             </article>
         `;
+        container.querySelector('[data-load-wan-details]')?.addEventListener('click', loadDetails);
     };
 
-    fetch(detailsUrl, { cache: 'no-store' })
-        .then((response) => {
+    const renderLoading = () => {
+        container.setAttribute('aria-busy', 'true');
+        const button = container.querySelector('[data-load-wan-details]');
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Loading Internet Details...';
+        }
+        const prompt = container.querySelector('[data-wan-details-prompt] .muted');
+        if (prompt) {
+            prompt.textContent = 'Gathering recent activity and host details.';
+        }
+    };
+
+    async function loadDetails() {
+        if (detailsLoaded) {
+            return;
+        }
+        detailsLoaded = true;
+        renderLoading();
+        try {
+            const response = await fetch(detailsUrl, { cache: 'no-store' });
             if (!response.ok) {
                 throw new Error(`Internet detail request failed: ${response.status}`);
             }
-            return response.text();
-        })
-        .then((html) => {
+            const html = await response.text();
             container.innerHTML = html;
-            if (typeof window.renderUsageCharts === 'function') {
-                window.renderUsageCharts();
-            }
+            container.removeAttribute('aria-busy');
+            window.sessionStorage?.setItem(storageKey, '1');
             initializePaginatedTables();
             initializeFlowActivityRangeControls();
             refreshReverseDnsLabels();
-        })
-        .catch(renderError);
+        } catch (_error) {
+            detailsLoaded = false;
+            container.removeAttribute('aria-busy');
+            renderError();
+        }
+    }
 
     const initializeFlowActivityRangeControls = () => {
         container.querySelectorAll('[data-flow-activity-panel]').forEach((panel) => {
@@ -216,4 +241,10 @@
             }, delay);
         });
     };
+
+    loadButton?.addEventListener('click', loadDetails);
+
+    if (window.sessionStorage?.getItem(storageKey) === '1') {
+        loadDetails();
+    }
 })();
