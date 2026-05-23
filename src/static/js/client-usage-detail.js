@@ -11,7 +11,6 @@
     const reverseDnsUrl = container.dataset.reverseDnsUrl || '';
     const flowActivityUrl = container.dataset.flowActivityUrl || '';
     const loadButton = container.querySelector('[data-load-wan-details]');
-    const storageKey = `wan-details-expanded:${window.location.pathname}`;
     let detailsLoaded = false;
 
     const renderError = () => {
@@ -54,7 +53,9 @@
             const html = await response.text();
             container.innerHTML = html;
             container.removeAttribute('aria-busy');
-            window.sessionStorage?.setItem(storageKey, '1');
+            if (typeof window.renderUsageCharts === 'function') {
+                window.renderUsageCharts();
+            }
             initializePaginatedTables();
             initializeFlowActivityRangeControls();
             refreshReverseDnsLabels();
@@ -243,8 +244,4 @@
     };
 
     loadButton?.addEventListener('click', loadDetails);
-
-    if (window.sessionStorage?.getItem(storageKey) === '1') {
-        loadDetails();
-    }
 })();

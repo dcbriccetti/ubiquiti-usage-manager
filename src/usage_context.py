@@ -1074,23 +1074,66 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
         hydrate_usage_record_identity(latest_record, latest_ip_identity, month_wan_rows, mac)
 
     if not include_wan_details:
+        wan_today_download_mb = 0.0
+        wan_today_upload_mb = 0.0
+        wan_last_7_days_download_mb = 0.0
+        wan_last_7_days_upload_mb = 0.0
+        wan_month_download_mb = 0.0
+        wan_month_upload_mb = 0.0
+        if wan_client_ip:
+            wan_totals = db.get_wan_usage_by_client_ips(
+                [wan_client_ip],
+                period_start=month_start,
+                period_end=now,
+            ).get(wan_client_ip)
+            if wan_totals is not None:
+                wan_month_download_mb = wan_totals.download_bytes / 1_000_000.0
+                wan_month_upload_mb = wan_totals.upload_bytes / 1_000_000.0
+
+            wan_totals = db.get_wan_usage_by_client_ips(
+                [wan_client_ip],
+                period_start=seven_days_ago,
+                period_end=now,
+            ).get(wan_client_ip)
+            if wan_totals is not None:
+                wan_last_7_days_download_mb = wan_totals.download_bytes / 1_000_000.0
+                wan_last_7_days_upload_mb = wan_totals.upload_bytes / 1_000_000.0
+
+            wan_totals = db.get_wan_usage_by_client_ips(
+                [wan_client_ip],
+                period_start=today_start,
+                period_end=now,
+            ).get(wan_client_ip)
+            if wan_totals is not None:
+                wan_today_download_mb = wan_totals.download_bytes / 1_000_000.0
+                wan_today_upload_mb = wan_totals.upload_bytes / 1_000_000.0
+
+        wan_today_total_mb = wan_today_download_mb + wan_today_upload_mb
+        wan_last_7_days_total_mb = wan_last_7_days_download_mb + wan_last_7_days_upload_mb
+        wan_month_total_mb = wan_month_download_mb + wan_month_upload_mb
         return {
             'mac': mac,
             'latest_record': latest_record,
             'usage_history': usage_history,
-            'daily_total_mb': 0.0,
-            'last_7_days_total_mb': 0.0,
-            'calendar_month_total_mb': 0.0,
+            'daily_total_mb': wan_today_total_mb,
+            'last_7_days_total_mb': wan_last_7_days_total_mb,
+            'calendar_month_total_mb': wan_month_total_mb,
             'month_cost_cents': 0.0,
             'wan_client_ip': wan_client_ip,
-            'wan_usage_available': bool(wan_client_ip),
+            'wan_usage_available': bool(
+                wan_client_ip
+                or wan_today_download_mb
+                or wan_today_upload_mb
+                or wan_month_download_mb
+                or wan_month_upload_mb
+            ),
             'wan_identity_observed_at': latest_ip_identity.observed_at if latest_ip_identity else None,
-            'wan_today_download_mb': 0.0,
-            'wan_today_upload_mb': 0.0,
-            'wan_today_total_mb': 0.0,
-            'wan_month_download_mb': 0.0,
-            'wan_month_upload_mb': 0.0,
-            'wan_month_total_mb': 0.0,
+            'wan_today_download_mb': wan_today_download_mb,
+            'wan_today_upload_mb': wan_today_upload_mb,
+            'wan_today_total_mb': wan_today_total_mb,
+            'wan_month_download_mb': wan_month_download_mb,
+            'wan_month_upload_mb': wan_month_upload_mb,
+            'wan_month_total_mb': wan_month_total_mb,
             'wan_import_usage_rows': [],
             'access_mode_usage_rows': [],
             'flow_activity_rows': [],
@@ -1134,6 +1177,7 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
         mac_identity_wan_flows,
         month_start,
         now,
+        limit=25,
     )
     selected_flow_activity_range = FLOW_ACTIVITY_RANGE_THIS_MONTH
     flow_activity_rows = build_flow_activity_context(mac_identity_wan_flows, month_start, now)

@@ -104,10 +104,10 @@ class DashboardRouteTests(unittest.TestCase):
         self.assertIn("Show Internet Details", body)
         self.assertIn("data-load-wan-details", body)
         self.assertIn("data-wan-details-url", body)
+        self.assertIn("Internet Today", body)
         self.assertNotIn("Loading Internet totals", body)
-        self.assertNotIn("chart.umd.min.js", body)
 
-    def test_client_wan_details_uses_lightweight_detail_context(self) -> None:
+    def test_client_wan_details_loads_full_deferred_panels(self) -> None:
         flask_app = app.create_app()
         usage_record = app.UsageRecord(
             mac="aa:bb:cc:dd:ee:ff",
@@ -145,35 +145,19 @@ class DashboardRouteTests(unittest.TestCase):
             "current_month_label": "May 2026",
             "speed_limits_by_name": {},
         }
-        detail_context = {
-            "mac": usage_record.mac,
-            "wan_import_usage_rows": [],
-            "flow_activity_rows": [],
-            "flow_activity_range_options": [
-                {"key": "this_month", "label": "This month", "selected": True},
-            ],
-            "selected_flow_activity_range": "this_month",
-            "selected_flow_activity_range_label": "This month",
-            "current_month_label": "May 2026",
-        }
 
         with (
             patch.object(app.cfg, "PLUS_ADMIN_IPS", {"127.0.0.1"}),
             patch.object(app, "get_client_usage_context", return_value=base_context) as usage_context,
-            patch.object(app, "get_client_wan_detail_context", return_value=detail_context) as wan_context,
         ):
             response = flask_app.test_client().get("/clients/aa:bb:cc:dd:ee:ff/wan-details")
 
         self.assertEqual(response.status_code, 200)
-        usage_context.assert_called_once_with(
-            "aa:bb:cc:dd:ee:ff",
-            include_wan_details=False,
-        )
-        wan_context.assert_called_once_with("aa:bb:cc:dd:ee:ff")
+        usage_context.assert_called_once_with("aa:bb:cc:dd:ee:ff")
         body = response.get_data(as_text=True)
         self.assertIn("Top Internet Activities", body)
         self.assertIn("Recent Internet Usage", body)
-        self.assertNotIn("Internet Today", body)
+        self.assertIn("Internet Today", body)
 
 
 if __name__ == "__main__":
