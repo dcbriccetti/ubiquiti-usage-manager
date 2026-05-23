@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
 <body>
-  <main class="page narrow">
+  <main class="page imports-page">
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
@@ -30,14 +30,22 @@
           <span>Users CSV</span>
           <input type="file" name="members_csv" accept=".csv,text/csv" required>
         </label>
-        <button type="submit">Import Users</button>
+        <div class="import-options">
+          <label class="checkbox-field import-checkbox-field">
+            <input type="checkbox" name="remove_existing_users" value="1">
+            <span>First remove all existing checkins and users</span>
+          </label>
+          <button type="submit">Import Users</button>
+        </div>
       </form>
       <form class="import-form stacked-import-form" action="{{ url_for('import_checkins') }}" method="post" enctype="multipart/form-data">
         <label class="file-field">
           <span>Check-ins CSV</span>
           <input type="file" name="checkins_csv" accept=".csv,text/csv" required>
         </label>
-        <button type="submit">Import Check-ins</button>
+        <div class="import-options">
+          <button type="submit">Import Check-ins</button>
+        </div>
       </form>
     </section>
   </main>

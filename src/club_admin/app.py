@@ -283,6 +283,13 @@ def _record_checkin_change(
     )
 
 
+def _clear_user_import_data(connection: sqlite3.Connection) -> None:
+    connection.execute("DELETE FROM guest_registrations")
+    connection.execute("DELETE FROM checkins")
+    connection.execute("DELETE FROM audit_log WHERE entity_type = 'user'")
+    connection.execute("DELETE FROM users")
+
+
 def _visitor_text_or_none(form_data: Any, field_name: str) -> str | None:
     return form_data.get(field_name, "").strip() or None
 
@@ -1781,6 +1788,8 @@ def create_app(db_path: Path | None = None) -> Flask:
         stream = io.StringIO(csv_file.stream.read().decode("utf-8-sig"))
         members_to_import = csv_import.read_members_csv(stream)
         with open_connection() as connection:
+            if request.form.get("remove_existing_users") == "1":
+                _clear_user_import_data(connection)
             for member in members_to_import:
                 member_repository.upsert_member(connection, member)
             connection.commit()

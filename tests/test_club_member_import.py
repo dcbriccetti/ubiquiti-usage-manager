@@ -23,7 +23,7 @@ from club_admin import database
 from club_admin import guest_registration_repository
 from club_admin import member_repository
 from club_admin.app import create_app
-from club_admin.models import CheckIn, Member
+from club_admin.models import CheckIn, GuestRegistration, Member
 import config as cfg
 
 
@@ -321,6 +321,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(imports_response.status_code, 200)
         imports_body = imports_response.get_data(as_text=True)
         self.assertIn('name="members_csv"', imports_body)
+        self.assertIn('name="remove_existing_users" value="1"', imports_body)
+        self.assertIn("First remove all existing checkins and users", imports_body)
         self.assertIn('name="checkins_csv"', imports_body)
 
     def test_admin_can_check_in_selected_members_from_users_page(self) -> None:
@@ -644,6 +646,90 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(len(members), 1)
         self.assertEqual(members[0].first_name, "John")
+
+    def test_member_import_can_first_remove_existing_users_and_checkins(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                existing_user_id = member_repository.insert_member(
+                    connection,
+                    Member(
+                        last_name="Old",
+                        first_name="User",
+                        card_number="OLD-1",
+                        membership="Visitor",
+                    ),
+                )
+                guest_user_id = member_repository.insert_member(
+                    connection,
+                    Member(
+                        last_name="Guest",
+                        first_name="Person",
+                        card_number="GUEST-1",
+                        membership="Visitor",
+                    ),
+                )
+                guest_registration_repository.insert_guest_registration(
+                    connection,
+                    GuestRegistration(
+                        user_id=guest_user_id,
+                        visit_date=datetime(2026, 5, 14).date(),
+                    ),
+                )
+                checkin_repository.upsert_checkin(
+                    connection,
+                    CheckIn(
+                        member_id="OLD-1",
+                        last_name="Old",
+                        first_name="User",
+                        card_number="OLD-1",
+                        check_in_at=datetime(2026, 5, 1, 9, 0, 0),
+                        membership="Visitor",
+                    ),
+                )
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=existing_user_id,
+                    action="edit",
+                    field_name="membership",
+                    old_value="Visitor",
+                    new_value="Full Member",
+                )
+                connection.commit()
+            csv_bytes = (
+                b"Last Name,First Name,Card #,Membership,Expiration\n"
+                b"New,User,NEW-1,Full Member,10/31/2026\n"
+            )
+
+            response = client.post(
+                "/members/import",
+                data={
+                    "members_csv": (io.BytesIO(csv_bytes), "members.csv"),
+                    "remove_existing_users": "1",
+                },
+                content_type="multipart/form-data",
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                members = member_repository.list_members(connection)
+                checkin_count = connection.execute(
+                    "SELECT COUNT(*) FROM checkins"
+                ).fetchone()[0]
+                guest_registration_count = connection.execute(
+                    "SELECT COUNT(*) FROM guest_registrations"
+                ).fetchone()[0]
+                audit_count = connection.execute(
+                    "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'user'"
+                ).fetchone()[0]
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual([member.card_number for member in members], ["NEW-1"])
+        self.assertEqual(checkin_count, 0)
+        self.assertEqual(guest_registration_count, 0)
+        self.assertEqual(audit_count, 0)
 
     def test_members_page_links_names_to_detail_page(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
