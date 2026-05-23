@@ -83,11 +83,13 @@
       return;
     }
     const userLabel = visibleCount === 1 ? "user" : "users";
-    countElement.value = `${visibleCount} ${userLabel}`;
-    countElement.textContent =
+    const countText =
       visibleCount === totalCount
-        ? `${visibleCount} ${userLabel}`
-        : `${visibleCount} of ${totalCount} ${userLabel}`;
+        ? `(${visibleCount.toLocaleString()})`
+        : `(${visibleCount.toLocaleString()} of ${totalCount.toLocaleString()} ${userLabel})`;
+    countElement.value = countText;
+    countElement.textContent =
+      countText;
   };
 
   const applySearch = (table, searchInput, columnSelect, countElement) => {
@@ -117,6 +119,35 @@
     }
     resetButton.disabled =
       !searchInput.value.trim() && (!columnSelect || columnSelect.value === "all");
+  };
+
+  const checkinCheckboxes = (container) =>
+    Array.from(container.querySelectorAll("[data-checkin-checkbox]"));
+
+  const checkedCheckinCount = (container) =>
+    checkinCheckboxes(container).filter((checkbox) => checkbox.checked).length;
+
+  const updateBulkCheckinState = (container) => {
+    const submitButton = container.querySelector("[data-checkin-submit]");
+    const checkedCount = checkedCheckinCount(container);
+
+    if (submitButton) {
+      submitButton.disabled = checkedCount === 0;
+      if (checkedCount === 0) {
+        submitButton.textContent = "Check In Selected";
+      } else {
+        submitButton.textContent =
+          checkedCount === 1 ? "Check In 1 Selected" : `Check In ${checkedCount} Selected`;
+      }
+    }
+  };
+
+  const confirmBulkCheckin = (container) => {
+    const checkedCount = checkedCheckinCount(container);
+    if (checkedCount <= 2) {
+      return true;
+    }
+    return window.confirm(`Check in ${checkedCount} selected users?`);
   };
 
   const resetSearch = (table, searchInput, columnSelect, countElement, resetButton) => {
@@ -199,6 +230,7 @@
         const updateSearch = () => {
           applySearch(table, searchInput, columnSelect, countElement);
           updateSearchResetState(searchInput, columnSelect, resetButton);
+          updateBulkCheckinState(container);
         };
 
         searchInput.addEventListener("input", updateSearch);
@@ -210,6 +242,16 @@
         applySearch(table, searchInput, columnSelect, countElement);
         updateSearchResetState(searchInput, columnSelect, resetButton);
       }
+
+      checkinCheckboxes(container).forEach((checkbox) => {
+        checkbox.addEventListener("change", () => updateBulkCheckinState(container));
+      });
+      container.querySelector("#members-checkin-form")?.addEventListener("submit", (event) => {
+        if (!confirmBulkCheckin(container)) {
+          event.preventDefault();
+        }
+      });
+      updateBulkCheckinState(container);
     });
   };
 

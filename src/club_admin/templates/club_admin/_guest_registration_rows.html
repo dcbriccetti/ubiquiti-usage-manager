@@ -1,0 +1,58 @@
+{% for record in records %}
+  <tr data-guest-registration-row data-registration-id="{{ record.registration.id }}">
+    <td class="nowrap">{{ record.registration.created_at or '' }}</td>
+    <td>
+      <a href="{{ url_for('member_detail', member_id=record.member.id) }}">
+        {{ record.member.last_name }}, {{ record.member.first_name }}
+      </a>
+    </td>
+    <td class="nowrap">{{ record.registration.visit_date }}</td>
+    <td>{{ record.member.card_number }}</td>
+    <td class="nowrap">{{ record.member.email or '' }}</td>
+    <td class="nowrap">{{ record.member.cell_phone or '' }}</td>
+    <td class="guest-actions-cell">
+      <div class="guest-actions">
+        <button type="button" data-upload-dialog-open="id-upload-dialog-{{ record.registration.id }}">Attach ID</button>
+        <a class="button-link secondary" href="{{ url_for('filled_guest_registration_form', registration_id=record.registration.id) }}">Print Form</a>
+        <dialog
+          class="upload-dialog"
+          id="id-upload-dialog-{{ record.registration.id }}"
+          aria-labelledby="id-upload-dialog-title-{{ record.registration.id }}"
+        >
+          <form
+            class="upload-dialog-form"
+            action="{{ url_for('upload_guest_registration_driver_license', registration_id=record.registration.id) }}"
+            method="post"
+            enctype="multipart/form-data"
+          >
+            <header class="upload-dialog-header">
+              <h2 id="id-upload-dialog-title-{{ record.registration.id }}">Attach ID Image</h2>
+            </header>
+            <div class="file-picker">
+              <input
+                id="driver-license-{{ record.registration.id }}"
+                type="file"
+                name="driver_license"
+                accept="image/*"
+                required
+                data-file-input
+                hidden
+              >
+              <span class="file-picker-context">ID image</span>
+              <button class="file-picker-button" type="button" data-file-trigger="driver-license-{{ record.registration.id }}">Choose image</button>
+              <span class="file-picker-name" data-file-name>No file selected</span>
+            </div>
+            <div class="upload-dialog-actions">
+              <button class="button-link secondary" type="button" data-upload-dialog-close>Cancel</button>
+              <button type="submit" data-file-submit disabled>Attach ID Image</button>
+            </div>
+          </form>
+        </dialog>
+      </div>
+    </td>
+  </tr>
+{% else %}
+  <tr>
+    <td colspan="7" class="empty">No guest registrations submitted yet.</td>
+  </tr>
+{% endfor %}

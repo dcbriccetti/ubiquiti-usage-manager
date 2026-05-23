@@ -23,7 +23,7 @@
     {% endif %}
 
     <form class="edit-form guest-registration-form" action="{{ url_for('guest_registration') }}" method="post">
-      <p class="required-note">Fields marked <span aria-hidden="true">•</span> are required.</p>
+      <p class="required-note">Items marked <span aria-hidden="true">•</span> are required.</p>
       <section class="guest-registration-section compact-section" aria-labelledby="visit-section-title">
         <h2 id="visit-section-title">Visit</h2>
         <label class="required-field">
@@ -50,11 +50,15 @@
           <span>Nickname or Preferred Name</span>
           <input type="text" name="nickname" value="{{ form_data.get('nickname', '') }}">
         </label>
+        <label class="required-field">
+          <span>Date of Birth</span>
+          <input type="date" name="date_of_birth" value="{{ form_data.get('date_of_birth', '') }}" autocomplete="bday" required>
+        </label>
       </section>
 
       <section class="guest-registration-section" aria-labelledby="contact-section-title">
-        <h2 id="contact-section-title">Contact</h2>
-        <p class="section-note detail-wide">At least one phone number or email is required.</p>
+        <h2 id="contact-section-title" class="required-section-title"><span aria-hidden="true">•</span>Contact <span class="visually-hidden">required</span></h2>
+        <p class="section-note detail-wide">A phone number or email is required.</p>
         <label>
           <span>Cell Phone</span>
           <input type="tel" name="cell_phone" value="{{ form_data.get('cell_phone', '') }}" autocomplete="tel" inputmode="tel">

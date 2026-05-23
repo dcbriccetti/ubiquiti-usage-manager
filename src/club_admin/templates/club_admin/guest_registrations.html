@@ -7,12 +7,18 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
 <body>
-  <main class="page guest-registrations-page">
+  <main
+    class="page guest-registrations-page"
+    data-guest-registrations
+    data-recent-url="{{ url_for('recent_guest_registrations') }}"
+    data-latest-registration-id="{{ latest_registration_id }}"
+    data-registration-count="{{ records|length }}"
+  >
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
         <h1>Guest Registrations</h1>
-        <p class="summary">{{ records|length }} recent submissions</p>
+        <p class="summary" data-guest-registrations-summary>{{ records|length }} recent submissions</p>
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
@@ -24,6 +30,11 @@
         <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
       </nav>
     </header>
+
+    <div class="guest-registration-refresh" aria-live="polite">
+      <span data-guest-refresh-status>Watching for new submissions.</span>
+      <button type="button" class="button-link secondary" data-enable-guest-alerts>Enable Alerts</button>
+    </div>
 
     <table class="guest-registrations-table">
       <thead>
@@ -37,69 +48,117 @@
           <th>Actions</th>
         </tr>
       </thead>
-      <tbody>
-        {% for record in records %}
-          <tr>
-            <td class="nowrap">{{ record.registration.created_at or '' }}</td>
-            <td>
-              <a href="{{ url_for('member_detail', member_id=record.member.id) }}">
-                {{ record.member.last_name }}, {{ record.member.first_name }}
-              </a>
-            </td>
-            <td class="nowrap">{{ record.registration.visit_date }}</td>
-            <td>{{ record.member.card_number }}</td>
-            <td class="nowrap">{{ record.member.email or '' }}</td>
-            <td class="nowrap">{{ record.member.cell_phone or '' }}</td>
-            <td class="guest-actions-cell">
-              <div class="guest-actions">
-                <button type="button" data-upload-dialog-open="id-upload-dialog-{{ record.registration.id }}">Attach ID</button>
-                <a class="button-link secondary" href="{{ url_for('filled_guest_registration_form', registration_id=record.registration.id) }}">Print Form</a>
-                <dialog
-                  class="upload-dialog"
-                  id="id-upload-dialog-{{ record.registration.id }}"
-                  aria-labelledby="id-upload-dialog-title-{{ record.registration.id }}"
-                >
-                  <form
-                    class="upload-dialog-form"
-                    action="{{ url_for('upload_guest_registration_driver_license', registration_id=record.registration.id) }}"
-                    method="post"
-                    enctype="multipart/form-data"
-                  >
-                    <header class="upload-dialog-header">
-                      <h2 id="id-upload-dialog-title-{{ record.registration.id }}">Attach ID Image</h2>
-                    </header>
-                    <div class="file-picker">
-                      <input
-                        id="driver-license-{{ record.registration.id }}"
-                        type="file"
-                        name="driver_license"
-                        accept="image/*"
-                        required
-                        data-file-input
-                        hidden
-                      >
-                      <span class="file-picker-context">ID image</span>
-                      <button class="file-picker-button" type="button" data-file-trigger="driver-license-{{ record.registration.id }}">Choose image</button>
-                      <span class="file-picker-name" data-file-name>No file selected</span>
-                    </div>
-                    <div class="upload-dialog-actions">
-                      <button class="button-link secondary" type="button" data-upload-dialog-close>Cancel</button>
-                      <button type="submit" data-file-submit disabled>Attach ID Image</button>
-                    </div>
-                  </form>
-                </dialog>
-              </div>
-            </td>
-          </tr>
-        {% else %}
-          <tr>
-            <td colspan="7" class="empty">No guest registrations submitted yet.</td>
-          </tr>
-        {% endfor %}
+      <tbody data-guest-registrations-body>
+        {% include "club_admin/_guest_registration_rows.html" %}
       </tbody>
     </table>
   </main>
   <script>
+    const guestRegistrationsPage = document.querySelector("[data-guest-registrations]");
+    const guestRegistrationsBody = document.querySelector("[data-guest-registrations-body]");
+    const guestRegistrationsSummary = document.querySelector("[data-guest-registrations-summary]");
+    const guestRefreshStatus = document.querySelector("[data-guest-refresh-status]");
+    const enableGuestAlertsButton = document.querySelector("[data-enable-guest-alerts]");
+    const guestRefreshUrl = guestRegistrationsPage?.dataset.recentUrl || "";
+    let latestRegistrationId = Number.parseInt(
+      guestRegistrationsPage?.dataset.latestRegistrationId || "0",
+      10,
+    );
+    let registrationCount = Number.parseInt(
+      guestRegistrationsPage?.dataset.registrationCount || "0",
+      10,
+    );
+    let guestAlertsEnabled = false;
+    let guestAudioContext = null;
+
+    function submissionSummary(count) {
+      return `${count} recent submission${count === 1 ? "" : "s"}`;
+    }
+
+    function updateGuestRefreshStatus(message) {
+      if (guestRefreshStatus) {
+        guestRefreshStatus.textContent = message;
+      }
+    }
+
+    function bindGuestRegistrationInteractions(root) {
+      root.querySelectorAll("[data-upload-dialog-open]").forEach((button) => {
+        if (button.dataset.uploadDialogBound) {
+          return;
+        }
+        button.dataset.uploadDialogBound = "1";
+        button.addEventListener("click", () => {
+          const dialog = document.getElementById(button.dataset.uploadDialogOpen);
+          if (!dialog) {
+            return;
+          }
+          if (typeof dialog.showModal === "function") {
+            dialog.showModal();
+          } else {
+            dialog.setAttribute("open", "");
+          }
+          dialog.querySelector(".file-picker-button")?.focus();
+        });
+      });
+
+      root.querySelectorAll("[data-upload-dialog-close]").forEach((button) => {
+        if (button.dataset.uploadDialogCloseBound) {
+          return;
+        }
+        button.dataset.uploadDialogCloseBound = "1";
+        button.addEventListener("click", () => {
+          const dialog = button.closest("dialog");
+          if (dialog) {
+            closeUploadDialog(dialog);
+          }
+        });
+      });
+
+      root.querySelectorAll(".upload-dialog").forEach((dialog) => {
+        if (dialog.dataset.uploadDialogEventsBound) {
+          return;
+        }
+        dialog.dataset.uploadDialogEventsBound = "1";
+        dialog.addEventListener("click", (event) => {
+          if (event.target === dialog) {
+            closeUploadDialog(dialog);
+          }
+        });
+        dialog.addEventListener("close", () => {
+          resetUploadDialog(dialog);
+        });
+      });
+
+      root.querySelectorAll("[data-file-trigger]").forEach((button) => {
+        if (button.dataset.fileTriggerBound) {
+          return;
+        }
+        button.dataset.fileTriggerBound = "1";
+        button.addEventListener("click", () => {
+          document.getElementById(button.dataset.fileTrigger)?.click();
+        });
+      });
+
+      root.querySelectorAll("[data-file-input]").forEach((input) => {
+        if (input.dataset.fileInputBound) {
+          return;
+        }
+        input.dataset.fileInputBound = "1";
+        input.addEventListener("change", () => {
+          const selectedFile = input.files?.[0];
+          const picker = input.closest(".file-picker");
+          const fileName = picker?.querySelector("[data-file-name]");
+          const submitButton = input.closest("form")?.querySelector("[data-file-submit]");
+          if (fileName) {
+            fileName.textContent = selectedFile?.name || "No file selected";
+          }
+          if (submitButton) {
+            submitButton.disabled = !selectedFile;
+          }
+        });
+      });
+    }
+
     function resetUploadDialog(dialog) {
       const form = dialog.querySelector("form");
       const fileName = dialog.querySelector("[data-file-name]");
@@ -122,61 +181,113 @@
       }
     }
 
-    document.querySelectorAll("[data-upload-dialog-open]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const dialog = document.getElementById(button.dataset.uploadDialogOpen);
-        if (!dialog) {
+    function ensureGuestAudioContext() {
+      if (!guestAudioContext) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          guestAudioContext = new AudioContextClass();
+        }
+      }
+      return guestAudioContext;
+    }
+
+    function playGuestAlertTone() {
+      if (!guestAlertsEnabled) {
+        return;
+      }
+      const audioContext = ensureGuestAudioContext();
+      if (!audioContext) {
+        return;
+      }
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+      gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.16, audioContext.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.24);
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.25);
+    }
+
+    function showGuestNotification(guestName, newCount) {
+      if (!guestAlertsEnabled || !("Notification" in window) || Notification.permission !== "granted") {
+        return;
+      }
+      const title = newCount === 1 ? "New guest registration" : `${newCount} new guest registrations`;
+      const body = guestName ? `${guestName} is ready to print.` : "The guest registration list has been updated.";
+      new Notification(title, { body });
+    }
+
+    function notifyNewGuestRegistrations(payload, newCount) {
+      playGuestAlertTone();
+      showGuestNotification(payload.latest_guest_name || "", newCount);
+    }
+
+    async function refreshGuestRegistrations() {
+      if (!guestRefreshUrl || !guestRegistrationsBody) {
+        return;
+      }
+      if (document.querySelector(".upload-dialog[open]")) {
+        updateGuestRefreshStatus("Refresh paused while an upload dialog is open.");
+        return;
+      }
+
+      try {
+        const response = await fetch(guestRefreshUrl, {
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) {
+          updateGuestRefreshStatus("Could not refresh guest registrations.");
           return;
         }
-        if (typeof dialog.showModal === "function") {
-          dialog.showModal();
-        } else {
-          dialog.setAttribute("open", "");
+        const payload = await response.json();
+        const previousLatestId = latestRegistrationId;
+        const nextLatestId = Number.parseInt(payload.latest_registration_id || "0", 10);
+        const nextCount = Number.parseInt(payload.count || "0", 10);
+        const registrationIds = Array.isArray(payload.registration_ids)
+          ? payload.registration_ids.map((id) => Number.parseInt(id, 10)).filter(Number.isFinite)
+          : [];
+        const newRegistrationCount = registrationIds.filter((id) => id > previousLatestId).length;
+
+        if (
+          typeof payload.rows_html === "string"
+          && (nextLatestId !== latestRegistrationId || nextCount !== registrationCount)
+        ) {
+          guestRegistrationsBody.innerHTML = payload.rows_html;
+          bindGuestRegistrationInteractions(guestRegistrationsBody);
         }
-        dialog.querySelector(".file-picker-button")?.focus();
-      });
+        latestRegistrationId = Math.max(latestRegistrationId, nextLatestId);
+        registrationCount = nextCount;
+        if (guestRegistrationsSummary) {
+          guestRegistrationsSummary.textContent = submissionSummary(nextCount);
+        }
+        if (newRegistrationCount > 0) {
+          notifyNewGuestRegistrations(payload, newRegistrationCount);
+        }
+        updateGuestRefreshStatus(`Updated ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`);
+      } catch (error) {
+        updateGuestRefreshStatus("Could not refresh guest registrations.");
+      }
+    }
+
+    enableGuestAlertsButton?.addEventListener("click", async () => {
+      guestAlertsEnabled = true;
+      const audioContext = ensureGuestAudioContext();
+      await audioContext?.resume?.();
+      if ("Notification" in window && Notification.permission === "default") {
+        await Notification.requestPermission();
+      }
+      enableGuestAlertsButton.textContent = "Alerts On";
+      enableGuestAlertsButton.disabled = true;
+      updateGuestRefreshStatus("Watching for new submissions with alerts on.");
     });
 
-    document.querySelectorAll("[data-upload-dialog-close]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const dialog = button.closest("dialog");
-        if (dialog) {
-          closeUploadDialog(dialog);
-        }
-      });
-    });
-
-    document.querySelectorAll(".upload-dialog").forEach((dialog) => {
-      dialog.addEventListener("click", (event) => {
-        if (event.target === dialog) {
-          closeUploadDialog(dialog);
-        }
-      });
-      dialog.addEventListener("close", () => {
-        resetUploadDialog(dialog);
-      });
-    });
-
-    document.querySelectorAll("[data-file-trigger]").forEach((button) => {
-      button.addEventListener("click", () => {
-        document.getElementById(button.dataset.fileTrigger)?.click();
-      });
-    });
-
-    document.querySelectorAll("[data-file-input]").forEach((input) => {
-      input.addEventListener("change", () => {
-        const selectedFile = input.files?.[0];
-        const picker = input.closest(".file-picker");
-        const fileName = picker?.querySelector("[data-file-name]");
-        const submitButton = input.closest("form")?.querySelector("[data-file-submit]");
-        if (fileName) {
-          fileName.textContent = selectedFile?.name || "No file selected";
-        }
-        if (submitButton) {
-          submitButton.disabled = !selectedFile;
-        }
-      });
-    });
+    bindGuestRegistrationInteractions(document);
+    window.setInterval(refreshGuestRegistrations, 10000);
   </script>
 </body>
 </html>

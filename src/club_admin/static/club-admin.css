@@ -334,14 +334,24 @@ th {
 
 .users-search-count {
   color: #5b6472;
-  font-size: 13px;
+  display: inline;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.users-bulk-checkin {
   min-height: 36px;
-  padding: 9px 0 0;
+  padding: 7px 10px;
+}
+
+.users-checkin-notice {
+  margin-bottom: 12px;
 }
 
 .users-table-scroll {
+  max-height: calc(100vh - 260px);
   max-width: 100%;
-  overflow-x: auto;
+  overflow: auto;
 }
 
 .users-table {
@@ -360,7 +370,7 @@ th {
 .users-table th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
 .sortable-heading {
@@ -452,8 +462,34 @@ th {
   min-width: 4.5rem;
 }
 
+.member-select {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.member-select input {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .guest-registrations-page {
   max-width: 1240px;
+}
+
+.guest-registration-refresh {
+  align-items: center;
+  color: #5b6472;
+  display: flex;
+  font-size: 14px;
+  gap: 12px;
+  justify-content: space-between;
+  margin: 0 0 14px;
+}
+
+.guest-registration-refresh button {
+  flex: 0 0 auto;
 }
 
 .guest-registrations-table th,
@@ -661,7 +697,8 @@ th {
 }
 
 .required-note span,
-.required-field > span::before {
+.required-field > span::before,
+.required-section-title span[aria-hidden="true"] {
   color: #b42318;
   font-weight: 750;
 }
@@ -670,6 +707,12 @@ th {
   content: "•";
   font-size: 18px;
   line-height: 1;
+}
+
+.required-section-title {
+  align-items: baseline;
+  display: flex;
+  gap: 6px;
 }
 
 .guest-registration-section.compact-section {

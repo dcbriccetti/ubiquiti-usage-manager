@@ -310,6 +310,16 @@ def _parse_visitor_visit_date(form_data: Any) -> date:
         raise GuestRegistrationFormError("Visit date must use YYYY-MM-DD.")
 
 
+def _parse_visitor_date_of_birth(form_data: Any) -> date | None:
+    value = form_data.get("date_of_birth", "").strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise GuestRegistrationFormError("Date of birth must use YYYY-MM-DD.")
+
+
 def _guest_registration_validation_message(
     member: Member,
     registration: GuestRegistration,
@@ -318,6 +328,8 @@ def _guest_registration_validation_message(
         return "First and last name are required."
     if not member.cell_phone and not member.phone and not member.email:
         return "Phone or email is required."
+    if member.date_of_birth is None:
+        return "Date of birth is required."
     if not member.address or not member.city or not member.state or not member.zip:
         return "Street address, city, state, and zip code are required."
     if not registration.marital_status:
@@ -341,6 +353,7 @@ def _guest_registration_from_form(
         nickname=_visitor_text_or_none(form_data, "nickname"),
         card_number=card_number,
         membership="Visitor",
+        date_of_birth=_parse_visitor_date_of_birth(form_data),
         address=_visitor_text_or_none(form_data, "address"),
         city=_visitor_text_or_none(form_data, "city"),
         state=_visitor_text_or_none(form_data, "state"),
@@ -1041,7 +1054,8 @@ def _code128b_svg(value: str) -> str:
     )
 
 
-def _record_self_checkin(connection: sqlite3.Connection, member: Member) -> None:
+def _record_self_checkin(connection: sqlite3.Connection, member: Member) -> datetime:
+    check_in_at = datetime.now().replace(microsecond=0)
     checkin_repository.upsert_checkin(
         connection,
         CheckIn(
@@ -1050,10 +1064,11 @@ def _record_self_checkin(connection: sqlite3.Connection, member: Member) -> None
             last_name=member.last_name,
             first_name=member.first_name,
             card_number=member.card_number,
-            check_in_at=datetime.now().replace(microsecond=0),
+            check_in_at=check_in_at,
             membership=member.membership,
         ),
     )
+    return check_in_at
 
 
 def create_app(db_path: Path | None = None) -> Flask:
@@ -1211,7 +1226,50 @@ def create_app(db_path: Path | None = None) -> Flask:
             replace(row, document_count=document_counts.get(row.member.id or 0, 0))
             for row in roster
         ]
-        return render_template("club_admin/members.html", members=roster)
+        return render_template(
+            "club_admin/members.html",
+            members=roster,
+            checkin_message=request.args.get("checked_in", "").strip(),
+        )
+
+    @flask_app.post("/members/check-ins")
+    @require_admin
+    def check_in_members():
+        selected_member_ids: list[int] = []
+        for raw_member_id in request.form.getlist("member_ids"):
+            try:
+                member_id = int(raw_member_id)
+            except ValueError:
+                continue
+            if member_id not in selected_member_ids:
+                selected_member_ids.append(member_id)
+
+        if not selected_member_ids:
+            return redirect(url_for("members", checked_in="Select at least one user to check in."))
+
+        checked_in_members: list[Member] = []
+        with open_connection() as connection:
+            for member_id in selected_member_ids:
+                member = member_repository.get_member(connection, member_id)
+                if member is None:
+                    abort(404)
+                check_in_at = _record_self_checkin(connection, member)
+                _record_checkin_change(
+                    connection,
+                    member_id=member_id,
+                    field_name="check-in added",
+                    old_value=None,
+                    new_value=check_in_at,
+                )
+                checked_in_members.append(member)
+            connection.commit()
+
+        if len(checked_in_members) == 1:
+            member = checked_in_members[0]
+            checked_in_message = f"Checked in {member.first_name} {member.last_name}."
+        else:
+            checked_in_message = f"Checked in {len(checked_in_members)} users."
+        return redirect(url_for("members", checked_in=checked_in_message))
 
     @flask_app.route("/imports")
     @require_admin
@@ -1578,9 +1636,44 @@ def create_app(db_path: Path | None = None) -> Flask:
     def guest_registrations():
         with open_connection() as connection:
             records = guest_registration_repository.list_guest_registration_records(connection)
+        latest_record = records[0] if records else None
         return render_template(
             "club_admin/guest_registrations.html",
             records=records,
+            latest_registration_id=(
+                latest_record.registration.id if latest_record is not None else 0
+            ),
+        )
+
+    @flask_app.route("/guest-registrations/recent")
+    @require_admin
+    def recent_guest_registrations():
+        with open_connection() as connection:
+            records = guest_registration_repository.list_guest_registration_records(connection)
+        latest_record = records[0] if records else None
+        latest_registration_id = (
+            latest_record.registration.id if latest_record is not None else 0
+        )
+        latest_guest_name = (
+            f"{latest_record.member.first_name} {latest_record.member.last_name}"
+            if latest_record is not None
+            else ""
+        )
+        return jsonify(
+            {
+                "count": len(records),
+                "latest_guest_name": latest_guest_name,
+                "latest_registration_id": latest_registration_id,
+                "registration_ids": [
+                    record.registration.id
+                    for record in records
+                    if record.registration.id is not None
+                ],
+                "rows_html": render_template(
+                    "club_admin/_guest_registration_rows.html",
+                    records=records,
+                ),
+            }
         )
 
     @flask_app.route("/guest-registrations/<int:registration_id>/form")

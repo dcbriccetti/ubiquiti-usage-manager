@@ -12,7 +12,7 @@
     <header class="page-header users-header">
       <div class="page-heading">
         <p class="app-title">{{ app_title }}</p>
-        <h1>Users</h1>
+        <h1>Users <output class="users-search-count" data-table-search-count for="users-search"></output></h1>
       </div>
       <div class="users-toolbar">
         <nav class="nav-links users-nav" aria-label="Club admin navigation">
@@ -26,6 +26,10 @@
         </nav>
       </div>
     </header>
+
+    {% if checkin_message %}
+      <p class="notice users-checkin-notice">{{ checkin_message }}</p>
+    {% endif %}
 
     <section class="users-list-controls" aria-label="User list search">
       <label class="users-search-field">
@@ -55,60 +59,67 @@
         </select>
       </label>
       <button class="users-search-reset" type="button" data-table-search-reset disabled>Reset Search</button>
-      <output class="users-search-count" data-table-search-count for="users-search"></output>
+      <button class="users-bulk-checkin" type="submit" form="members-checkin-form" data-checkin-submit disabled>Check In Selected</button>
     </section>
 
-    <div class="table-scroll users-table-scroll">
-      <table class="users-table" data-sortable-table>
-        <thead>
-          <tr>
-            <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="0" data-sort-type="text">Last Name <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="1" data-sort-type="text">First Name <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="2" data-sort-type="text">Nickname <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="3" data-sort-type="text">Card # <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="4" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="5" data-sort-type="date">Member Since <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="6" data-sort-type="date">Date of Birth <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="7" data-sort-type="text">Address <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="8" data-sort-type="text">Email <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="9" data-sort-type="text">Cell Phone <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="10" data-sort-type="number">Docs <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="11" data-sort-type="number">Check-ins <span class="sort-indicator" aria-hidden="true"></span></button></th>
-            <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="12" data-sort-type="date">Last Check-in <span class="sort-indicator" aria-hidden="true"></span></button></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in members %}
-            <tr data-user-row>
-              <td data-sort-value="{{ row.member.last_name }}"><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.last_name }}</a></td>
-              <td data-sort-value="{{ row.member.first_name }}"><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.first_name }}</a></td>
-              <td data-sort-value="{{ row.member.nickname or '' }}">{{ row.member.nickname or '' }}</td>
-              <td data-sort-value="{{ row.member.card_number }}">{{ row.member.card_number }}</td>
-              <td data-sort-value="{{ row.member.membership }}">{{ row.member.membership }}</td>
-              <td class="nowrap" data-sort-value="{{ row.member.member_since.isoformat() if row.member.member_since else '' }}">{{ row.member.member_since or '' }}</td>
-              <td class="nowrap" data-sort-value="{{ row.member.date_of_birth.isoformat() if row.member.date_of_birth else '' }}">{{ row.member.date_of_birth or '' }}</td>
-              <td data-sort-value="{{ row.address }}">
-                {% for address_line in row.address_lines %}
-                  <span class="nowrap">{{ address_line }}</span>{% if not loop.last %}<br>{% endif %}
-                {% endfor %}
-              </td>
-              <td data-sort-value="{{ row.member.email or '' }}">{{ row.member.email or '' }}</td>
-              <td class="nowrap" data-sort-value="{{ row.member.cell_phone or '' }}">{{ row.member.cell_phone or '' }}</td>
-              <td class="numeric" data-sort-value="{{ row.document_count }}">{{ row.document_count or '' }}</td>
-              <td class="numeric" data-sort-value="{{ row.checkin_count }}">{{ row.checkin_count or '' }}</td>
-              <td class="nowrap" data-sort-value="{{ row.last_check_in_at.isoformat() if row.last_check_in_at else '' }}">{{ row.last_check_in_at or '' }}</td>
+    <form id="members-checkin-form" method="post" action="{{ url_for('check_in_members') }}" autocomplete="off">
+      <div class="table-scroll users-table-scroll">
+        <table class="users-table" data-sortable-table>
+          <thead>
+            <tr>
+              <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="0" data-sort-type="text">Last Name <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="1" data-sort-type="text">First Name <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="2" data-sort-type="text">Nickname <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="3" data-sort-type="text">Card # <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="4" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="5" data-sort-type="date">Member Since <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="6" data-sort-type="date">Date of Birth <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="7" data-sort-type="text">Address <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="8" data-sort-type="text">Email <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="9" data-sort-type="text">Cell Phone <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="10" data-sort-type="number">Docs <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="11" data-sort-type="number">Check-ins <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="12" data-sort-type="date">Last Check-in <span class="sort-indicator" aria-hidden="true"></span></button></th>
             </tr>
-          {% else %}
-            <tr data-empty-row>
-              <td colspan="13" class="empty">No users imported yet.</td>
+          </thead>
+          <tbody>
+            {% for row in members %}
+              <tr data-user-row>
+                <td data-sort-value="{{ row.member.last_name }}">
+                  <label class="member-select">
+                    <input type="checkbox" name="member_ids" value="{{ row.member.id }}" data-checkin-checkbox>
+                    <span><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.last_name }}</a></span>
+                  </label>
+                </td>
+                <td data-sort-value="{{ row.member.first_name }}"><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.first_name }}</a></td>
+                <td data-sort-value="{{ row.member.nickname or '' }}">{{ row.member.nickname or '' }}</td>
+                <td data-sort-value="{{ row.member.card_number }}">{{ row.member.card_number }}</td>
+                <td data-sort-value="{{ row.member.membership }}">{{ row.member.membership }}</td>
+                <td class="nowrap" data-sort-value="{{ row.member.member_since.isoformat() if row.member.member_since else '' }}">{{ row.member.member_since or '' }}</td>
+                <td class="nowrap" data-sort-value="{{ row.member.date_of_birth.isoformat() if row.member.date_of_birth else '' }}">{{ row.member.date_of_birth or '' }}</td>
+                <td data-sort-value="{{ row.address }}">
+                  {% for address_line in row.address_lines %}
+                    <span class="nowrap">{{ address_line }}</span>{% if not loop.last %}<br>{% endif %}
+                  {% endfor %}
+                </td>
+                <td data-sort-value="{{ row.member.email or '' }}">{{ row.member.email or '' }}</td>
+                <td class="nowrap" data-sort-value="{{ row.member.cell_phone or '' }}">{{ row.member.cell_phone or '' }}</td>
+                <td class="numeric" data-sort-value="{{ row.document_count }}">{{ row.document_count or '' }}</td>
+                <td class="numeric" data-sort-value="{{ row.checkin_count }}">{{ row.checkin_count or '' }}</td>
+                <td class="nowrap" data-sort-value="{{ row.last_check_in_at.isoformat() if row.last_check_in_at else '' }}">{{ row.last_check_in_at or '' }}</td>
+              </tr>
+            {% else %}
+              <tr data-empty-row>
+                <td colspan="13" class="empty">No users imported yet.</td>
+              </tr>
+            {% endfor %}
+            <tr data-search-placeholder hidden>
+              <td colspan="13" class="empty">No users match this search.</td>
             </tr>
-          {% endfor %}
-          <tr data-search-placeholder hidden>
-            <td colspan="13" class="empty">No users match this search.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+          </tbody>
+        </table>
+      </div>
+    </form>
   </main>
 </body>
 </html>

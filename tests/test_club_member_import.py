@@ -323,6 +323,84 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('name="members_csv"', imports_body)
         self.assertIn('name="checkins_csv"', imports_body)
 
+    def test_admin_can_check_in_selected_members_from_users_page(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Public",
+                        first_name="Jane",
+                        card_number="456",
+                        membership="Full Member",
+                    ),
+                )
+                connection.commit()
+                members_by_first_name = {
+                    member.first_name: member
+                    for member in member_repository.list_members(connection)
+                }
+                john = members_by_first_name["John"]
+                jane = members_by_first_name["Jane"]
+
+            members_response = client.get("/members")
+            response = client.post(
+                "/members/check-ins",
+                data={"member_ids": [str(john.id), str(jane.id)]},
+                follow_redirects=True,
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                john_checkins = checkin_repository.list_checkins_for_user(connection, john.id)
+                jane_checkins = checkin_repository.list_checkins_for_user(connection, jane.id)
+                john_audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=john.id,
+                )
+                jane_audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=jane.id,
+                )
+
+        self.assertEqual(members_response.status_code, 200)
+        members_body = members_response.get_data(as_text=True)
+        self.assertIn('action="/members/check-ins"', members_body)
+        self.assertIn('data-checkin-submit disabled', members_body)
+        self.assertIn(f'name="member_ids" value="{john.id}"', members_body)
+        self.assertIn("Check In Selected", members_body)
+        self.assertNotIn("Select shown", members_body)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Checked in 2 users.", response.get_data(as_text=True))
+        self.assertEqual(len(john_checkins), 1)
+        self.assertEqual(john_checkins[0].user_id, john.id)
+        self.assertEqual(john_checkins[0].card_number, "123")
+        self.assertEqual(john_checkins[0].membership, "Visitor")
+        self.assertEqual(len(jane_checkins), 1)
+        self.assertEqual(jane_checkins[0].user_id, jane.id)
+        self.assertEqual(jane_checkins[0].card_number, "456")
+        self.assertEqual(jane_checkins[0].membership, "Full Member")
+        for audit_entries in (john_audit_entries, jane_audit_entries):
+            checkin_audit_entries = [
+                entry for entry in audit_entries if entry.field_name == "check-in added"
+            ]
+            self.assertEqual(len(checkin_audit_entries), 1)
+            self.assertIsNone(checkin_audit_entries[0].old_value)
+            self.assertIsNotNone(checkin_audit_entries[0].new_value)
+
     def test_guest_registration_creates_visitor_user_without_admin_login(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -354,6 +432,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "visit_date": "2026-05-14",
                     "last_name": "Doe",
                     "first_name": "John",
+                    "date_of_birth": "1990-06-15",
                     "middle_name": "Q",
                     "nickname": "Johnny",
                     "address": "123 Main St",
@@ -385,6 +464,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(new_user.membership, "Visitor")
         self.assertEqual(new_user.card_number, "1000")
         self.assertEqual(new_user.nickname, "Johnny")
+        self.assertEqual(new_user.date_of_birth.isoformat(), "1990-06-15")
         self.assertEqual(new_user.phone, "123-123-1234")
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].registration.middle_name, "Q")
@@ -400,9 +480,16 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("Fields marked", body)
+        self.assertIn("Items marked", body)
         self.assertNotIn("<strong>Required</strong>", body)
+        self.assertIn('id="contact-section-title" class="required-section-title"', body)
+        self.assertIn('Contact <span class="visually-hidden">required</span>', body)
+        self.assertIn("A phone number or email is required.", body)
         self.assertIn('class="detail-wide required-field"', body)
+        self.assertNotIn('name="cell_phone" value="" autocomplete="tel" inputmode="tel" required', body)
+        self.assertNotIn('name="other_phone" value="" inputmode="tel" required', body)
+        self.assertNotIn('name="email" value="" autocomplete="email" required', body)
+        self.assertIn('name="date_of_birth" value="" autocomplete="bday" required', body)
         self.assertIn('name="address" value="" autocomplete="street-address" required', body)
         self.assertIn('name="city" value="" autocomplete="address-level2" required', body)
         self.assertIn('name="state" value="" autocomplete="address-level1" maxlength="2" required', body)
@@ -459,6 +546,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "last_name": "Doe",
                     "first_name": "John",
                     "email": "john@example.test",
+                    "date_of_birth": "1990-06-15",
                     "marital_status": "single",
                 },
             )
@@ -479,6 +567,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "last_name": "Doe",
                     "first_name": "John",
                     "email": "john@example.test",
+                    "date_of_birth": "1990-06-15",
                     "address": "123 Main St",
                     "city": "Everytown",
                     "state": "CA",
@@ -510,6 +599,27 @@ class ClubMemberImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Visit date must use YYYY-MM-DD.", body)
         self.assertIn('value="May 14"', body)
+        self.assertIn('value="Doe"', body)
+
+    def test_guest_registration_bad_date_of_birth_rerenders_form(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "date_of_birth": "June 15",
+                    "email": "john@example.test",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.get_data(as_text=True)
+        self.assertIn("Date of birth must use YYYY-MM-DD.", body)
+        self.assertIn('value="June 15"', body)
         self.assertIn('value="Doe"', body)
 
     def test_club_app_imports_csv_into_configured_database(self) -> None:
@@ -1505,6 +1615,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "visit_date": "2026-05-14",
                     "last_name": "Doe",
                     "first_name": "John",
+                    "date_of_birth": "1990-06-15",
                     "middle_name": "Q",
                     "nickname": "Johnny",
                     "cell_phone": "510-510-5100",
@@ -1569,9 +1680,50 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Replace ID Image", form_body)
         self.assertIn("John", form_body)
         self.assertIn("Johnny", form_body)
+        self.assertIn("1990-06-15", form_body)
         self.assertIn("Friend", form_body)
         self.assertNotIn(str(definition_path), form_body)
         self.assertNotIn(str(documents_dir), form_body)
+
+    def test_admin_guest_registration_queue_exposes_live_refresh_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            visitor_client = flask_app.test_client()
+            visitor_client.post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "date_of_birth": "1990-06-15",
+                    "cell_phone": "510-510-5100",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                    "marital_status": "single",
+                },
+            )
+            client = admin_client(flask_app)
+
+            queue_response = client.get("/guest-registrations")
+            recent_response = client.get("/guest-registrations/recent")
+
+        self.assertEqual(queue_response.status_code, 200)
+        queue_body = queue_response.get_data(as_text=True)
+        self.assertIn("data-guest-registrations", queue_body)
+        self.assertIn("data-recent-url", queue_body)
+        self.assertIn("data-enable-guest-alerts", queue_body)
+        self.assertIn("Watching for new submissions.", queue_body)
+        self.assertEqual(recent_response.status_code, 200)
+        payload = recent_response.get_json()
+        assert payload is not None
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["latest_guest_name"], "John Doe")
+        self.assertEqual(len(payload["registration_ids"]), 1)
+        self.assertIn("John", payload["rows_html"])
+        self.assertIn("Print Form", payload["rows_html"])
+        self.assertIn("Attach ID", payload["rows_html"])
 
     def test_driver_license_upload_preserves_off_center_image_content(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1586,6 +1738,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 data={
                     "last_name": "Doe",
                     "first_name": "John",
+                    "date_of_birth": "1990-06-15",
                     "cell_phone": "510-510-5100",
                     "address": "123 Main St",
                     "city": "Everytown",
