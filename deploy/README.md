@@ -75,7 +75,12 @@ deploy/scripts/deploy-prod.sh
 ```
 
 The script pulls with `--ff-only`, updates Python dependencies, restarts the
-three services, and checks the local health endpoints.
+three services, and checks the local health endpoints. It skips database backups
+by default; set `BACKUP_BEFORE_DEPLOY=1` when you want one:
+
+```bash
+BACKUP_BEFORE_DEPLOY=1 deploy/scripts/deploy-prod.sh
+```
 
 ## Backups
 

@@ -20,7 +20,11 @@ fi
 git pull --ff-only origin main
 "${PYTHON}" -m pip install -r requirements.txt
 
-deploy/scripts/backup-prod-databases.sh
+if [[ "${BACKUP_BEFORE_DEPLOY:-0}" =~ ^(1|true|yes|on)$ ]]; then
+    deploy/scripts/backup-prod-databases.sh
+else
+    echo "Skipping database backup. Set BACKUP_BEFORE_DEPLOY=1 to run one."
+fi
 
 sudo systemctl restart "${services[@]}"
 
