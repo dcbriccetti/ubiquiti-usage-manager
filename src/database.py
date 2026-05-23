@@ -39,7 +39,6 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 PERFORMANCE_INDEX_SPECS = [
-    ("ix_wan_flow_usage_started_client", "wan_flow_usage", ("started_at", "client_ip")),
     ("ix_wan_flow_usage_client_started", "wan_flow_usage", ("client_ip", "started_at")),
     ("ix_client_ip_identities_ip_observed", "client_ip_identities", ("ip_address", "observed_at")),
     ("ix_client_ip_identities_mac_observed", "client_ip_identities", ("mac", "observed_at")),
@@ -47,6 +46,18 @@ PERFORMANCE_INDEX_SPECS = [
     ("ix_usage_records_mac_timestamp", "usage_records", ("mac", "timestamp")),
     ("ix_plus_vouchers_user_active", "plus_vouchers", ("user_id", "consumed_at", "generated_at")),
 ]
+
+OBSOLETE_INDEX_NAMES = (
+    "ix_wan_flow_usage_client_ip",
+    "ix_wan_flow_usage_direction",
+    "ix_wan_flow_usage_dst_ip",
+    "ix_wan_flow_usage_dst_port",
+    "ix_wan_flow_usage_proto",
+    "ix_wan_flow_usage_source_file",
+    "ix_wan_flow_usage_src_ip",
+    "ix_wan_flow_usage_src_port",
+    "ix_wan_flow_usage_started_client",
+)
 
 
 def ensure_performance_indexes() -> None:
@@ -64,6 +75,14 @@ def ensure_performance_indexes() -> None:
                 f"ON {preparer.quote(table.name)} ({quoted_columns})"
             )
             connection.exec_driver_sql(statement)
+
+
+def drop_obsolete_indexes() -> None:
+    'Drop indexes that no longer match production query patterns.'
+    preparer = engine.dialect.identifier_preparer
+    with engine.begin() as connection:
+        for index_name in OBSOLETE_INDEX_NAMES:
+            connection.exec_driver_sql(f"DROP INDEX IF EXISTS {preparer.quote(index_name)}")
 
 
 def _month_period_bounds(
@@ -400,19 +419,19 @@ class WanFlowUsage(Base):
     )
 
     id:               Mapped[int]      = mapped_column(primary_key=True, autoincrement=True)
-    source_file:      Mapped[str]      = mapped_column(String(255), index=True)
+    source_file:      Mapped[str]      = mapped_column(String(255))
     started_at:       Mapped[datetime] = mapped_column(index=True)
     ended_at:         Mapped[datetime] = mapped_column(index=True)
     duration_seconds: Mapped[float]    = mapped_column()
-    proto:            Mapped[str]      = mapped_column(String(12), index=True)
-    src_ip:           Mapped[str]      = mapped_column(String(45), index=True)
-    src_port:         Mapped[Optional[int]] = mapped_column(index=True)
-    dst_ip:           Mapped[str]      = mapped_column(String(45), index=True)
-    dst_port:         Mapped[Optional[int]] = mapped_column(index=True)
+    proto:            Mapped[str]      = mapped_column(String(12))
+    src_ip:           Mapped[str]      = mapped_column(String(45))
+    src_port:         Mapped[Optional[int]] = mapped_column()
+    dst_ip:           Mapped[str]      = mapped_column(String(45))
+    dst_port:         Mapped[Optional[int]] = mapped_column()
     packets:          Mapped[int]      = mapped_column()
     bytes:            Mapped[int]      = mapped_column()
-    direction:        Mapped[str]      = mapped_column(String(8), index=True)
-    client_ip:        Mapped[str]      = mapped_column(String(45), index=True)
+    direction:        Mapped[str]      = mapped_column(String(8))
+    client_ip:        Mapped[str]      = mapped_column(String(45))
 
 
 class ClientIpIdentity(Base):
@@ -432,6 +451,7 @@ class ClientIpIdentity(Base):
 def init_db() -> None:
     'Create database tables if they do not already exist.'
     Base.metadata.create_all(bind=engine)
+    drop_obsolete_indexes()
     ensure_performance_indexes()
 
 
