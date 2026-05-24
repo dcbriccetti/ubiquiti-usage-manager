@@ -237,20 +237,25 @@ def list_checkins_for_date_range(
     rows = connection.execute(
         """
         SELECT
-            id,
-            user_id,
-            member_id,
-            last_name,
-            first_name,
-            card_number,
-            check_in_at,
-            check_out_at,
-            total_checkins,
-            duration,
-            membership
-        FROM checkins
-        WHERE check_in_at >= ? AND check_in_at < ?
-        ORDER BY last_name, first_name, card_number, check_in_at DESC
+            c.id,
+            c.user_id,
+            c.member_id,
+            c.last_name,
+            COALESCE(NULLIF(u.nickname, ''), c.first_name) AS first_name,
+            c.card_number,
+            c.check_in_at,
+            c.check_out_at,
+            c.total_checkins,
+            c.duration,
+            c.membership
+        FROM checkins c
+        LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.check_in_at >= ? AND c.check_in_at < ?
+        ORDER BY
+            c.last_name,
+            COALESCE(NULLIF(u.nickname, ''), c.first_name),
+            c.card_number,
+            c.check_in_at DESC
         """,
         (start_at, exclusive_end_at),
     ).fetchall()

@@ -317,6 +317,34 @@ class ClubCheckInImportTests(unittest.TestCase):
             ],
         )
 
+    def test_checkin_report_uses_user_nickname_when_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            database.init_db(db_path)
+            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        nickname="Johnny",
+                        card_number="1861",
+                        membership="Visitor",
+                    ),
+                )
+                checkin_repository.upsert_checkin(connection, checkin)
+                connection.commit()
+
+                checkins = checkin_repository.list_checkins_for_date_range(
+                    connection,
+                    datetime(2026, 5, 3).date(),
+                    datetime(2026, 5, 3).date(),
+                )
+
+        self.assertEqual(len(checkins), 1)
+        self.assertEqual(checkins[0].first_name, "Johnny")
+
     def test_club_app_renders_sortable_checkin_report_for_date_range(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -342,6 +370,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
         self.assertIn('class="checkins-table" data-sortable-table', body)
         self.assertIn('tr data-sortable-row', body)
+        self.assertIn("First/Nickname", body)
         self.assertIn('role="button" tabindex="0" data-sort-column="0"', body)
         self.assertIn('data-sort-column="0" data-sort-type="date"', body)
         self.assertIn('data-sort-column="4" data-sort-type="text"', body)
