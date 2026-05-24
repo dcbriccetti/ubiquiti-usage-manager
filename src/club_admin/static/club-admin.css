@@ -871,6 +871,12 @@ th {
   margin: 0;
 }
 
+.checkins-save-reminder {
+  color: #5b6472;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
 .table-scroll {
   overflow-x: auto;
 }

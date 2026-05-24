@@ -24,7 +24,7 @@
       </nav>
     </header>
 
-    <form class="edit-form" action="{{ url_for('edit_member', member_id=member.id) }}" method="post">
+    <form class="edit-form" action="{{ url_for('edit_member', member_id=member.id) }}" method="post" data-member-edit-form>
       {% for field, label, input_type in [
         ('last_name', 'Last Name', 'text'),
         ('first_name', 'First Name', 'text'),
@@ -59,6 +59,9 @@
       <section class="edit-checkins-section" aria-labelledby="edit-checkins-title">
         <div class="edit-section-heading">
           <h2 id="edit-checkins-title">Check-ins</h2>
+          <p class="checkins-save-reminder">
+            After changing check-in times, click Save Changes before leaving this page.
+          </p>
         </div>
         <div class="table-scroll">
           <table class="checkin-edit-table">
@@ -80,12 +83,13 @@
                         value="{{ checkin.check_in_at.strftime('%Y-%m-%dT%H:%M:%S') }}"
                         step="1"
                         required
+                        data-checkin-dirty-field
                       >
                     </label>
                   </td>
                   <td>
                     <label class="checkbox-field">
-                      <input type="checkbox" name="delete_checkin_{{ checkin.id }}" value="1">
+                      <input type="checkbox" name="delete_checkin_{{ checkin.id }}" value="1" data-checkin-dirty-field>
                       Remove
                     </label>
                   </td>
@@ -100,11 +104,60 @@
         </div>
         <label class="new-checkin-field">
           Add Check-in
-          <input type="datetime-local" name="new_checkin_at" step="1">
+          <input type="datetime-local" name="new_checkin_at" step="1" data-checkin-dirty-field>
         </label>
       </section>
-      <button type="submit">Save Changes</button>
+      <button type="submit" data-save-member-changes>Save Changes</button>
     </form>
   </main>
+  <script>
+    (() => {
+      const form = document.querySelector("[data-member-edit-form]");
+      const fields = Array.from(document.querySelectorAll("[data-checkin-dirty-field]"));
+      let isSubmitting = false;
+
+      if (!form || fields.length === 0) {
+        return;
+      }
+
+      fields.forEach((field) => {
+        if (field instanceof HTMLInputElement && field.type === "checkbox") {
+          field.dataset.initialChecked = field.checked ? "1" : "0";
+          return;
+        }
+        field.dataset.initialValue = field.value;
+      });
+
+      const fieldChanged = (field) => {
+        if (!(field instanceof HTMLInputElement)) {
+          return false;
+        }
+        if (field.type === "checkbox") {
+          return (field.checked ? "1" : "0") !== field.dataset.initialChecked;
+        }
+        return field.value !== (field.dataset.initialValue || "");
+      };
+
+      form.addEventListener("submit", () => {
+        isSubmitting = true;
+      });
+      fields.forEach((field) => {
+        field.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") {
+            return;
+          }
+          event.preventDefault();
+          field.blur();
+        });
+      });
+      window.addEventListener("beforeunload", (event) => {
+        if (isSubmitting || !fields.some(fieldChanged)) {
+          return;
+        }
+        event.preventDefault();
+        event.returnValue = "";
+      });
+    })();
+  </script>
 </body>
 </html>

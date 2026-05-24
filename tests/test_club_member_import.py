@@ -1568,6 +1568,15 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('value="2026-05-03T15:59:20"', body)
         self.assertIn(f'name="delete_checkin_{checkin.id}"', body)
         self.assertIn('name="new_checkin_at"', body)
+        self.assertIn('data-member-edit-form', body)
+        self.assertIn('data-checkin-dirty-field', body)
+        self.assertIn("After changing check-in times, click Save Changes", body)
+        self.assertIn("beforeunload", body)
+        self.assertIn('event.key !== "Enter"', body)
+        self.assertIn("event.preventDefault();", body)
+        self.assertNotIn("addEventListener(&#34;input&#34;", body)
+        self.assertNotIn("data-checkin-dirty-notice", body)
+        self.assertNotIn("has-unsaved-checkins", body)
 
     def test_edit_member_can_modify_add_and_delete_checkins(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
