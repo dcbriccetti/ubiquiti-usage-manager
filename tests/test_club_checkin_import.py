@@ -365,6 +365,8 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIsNotNone(john)
         body = response.get_data(as_text=True)
         self.assertIn("Check-ins", body)
+        self.assertIn('class="page checkins-report-page"', body)
+        self.assertIn('class="print-report-range">2026-05-01 to 2026-05-03', body)
         self.assertNotIn('class="report-tabs"', body)
         self.assertNotIn('name="view"', body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)

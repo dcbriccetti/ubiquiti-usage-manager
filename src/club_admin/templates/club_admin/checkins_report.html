@@ -8,12 +8,13 @@
   <script src="{{ url_for('static', filename='club-admin-table-sort.js') }}" defer></script>
 </head>
 <body>
-  <main class="page">
+  <main class="page checkins-report-page">
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
         <h1>Check-ins</h1>
         <p class="summary">{{ checkins|length }} check-ins</p>
+        <p class="print-report-range">{{ start_date }} to {{ end_date }}</p>
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
