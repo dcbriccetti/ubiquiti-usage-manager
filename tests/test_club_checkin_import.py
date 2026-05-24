@@ -286,6 +286,37 @@ class ClubCheckInImportTests(unittest.TestCase):
             ),
         )
 
+    def test_lists_checkin_report_rows_by_name_before_checkin_time(self) -> None:
+        source = io.StringIO(
+            "Member ID,Last Name,First Name,Card #,Check-in Date,Check-in Time,Check-out Time,Total Check-ins,Duration,Membership,Result,Date of Birth\n"
+            "91,Zebra,Zoe,'2091',5/3/2026,3:59:20 PM,N/A,1,N/A,Visitor,Check-in OK\n"
+            "42,Adams,Ada,'1042',5/3/2026,3:40:00 PM,N/A,1,N/A,Visitor,Check-in OK\n"
+            "91,Zebra,Zoe,'2091',5/3/2026,3:30:00 PM,N/A,1,N/A,Visitor,Check-in OK\n"
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            database.init_db(db_path)
+            checkins_to_import = csv_import.read_checkins_csv(source)
+            with closing(database.connect(db_path)) as connection:
+                for checkin in checkins_to_import:
+                    checkin_repository.upsert_checkin(connection, checkin)
+                connection.commit()
+
+                checkins = checkin_repository.list_checkins_for_date_range(
+                    connection,
+                    datetime(2026, 5, 3).date(),
+                    datetime(2026, 5, 3).date(),
+                )
+
+        self.assertEqual(
+            [(checkin.last_name, checkin.check_in_at) for checkin in checkins],
+            [
+                ("Adams", datetime(2026, 5, 3, 15, 40, 0)),
+                ("Zebra", datetime(2026, 5, 3, 15, 59, 20)),
+                ("Zebra", datetime(2026, 5, 3, 15, 30, 0)),
+            ],
+        )
+
     def test_club_app_renders_sortable_checkin_report_for_date_range(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"

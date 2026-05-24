@@ -232,7 +232,7 @@ def list_checkins_for_date_range(
     start_date: date,
     end_date: date,
 ) -> list[CheckIn]:
-    '''Return check-ins in an inclusive date range, newest first.'''
+    '''Return check-ins in an inclusive date range, sorted by user name.'''
     start_at, exclusive_end_at = _date_range_bounds(start_date, end_date)
     rows = connection.execute(
         """
@@ -250,7 +250,7 @@ def list_checkins_for_date_range(
             membership
         FROM checkins
         WHERE check_in_at >= ? AND check_in_at < ?
-        ORDER BY check_in_at DESC, last_name, first_name
+        ORDER BY last_name, first_name, card_number, check_in_at DESC
         """,
         (start_at, exclusive_end_at),
     ).fetchall()
