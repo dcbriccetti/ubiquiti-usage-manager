@@ -286,7 +286,7 @@ class ClubCheckInImportTests(unittest.TestCase):
             ),
         )
 
-    def test_club_app_renders_checkin_report_for_date_range(self) -> None:
+    def test_club_app_renders_sortable_checkin_report_for_date_range(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
@@ -306,40 +306,20 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIsNotNone(john)
         body = response.get_data(as_text=True)
         self.assertIn("Check-ins", body)
-        self.assertIn('class="report-tabs"', body)
-        self.assertIn(">By User</a>", body)
-        self.assertIn(">Daily</a>", body)
+        self.assertNotIn('class="report-tabs"', body)
+        self.assertNotIn('name="view"', body)
+        self.assertIn('src="/static/club-admin-table-sort.js"', body)
+        self.assertIn('class="checkins-table" data-sortable-table', body)
+        self.assertIn('tr data-sortable-row', body)
+        self.assertIn('role="button" tabindex="0" data-sort-column="0"', body)
+        self.assertIn('data-sort-column="0" data-sort-type="date"', body)
+        self.assertIn('data-sort-column="4" data-sort-type="text"', body)
+        self.assertNotIn('button type="button" class="sortable-heading"', body)
         self.assertIn(f'href="/members/{john.id}"', body)
         self.assertIn("John", body)
-        self.assertIn(">2<", body)
         self.assertIn("2026-05-01 09:00:00", body)
         self.assertIn("2026-05-03 15:59:20", body)
         self.assertNotIn("Jane", body)
-
-    def test_club_app_renders_daily_view_in_combined_checkin_report(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "club-users.db"
-            flask_app = create_admin_app(db_path)
-            client = admin_client(flask_app)
-            checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_RANGE_CSV))
-            with closing(database.connect(db_path)) as connection:
-                for checkin in checkins_to_import:
-                    checkin_repository.upsert_checkin(connection, checkin)
-                jane = member_repository.get_member_by_card_number(connection, "1024")
-                connection.commit()
-
-            response = client.get(
-                "/checkins/report?view=daily&start_date=2026-05-04&end_date=2026-05-04"
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNotNone(jane)
-        body = response.get_data(as_text=True)
-        self.assertIn('class="active" aria-current="page"', body)
-        self.assertIn("Check-in</th>", body)
-        self.assertIn(f'href="/members/{jane.id}"', body)
-        self.assertIn("Jane", body)
-        self.assertNotIn("John", body)
 
     def test_member_detail_lists_that_users_checkins(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

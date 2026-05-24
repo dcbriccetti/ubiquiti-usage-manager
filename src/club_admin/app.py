@@ -1702,9 +1702,6 @@ def create_app(db_path: Path | None = None) -> Flask:
         default_start_date = today
         start_date_raw = request.args.get("start_date", default_start_date.isoformat())
         end_date_raw = request.args.get("end_date", today.isoformat())
-        active_view = request.args.get("view", "by_user")
-        if active_view not in {"by_user", "daily"}:
-            abort(400, "Unknown check-in report view.")
         try:
             start_date = date.fromisoformat(start_date_raw)
             end_date = date.fromisoformat(end_date_raw)
@@ -1715,11 +1712,6 @@ def create_app(db_path: Path | None = None) -> Flask:
             abort(400, "Start date must be on or before end date.")
 
         with open_connection() as connection:
-            summaries = checkin_repository.summarize_checkins_by_user(
-                connection,
-                start_date,
-                end_date,
-            )
             checkins = checkin_repository.list_checkins_for_date_range(
                 connection,
                 start_date,
@@ -1728,12 +1720,9 @@ def create_app(db_path: Path | None = None) -> Flask:
 
         return render_template(
             "club_admin/checkins_report.html",
-            summaries=summaries,
             checkins=checkins,
             start_date=start_date,
             end_date=end_date,
-            active_view=active_view,
-            total_checkins=sum(summary.checkin_count for summary in summaries),
         )
 
     @flask_app.route("/documents/report")

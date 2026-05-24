@@ -48,6 +48,13 @@
     return direction === "asc" ? comparison : -comparison;
   };
 
+  const sortableRows = (table) =>
+    Array.from(
+      table.tBodies[0]?.querySelectorAll(
+        "tr[data-sortable-row], tr[data-user-row]",
+      ) ?? [],
+    );
+
   const searchableRows = (table) =>
     Array.from(table.tBodies[0]?.querySelectorAll("tr[data-user-row]") ?? []);
 
@@ -193,7 +200,7 @@
       return;
     }
 
-    const rows = searchableRows(table);
+    const rows = sortableRows(table);
     if (rows.length < 2) {
       return;
     }
@@ -217,8 +224,17 @@
 
   const initializeSortableTables = () => {
     document.querySelectorAll("[data-sortable-table]").forEach((table) => {
-      table.querySelectorAll(".sortable-heading").forEach((button) => {
-        button.addEventListener("click", () => sortTable(table, button));
+      table.querySelectorAll(".sortable-heading").forEach((heading) => {
+        heading.addEventListener("click", () => sortTable(table, heading));
+        if (heading.tagName !== "BUTTON") {
+          heading.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") {
+              return;
+            }
+            event.preventDefault();
+            sortTable(table, heading);
+          });
+        }
       });
 
       const container = table.closest(".users-page") ?? document;
