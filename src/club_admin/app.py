@@ -73,6 +73,7 @@ SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 DRIVER_LICENSE_DOCUMENT_NAME = "Driver License.jpg"
 DRIVER_LICENSE_IMAGE_SIZE = (2026, 1152)
 DRIVER_LICENSE_CROP_THRESHOLD = 24
+DRIVER_LICENSE_CROP_ASPECT_FLOOR = 1.45
 ID_DOCUMENT_NAME_PATTERN = re.compile(
     r"^(?:drivers?\s+license|drivers?\s+licence|dl|id|identification)(?:\b|[_\-\s])",
     re.IGNORECASE,
@@ -539,6 +540,25 @@ def _id_document_storage_path(member: Member, documents_dir: str) -> Path | None
     return resolved_card_dir / DRIVER_LICENSE_DOCUMENT_NAME
 
 
+def _first_content_cluster_end(
+    values: list[int],
+    total_length: int,
+    *,
+    max_blank_gap_ratio: float,
+) -> int | None:
+    if not values:
+        return None
+    max_blank_gap = max(24, int(total_length * max_blank_gap_ratio))
+    min_cluster_extent = max(80, int(total_length * 0.08))
+    cluster_start = values[0]
+    cluster_end = values[0]
+    for value in values[1:]:
+        if value - cluster_end > max_blank_gap and cluster_end - cluster_start + 1 >= min_cluster_extent:
+            return cluster_end + 1
+        cluster_end = value
+    return cluster_end + 1
+
+
 def _image_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
     rgb_image = image.convert("RGB")
     white_background = Image.new("RGB", rgb_image.size, "WHITE")
@@ -548,25 +568,45 @@ def _image_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
     )
     mask_pixels = mask.load()
     width, height = mask.size
-    min_row_pixels = max(5, int(width * 0.005))
-    min_column_pixels = max(5, int(height * 0.005))
+    ignore_x = max(12, int(width * 0.025))
+    ignore_y = max(20, int(height * 0.05))
+    row_x_start = min(ignore_x, width)
+    row_x_end = max(row_x_start, width - ignore_x)
+    column_y_start = min(ignore_y, height)
+    column_y_end = max(column_y_start, height - ignore_y)
+    row_width = max(1, row_x_end - row_x_start)
+    column_height = max(1, column_y_end - column_y_start)
+    min_row_pixels = max(5, int(row_width * 0.006))
+    min_column_pixels = max(12, int(column_height * 0.012))
     content_rows = [
         y
-        for y in range(height)
-        if sum(1 for x in range(width) if mask_pixels[x, y]) >= min_row_pixels
+        for y in range(max(0, height - ignore_y))
+        if sum(1 for x in range(row_x_start, row_x_end) if mask_pixels[x, y]) >= min_row_pixels
     ]
     content_columns = [
         x
-        for x in range(width)
-        if sum(1 for y in range(height) if mask_pixels[x, y]) >= min_column_pixels
+        for x in range(max(0, width - ignore_x))
+        if sum(1 for y in range(column_y_start, column_y_end) if mask_pixels[x, y]) >= min_column_pixels
     ]
     if not content_rows or not content_columns:
         return None
 
-    left = min(content_columns)
-    top = min(content_rows)
-    right = max(content_columns) + 1
-    bottom = max(content_rows) + 1
+    left = 0
+    top = 0
+    right = _first_content_cluster_end(
+        content_columns,
+        width,
+        max_blank_gap_ratio=0.02,
+    )
+    bottom = _first_content_cluster_end(
+        content_rows,
+        height,
+        max_blank_gap_ratio=0.04,
+    )
+    if right is None or bottom is None:
+        return None
+    aspect_bottom = int((right - left) / DRIVER_LICENSE_CROP_ASPECT_FLOOR)
+    bottom = max(bottom, aspect_bottom)
     horizontal_padding = max(12, int((right - left) * 0.04))
     vertical_padding = max(12, int((bottom - top) * 0.04))
     return (

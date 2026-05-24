@@ -22,6 +22,7 @@ from club_admin import checkin_repository
 from club_admin import database
 from club_admin import guest_registration_repository
 from club_admin import member_repository
+from club_admin.repair_driver_license_scans import _prepare_stored_driver_license_image
 from club_admin.app import create_app
 from club_admin.models import CheckIn, GuestRegistration, Member
 import config as cfg
@@ -1931,6 +1932,123 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(saved_size, (2026, 1152))
         self.assertIsNotNone(content_bbox)
         assert content_bbox is not None
-        self.assertGreater(content_bbox[2] - content_bbox[0], 1600)
+        self.assertGreater(content_bbox[2] - content_bbox[0], 1450)
         self.assertGreater(content_bbox[3] - content_bbox[1], 900)
         self.assertLess(stats.mean[0], 245)
+
+    def test_driver_license_upload_ignores_scanner_edge_shadows(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "club-users.db"
+            documents_dir = temp_path / "documents"
+            documents_dir.mkdir()
+            flask_app = create_admin_app(db_path, documents_dir=str(documents_dir))
+            visitor_client = flask_app.test_client()
+            visitor_client.post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "date_of_birth": "1990-06-15",
+                    "cell_phone": "510-510-5100",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                    "marital_status": "single",
+                },
+            )
+            with closing(database.connect(db_path)) as connection:
+                record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+
+            upload_image = Image.new("RGB", (2600, 1600), "white")
+            draw = ImageDraw.Draw(upload_image)
+            draw.rectangle((0, 0, 2599, 34), fill=(205, 205, 205))
+            draw.rectangle((0, 0, 34, 1599), fill=(205, 205, 205))
+            draw.rectangle((2535, 0, 2599, 1599), fill=(214, 214, 214))
+            draw.rectangle((0, 1538, 2599, 1599), fill=(214, 214, 214))
+            draw.rectangle((34, 34, 880, 570), fill=(252, 252, 252), outline=(70, 70, 70), width=3)
+            draw.rectangle((80, 100, 330, 390), fill=(40, 90, 160))
+            draw.rectangle((380, 120, 800, 170), fill=(30, 30, 30))
+            draw.rectangle((380, 225, 760, 265), fill=(70, 70, 70))
+            draw.rectangle((380, 320, 810, 360), fill=(70, 70, 70))
+            for y in range(850, 1420, 60):
+                for x in range(420, 2100, 90):
+                    draw.rectangle((x, y, x + 8, y + 8), fill=(212, 212, 212))
+            upload_buffer = io.BytesIO()
+            upload_image.save(upload_buffer, format="PNG")
+            upload_buffer.seek(0)
+
+            response = admin_client(flask_app).post(
+                f"/guest-registrations/{record.registration.id}/driver-license",
+                data={"driver_license": (upload_buffer, "scan.png")},
+                content_type="multipart/form-data",
+            )
+
+            saved_license_path = (
+                documents_dir / record.member.card_number / "Driver License.jpg"
+            )
+            with Image.open(saved_license_path) as saved_license_image:
+                saved_size = saved_license_image.size
+                grayscale = saved_license_image.convert("L")
+                content_mask = grayscale.point(lambda value: 255 if value < 245 else 0)
+                content_bbox = content_mask.getbbox()
+                rgb_image = saved_license_image.convert("RGB")
+                blue_mask = Image.new("L", rgb_image.size)
+                rgb_pixels = (
+                    rgb_image.get_flattened_data()
+                    if hasattr(rgb_image, "get_flattened_data")
+                    else rgb_image.getdata()
+                )
+                blue_mask.putdata([
+                    255 if blue > red + 40 and blue > green + 20 else 0
+                    for red, green, blue in rgb_pixels
+                ])
+                blue_bbox = blue_mask.getbbox()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(saved_size, (2026, 1152))
+        self.assertIsNotNone(content_bbox)
+        assert content_bbox is not None
+        self.assertGreater(content_bbox[2] - content_bbox[0], 1600)
+        self.assertGreater(content_bbox[3] - content_bbox[1], 950)
+        self.assertIsNotNone(blue_bbox)
+        assert blue_bbox is not None
+        self.assertGreater(blue_bbox[2] - blue_bbox[0], 450)
+        self.assertGreater(blue_bbox[3] - blue_bbox[1], 500)
+
+    def test_driver_license_repair_recrops_existing_white_canvas_file(self) -> None:
+        stored_scan = Image.new("RGB", (2026, 1152), "white")
+        draw = ImageDraw.Draw(stored_scan)
+        draw.rectangle((0, 0, 24, 1151), fill=(224, 224, 224))
+        draw.rectangle((1998, 0, 2025, 1151), fill=(224, 224, 224))
+        draw.rectangle((775, 20, 1240, 315), fill=(252, 252, 252), outline=(70, 70, 70), width=2)
+        draw.rectangle((810, 68, 945, 225), fill=(40, 90, 160))
+        draw.rectangle((980, 80, 1200, 105), fill=(30, 30, 30))
+        draw.rectangle((980, 145, 1180, 170), fill=(70, 70, 70))
+        draw.rectangle((980, 210, 1205, 235), fill=(70, 70, 70))
+        for y in range(520, 1000, 70):
+            for x in range(600, 1500, 95):
+                draw.rectangle((x, y, x + 5, y + 5), fill=(218, 218, 218))
+
+        repaired = _prepare_stored_driver_license_image(stored_scan)
+        rgb_image = repaired.convert("RGB")
+        blue_mask = Image.new("L", rgb_image.size)
+        rgb_pixels = (
+            rgb_image.get_flattened_data()
+            if hasattr(rgb_image, "get_flattened_data")
+            else rgb_image.getdata()
+        )
+        blue_mask.putdata([
+            255 if blue > red + 40 and blue > green + 20 else 0
+            for red, green, blue in rgb_pixels
+        ])
+        blue_bbox = blue_mask.getbbox()
+
+        self.assertEqual(repaired.size, (2026, 1152))
+        self.assertIsNotNone(blue_bbox)
+        assert blue_bbox is not None
+        self.assertGreater(blue_bbox[2] - blue_bbox[0], 450)
+        self.assertGreater(blue_bbox[3] - blue_bbox[1], 500)

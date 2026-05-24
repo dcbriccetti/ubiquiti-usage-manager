@@ -295,6 +295,7 @@ class ClubCheckInImportTests(unittest.TestCase):
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
+                john = member_repository.get_member_by_card_number(connection, "1861")
                 connection.commit()
 
             response = client.get(
@@ -302,11 +303,13 @@ class ClubCheckInImportTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(john)
         body = response.get_data(as_text=True)
         self.assertIn("Check-ins", body)
         self.assertIn('class="report-tabs"', body)
         self.assertIn(">By User</a>", body)
         self.assertIn(">Daily</a>", body)
+        self.assertIn(f'href="/members/{john.id}"', body)
         self.assertIn("John", body)
         self.assertIn(">2<", body)
         self.assertIn("2026-05-01 09:00:00", body)
@@ -322,6 +325,7 @@ class ClubCheckInImportTests(unittest.TestCase):
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
+                jane = member_repository.get_member_by_card_number(connection, "1024")
                 connection.commit()
 
             response = client.get(
@@ -329,9 +333,11 @@ class ClubCheckInImportTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(jane)
         body = response.get_data(as_text=True)
         self.assertIn('class="active" aria-current="page"', body)
         self.assertIn("Check-in</th>", body)
+        self.assertIn(f'href="/members/{jane.id}"', body)
         self.assertIn("Jane", body)
         self.assertNotIn("John", body)
 

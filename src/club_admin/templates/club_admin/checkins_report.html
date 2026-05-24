@@ -64,8 +64,12 @@
         <tbody>
           {% for summary in summaries %}
             <tr>
-              <td>{{ summary.last_name }}</td>
-              <td>{{ summary.first_name }}</td>
+              <td>
+                <a href="{{ url_for('member_detail', member_id=summary.user_id) }}">{{ summary.last_name }}</a>
+              </td>
+              <td>
+                <a href="{{ url_for('member_detail', member_id=summary.user_id) }}">{{ summary.first_name }}</a>
+              </td>
               <td>{{ summary.card_number }}</td>
               <td>{{ summary.membership }}</td>
               <td class="numeric">{{ summary.checkin_count }}</td>
@@ -99,8 +103,12 @@
           {% for checkin in checkins %}
             <tr>
               <td class="nowrap">{{ checkin.check_in_at }}</td>
-              <td>{{ checkin.last_name }}</td>
-              <td>{{ checkin.first_name }}</td>
+              <td>
+                <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.last_name }}</a>
+              </td>
+              <td>
+                <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.first_name }}</a>
+              </td>
               <td>{{ checkin.card_number }}</td>
               <td>{{ checkin.membership }}</td>
             </tr>
