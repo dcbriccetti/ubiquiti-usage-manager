@@ -70,6 +70,12 @@ body {
   gap: 24px;
 }
 
+.self-checkin-layout.has-status {
+  margin: 0 auto;
+  max-width: 760px;
+  width: 100%;
+}
+
 .self-checkin-entry {
   display: grid;
 }
@@ -969,12 +975,76 @@ th {
 
 .self-checkin-status {
   align-self: start;
+  border: 4px solid #245c9f;
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgb(16 24 40 / 14%);
   display: grid;
-  gap: 18px;
+  gap: 16px;
+  padding: 28px;
+  text-align: center;
+}
+
+.self-checkin-status:focus {
+  outline: 4px solid rgb(36 92 159 / 28%);
+  outline-offset: 4px;
+}
+
+.self-checkin-status.is-success {
+  background: #e8f8ee;
+  border-color: #16834a;
+}
+
+.self-checkin-status.is-error {
+  background: #fff3e4;
+  border-color: #b45309;
+}
+
+.checkin-result-label {
+  background: #16834a;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 54px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 18px 16px;
+}
+
+.self-checkin-status.is-error .checkin-result-label {
+  background: #b45309;
+  font-size: 38px;
+}
+
+.self-checkin-status h2 {
+  color: #172033;
+  font-size: 42px;
+  line-height: 1.08;
+  margin: 0;
 }
 
 .self-checkin-status .notice {
+  background: transparent;
+  border: 0;
+  color: #172033;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.25;
   margin: 0;
+  padding: 0;
+}
+
+.checkin-continue-button {
+  border-radius: 8px;
+  font-size: 28px;
+  font-weight: 750;
+  min-height: 72px;
+  width: 100%;
+}
+
+.guest-registration-return {
+  border-radius: 8px;
+  font-size: 22px;
+  font-weight: 700;
+  padding: 14px 18px;
 }
 
 .checkin-barcode-card {
@@ -1508,7 +1578,7 @@ th {
 
   .self-checkin-layout.has-status {
     align-items: start;
-    grid-template-columns: minmax(390px, 1fr) minmax(300px, 420px);
+    grid-template-columns: 1fr;
   }
 
   .self-checkin-panel {
@@ -1584,6 +1654,31 @@ th {
   .self-checkin-panel h2,
   .self-checkin-page .checkin-barcode-card h2 {
     font-size: 26px;
+  }
+
+  .self-checkin-status {
+    padding: 22px;
+  }
+
+  .checkin-result-label {
+    font-size: 42px;
+  }
+
+  .self-checkin-status.is-error .checkin-result-label {
+    font-size: 30px;
+  }
+
+  .self-checkin-status h2 {
+    font-size: 32px;
+  }
+
+  .self-checkin-status .notice {
+    font-size: 24px;
+  }
+
+  .checkin-continue-button {
+    font-size: 24px;
+    min-height: 64px;
   }
 
   .self-checkin-panel p,

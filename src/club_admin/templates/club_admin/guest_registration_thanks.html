@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="{{ auto_return_seconds }};url={{ url_for('self_checkin') }}">
   <title>{{ app_title }} | Registration Submitted</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
@@ -19,6 +20,27 @@
     </header>
 
     <p class="notice">Thank you. Please see the front desk to finish registration.</p>
+    <p>
+      <a class="button-link guest-registration-return" href="{{ url_for('self_checkin') }}">Back to Check-in</a>
+    </p>
   </main>
+  <script>
+    (() => {
+      const returnUrl = "{{ url_for('self_checkin') }}";
+      const autoReturnDelay = {{ auto_return_delay_ms }};
+      let autoReturnTimer = window.setTimeout(() => {
+        window.location.href = returnUrl;
+      }, autoReturnDelay);
+      const restartAutoReturn = () => {
+        window.clearTimeout(autoReturnTimer);
+        autoReturnTimer = window.setTimeout(() => {
+          window.location.href = returnUrl;
+        }, autoReturnDelay);
+      };
+      ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+        window.addEventListener(eventName, restartAutoReturn, { passive: true });
+      });
+    })();
+  </script>
 </body>
 </html>

@@ -305,6 +305,22 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Self Check-in", body)
         self.assertIn('href="/guest-registration"', body)
 
+    def test_guest_registration_thanks_returns_to_self_checkin_after_delay(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().get("/guest-registration/thanks")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Refresh"], "60; url=/self-checkin")
+        body = response.get_data(as_text=True)
+        self.assertIn("Registration Submitted", body)
+        self.assertIn('<meta http-equiv="refresh" content="60;url=/self-checkin">', body)
+        self.assertIn('href="/self-checkin"', body)
+        self.assertIn("Back to Check-in", body)
+        self.assertIn("autoReturnDelay = 60000", body)
+
     def test_import_forms_live_on_dedicated_admin_page(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"

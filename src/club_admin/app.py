@@ -22,6 +22,7 @@ from flask import (
     Flask,
     abort,
     jsonify,
+    make_response,
     redirect,
     render_template,
     request,
@@ -69,6 +70,7 @@ MEMBERSHIP_OPTIONS = (
     "Visitor",
 )
 BARCODE_SECRET_SETTING_KEY = "self_checkin_barcode_secret"
+KIOSK_AUTO_RETURN_SECONDS = 60
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
 DRIVER_LICENSE_DOCUMENT_NAME = "Driver License.jpg"
 DRIVER_LICENSE_IMAGE_SIZE = (2026, 1152)
@@ -1274,7 +1276,17 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/guest-registration/thanks")
     def guest_registration_thanks():
-        return render_template("club_admin/guest_registration_thanks.html")
+        response = make_response(
+            render_template(
+                "club_admin/guest_registration_thanks.html",
+                auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
+                auto_return_delay_ms=KIOSK_AUTO_RETURN_SECONDS * 1000,
+            )
+        )
+        response.headers["Refresh"] = (
+            f"{KIOSK_AUTO_RETURN_SECONDS}; url={url_for('self_checkin')}"
+        )
+        return response
 
     @flask_app.route("/admin/login", methods=["GET", "POST"])
     def admin_login():
@@ -1839,6 +1851,7 @@ def create_app(db_path: Path | None = None) -> Flask:
     @flask_app.route("/self-checkin", methods=["GET", "POST"])
     def self_checkin():
         message = ""
+        checkin_success = False
         barcode_svg = ""
         if request.method == "POST":
             barcode_token = request.form.get("barcode_token", "").strip()
@@ -1875,17 +1888,28 @@ def create_app(db_path: Path | None = None) -> Flask:
                         )
                         barcode_svg = _code128b_svg(token)
                     connection.commit()
+            checkin_success = member is not None
             message = (
                 "Check-in recorded."
-                if member is not None
+                if checkin_success
                 else "No matching user was found. Please check your barcode, phone number, and initials or first name."
             )
 
-        return render_template(
-            "club_admin/self_checkin.html",
-            message=message,
-            barcode_svg=barcode_svg,
+        response = make_response(
+            render_template(
+                "club_admin/self_checkin.html",
+                message=message,
+                checkin_success=checkin_success,
+                barcode_svg=barcode_svg,
+                auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
+                auto_return_delay_ms=KIOSK_AUTO_RETURN_SECONDS * 1000,
+            )
         )
+        if message or barcode_svg:
+            response.headers["Refresh"] = (
+                f"{KIOSK_AUTO_RETURN_SECONDS}; url={url_for('self_checkin')}"
+            )
+        return response
 
     @flask_app.post("/members/import")
     @require_admin

@@ -3,6 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if message or barcode_svg %}
+    <meta http-equiv="refresh" content="{{ auto_return_seconds }};url={{ url_for('self_checkin') }}">
+  {% endif %}
   <title>{{ app_title }} | Self Check-in</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
@@ -19,71 +22,88 @@
     </header>
 
     <div class="self-checkin-layout{% if message or barcode_svg %} has-status{% endif %}">
-      <div class="self-checkin-entry">
-        <section class="self-checkin-panel barcode-checkin-panel" aria-labelledby="barcode-checkin-heading">
-          <div>
-            <h2 id="barcode-checkin-heading">Barcode Scan</h2>
-            <p>Scan your saved barcode. Click on or tab into the Barcode field, then scan your barcode.</p>
-          </div>
-          <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
-            <label>
-              <span>Barcode</span>
-              <input
-                type="text"
-                name="barcode_token"
-                autocomplete="off"
-                {% if not message and not barcode_svg %}autofocus{% endif %}
-              >
-            </label>
-            <button class="visually-hidden" type="submit" tabindex="-1">Submit barcode</button>
-          </form>
-        </section>
-
-        <section class="self-checkin-panel manual-checkin-panel" aria-labelledby="manual-checkin-heading">
-          <div>
-            <h2 id="manual-checkin-heading">Phone Check-in</h2>
-            <p>Enter your phone number and initials or first name.</p>
-          </div>
-          <form class="self-checkin-form manual-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
-            <label>
-              <span>Phone Number</span>
-              <input type="tel" name="phone" autocomplete="tel" required>
-            </label>
-            <label>
-              <span>Initials or First Name</span>
-              <input type="text" name="initials" maxlength="40" autocomplete="given-name" required>
-            </label>
-            <div class="checkin-action-row">
-              <button type="submit" data-manual-checkin-submit disabled>Check In</button>
-              <button
-                class="secondary-action reset-checkin-button"
-                type="button"
-                data-checkin-reset
-                data-reset-url="{{ url_for('self_checkin') }}"
-                {% if not message and not barcode_svg %}disabled{% endif %}
-                {% if message or barcode_svg %}autofocus{% endif %}
-              >Reset</button>
-            </div>
-          </form>
-        </section>
-      </div>
-
       {% if message or barcode_svg %}
-        <aside class="self-checkin-status" aria-label="Check-in result">
+        <aside
+          class="self-checkin-status{% if checkin_success %} is-success{% else %} is-error{% endif %}"
+          aria-label="Check-in result"
+          role="{% if checkin_success %}status{% else %}alert{% endif %}"
+          tabindex="-1"
+          data-checkin-status
+          data-auto-reset-delay="{{ auto_return_delay_ms }}"
+        >
           {% if message %}
+            <div class="checkin-result-label" aria-hidden="true">
+              {% if checkin_success %}OK{% else %}Try Again{% endif %}
+            </div>
+            <h2>{% if checkin_success %}You are checked in{% else %}Check-in not found{% endif %}</h2>
             <p class="notice">{{ message }}</p>
           {% endif %}
 
           {% if barcode_svg %}
             <section class="checkin-barcode-card" aria-label="Saved self check-in barcode">
               <h2>Your Check-in Barcode</h2>
-              <p>Save this barcode for next time.</p>
+              <p>Save this barcode for next time, if you like.</p>
               <div class="checkin-barcode-frame">
                 {{ barcode_svg|safe }}
               </div>
             </section>
           {% endif %}
+
+          <button
+            class="checkin-continue-button"
+            type="button"
+            data-checkin-reset
+            data-reset-url="{{ url_for('self_checkin') }}"
+          >{% if checkin_success %}Continue{% else %}Try Again{% endif %}</button>
         </aside>
+      {% else %}
+        <div class="self-checkin-entry">
+          <section class="self-checkin-panel barcode-checkin-panel" aria-labelledby="barcode-checkin-heading">
+            <div>
+              <h2 id="barcode-checkin-heading">Barcode Scan</h2>
+              <p>Scan your saved barcode. Click on or tab into the Barcode field, then scan your barcode.</p>
+            </div>
+            <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+              <label>
+                <span>Barcode</span>
+                <input
+                  type="text"
+                  name="barcode_token"
+                  autocomplete="off"
+                  autofocus
+                >
+              </label>
+              <button class="visually-hidden" type="submit" tabindex="-1">Submit barcode</button>
+            </form>
+          </section>
+
+          <section class="self-checkin-panel manual-checkin-panel" aria-labelledby="manual-checkin-heading">
+            <div>
+              <h2 id="manual-checkin-heading">Phone Check-in</h2>
+              <p>Enter your phone number and initials or first name.</p>
+            </div>
+            <form class="self-checkin-form manual-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+              <label>
+                <span>Phone Number</span>
+                <input type="tel" name="phone" autocomplete="tel" required>
+              </label>
+              <label>
+                <span>Initials or First Name</span>
+                <input type="text" name="initials" maxlength="40" autocomplete="given-name" required>
+              </label>
+              <div class="checkin-action-row">
+                <button type="submit" data-manual-checkin-submit disabled>Check In</button>
+                <button
+                  class="secondary-action reset-checkin-button"
+                  type="button"
+                  data-checkin-reset
+                  data-reset-url="{{ url_for('self_checkin') }}"
+                  disabled
+                >Reset</button>
+              </div>
+            </form>
+          </section>
+        </div>
       {% endif %}
     </div>
   </main>
@@ -96,6 +116,7 @@
       const phoneInput = document.querySelector('input[name="phone"]');
       const initialsInput = document.querySelector('input[name="initials"]');
       const hasStatus = document.querySelector(".self-checkin-status") !== null;
+      const checkinStatus = document.querySelector("[data-checkin-status]");
 
       if (!resetButton) {
         return;
@@ -139,8 +160,22 @@
       }));
       updateResetState();
       updateSubmitState();
-      if (hasStatus) {
-        resetButton.focus();
+      checkinStatus?.focus({ preventScroll: true });
+
+      const autoResetDelay = Number(checkinStatus?.dataset.autoResetDelay || 0);
+      if (hasStatus && autoResetDelay > 0) {
+        let autoResetTimer = window.setTimeout(() => {
+          window.location.href = resetButton.dataset.resetUrl;
+        }, autoResetDelay);
+        const restartAutoReset = () => {
+          window.clearTimeout(autoResetTimer);
+          autoResetTimer = window.setTimeout(() => {
+            window.location.href = resetButton.dataset.resetUrl;
+          }, autoResetDelay);
+        };
+        ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+          window.addEventListener(eventName, restartAutoReset, { passive: true });
+        });
       }
     })();
   </script>
