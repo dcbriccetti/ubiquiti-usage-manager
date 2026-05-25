@@ -89,16 +89,16 @@
           <input type="text" name="address" value="{{ form_data.get('address', '') }}" autocomplete="street-address" required>
         </label>
         <label class="required-field">
+          <span>Zip Code</span>
+          <input type="text" name="zip" value="{{ form_data.get('zip', '') }}" autocomplete="postal-code" inputmode="numeric" required data-zip-lookup>
+        </label>
+        <label class="required-field">
           <span>City</span>
-          <input type="text" name="city" value="{{ form_data.get('city', '') }}" autocomplete="address-level2" required>
+          <input type="text" name="city" value="{{ form_data.get('city', '') }}" autocomplete="address-level2" required data-city-field>
         </label>
         <label class="state-field required-field">
           <span>State</span>
-          <input type="text" name="state" value="{{ form_data.get('state', '') }}" autocomplete="address-level1" maxlength="2" required>
-        </label>
-        <label class="required-field">
-          <span>Zip Code</span>
-          <input type="text" name="zip" value="{{ form_data.get('zip', '') }}" autocomplete="postal-code" inputmode="numeric" required>
+          <input type="text" name="state" value="{{ form_data.get('state', '') }}" autocomplete="address-level1" maxlength="2" required data-state-field>
         </label>
       </section>
 
@@ -140,5 +140,54 @@
       </div>
     </form>
   </main>
+  <script>
+    (() => {
+      const zipInput = document.querySelector("[data-zip-lookup]");
+      const cityInput = document.querySelector("[data-city-field]");
+      const stateInput = document.querySelector("[data-state-field]");
+      if (!zipInput || !cityInput || !stateInput) {
+        return;
+      }
+
+      let lastLookupZip = "";
+      let lookupController = null;
+
+      const lookupZip = async () => {
+        const zip = zipInput.value.replace(/\D+/g, "").slice(0, 5);
+        if (zip.length !== 5 || zip === lastLookupZip) {
+          return;
+        }
+        lastLookupZip = zip;
+        lookupController?.abort();
+        lookupController = new AbortController();
+        try {
+          const response = await fetch(
+            `https://api.zippopotam.us/us/${encodeURIComponent(zip)}`,
+            { signal: lookupController.signal },
+          );
+          if (!response.ok) {
+            return;
+          }
+          const payload = await response.json();
+          const place = Array.isArray(payload.places) ? payload.places[0] : null;
+          const city = place?.["place name"];
+          const state = place?.["state abbreviation"];
+          if (city) {
+            cityInput.value = city;
+          }
+          if (state) {
+            stateInput.value = state;
+          }
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            return;
+          }
+        }
+      };
+
+      zipInput.addEventListener("input", lookupZip);
+      zipInput.addEventListener("change", lookupZip);
+    })();
+  </script>
 </body>
 </html>
