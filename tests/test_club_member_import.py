@@ -304,6 +304,8 @@ class ClubMemberImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Self Check-in", body)
         self.assertIn('href="/guest-registration"', body)
+        self.assertIn('name="phone" autocomplete="tel" required autofocus', body)
+        self.assertNotIn('name="barcode_token"\n                  autocomplete="off"\n                  autofocus', body)
 
     def test_guest_registration_thanks_returns_to_self_checkin_after_delay(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

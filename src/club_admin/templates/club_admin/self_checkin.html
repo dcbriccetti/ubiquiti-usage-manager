@@ -70,7 +70,6 @@
                   type="text"
                   name="barcode_token"
                   autocomplete="off"
-                  autofocus
                 >
               </label>
               <button class="visually-hidden" type="submit" tabindex="-1">Submit barcode</button>
@@ -85,7 +84,7 @@
             <form class="self-checkin-form manual-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
               <label>
                 <span>Phone Number</span>
-                <input type="tel" name="phone" autocomplete="tel" required>
+                <input type="tel" name="phone" autocomplete="tel" required autofocus>
               </label>
               <label>
                 <span>Initials or First Name</span>
@@ -149,7 +148,7 @@
           return;
         }
         forms.forEach((form) => form.reset());
-        barcodeInput?.focus();
+        phoneInput?.focus();
         resetButton.disabled = true;
         updateSubmitState();
       });
