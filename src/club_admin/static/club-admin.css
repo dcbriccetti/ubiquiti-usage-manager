@@ -297,6 +297,12 @@ button:disabled {
   display: none;
 }
 
+.checkins-membership-breakdown {
+  color: #5b6472;
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+
 table {
   background: #fff;
   border-collapse: collapse;
@@ -1794,7 +1800,8 @@ th {
   }
 
   .checkins-report-page .summary,
-  .checkins-report-page .print-report-range {
+  .checkins-report-page .print-report-range,
+  .checkins-report-page .checkins-membership-breakdown {
     color: #111827;
     display: inline;
     font-size: 10pt;
@@ -1803,8 +1810,23 @@ th {
 
   .checkins-table {
     box-shadow: none;
+    break-inside: auto;
+    margin-top: 8pt;
     font-size: 9pt;
     width: 100%;
+  }
+
+  .checkins-table thead {
+    display: table-header-group;
+  }
+
+  .checkins-table tbody {
+    display: table-row-group;
+  }
+
+  .checkins-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .checkins-table th,
@@ -1815,6 +1837,7 @@ th {
 
   .checkins-table th {
     background: #f1f5f9;
+    padding-top: 8pt;
   }
 
   .checkins-table a {

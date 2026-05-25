@@ -15,6 +15,11 @@
         <h1>Check-ins</h1>
         <p class="summary">{{ checkins|length }} {{ 'check-in' if checkins|length == 1 else 'check-ins' }}</p>
         <p class="print-report-range">{{ start_date }} to {{ end_date }}</p>
+        <p class="checkins-membership-breakdown">
+          {% for label, count in membership_breakdown %}
+            <span>{{ label }}: {{ count }}</span>{% if not loop.last %}<span aria-hidden="true"> | </span>{% endif %}
+          {% endfor %}
+        </p>
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>

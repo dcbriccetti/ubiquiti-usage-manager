@@ -26,7 +26,7 @@ from club_admin.app import (
     _barcode_token_for_card_number,
     create_app,
 )
-from club_admin.models import Member
+from club_admin.models import CheckIn, Member
 import config as cfg
 
 
@@ -382,6 +382,59 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("2026-05-01 09:00:00", body)
         self.assertIn("2026-05-03 15:59:20", body)
         self.assertNotIn("Jane", body)
+
+    def test_checkin_report_shows_membership_breakdown_by_distinct_user(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                for card_number, first_name, last_name, membership in (
+                    ("100", "Fran", "Full", "Full Member"),
+                    ("200", "Annie", "Associate", "Associate Member"),
+                    ("300", "Alex", "AANR", "AANR Member"),
+                    ("400", "Vera", "Visitor", "Visitor"),
+                ):
+                    member_repository.upsert_member(
+                        connection,
+                        Member(
+                            first_name=first_name,
+                            last_name=last_name,
+                            card_number=card_number,
+                            membership=membership,
+                        ),
+                    )
+                for card_number, first_name, last_name, membership, check_in_at in (
+                    ("100", "Fran", "Full", "Full Member", datetime(2026, 5, 1, 9, 0, 0)),
+                    ("200", "Annie", "Associate", "Associate Member", datetime(2026, 5, 1, 9, 5, 0)),
+                    ("300", "Alex", "AANR", "AANR Member", datetime(2026, 5, 1, 9, 10, 0)),
+                    ("400", "Vera", "Visitor", "Visitor", datetime(2026, 5, 1, 9, 15, 0)),
+                    ("400", "Vera", "Visitor", "Visitor", datetime(2026, 5, 1, 10, 15, 0)),
+                ):
+                    checkin_repository.upsert_checkin(
+                        connection,
+                        CheckIn(
+                            member_id=card_number,
+                            first_name=first_name,
+                            last_name=last_name,
+                            card_number=card_number,
+                            membership=membership,
+                            check_in_at=check_in_at,
+                        ),
+                    )
+                connection.commit()
+
+            response = client.get(
+                "/checkins/report?start_date=2026-05-01&end_date=2026-05-01"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('class="checkins-membership-breakdown"', body)
+        self.assertIn("Full Member: 1", body)
+        self.assertIn("Assoc.: 1", body)
+        self.assertIn("AANR: 1", body)
+        self.assertIn("Visitor: 1", body)
 
     def test_club_app_renders_singular_checkin_report_count(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

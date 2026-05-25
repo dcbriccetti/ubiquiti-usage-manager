@@ -69,6 +69,12 @@ MEMBERSHIP_OPTIONS = (
     "Full Member",
     "Visitor",
 )
+CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN = (
+    ("Full Member", "Full Member"),
+    ("Assoc.", "Associate Member"),
+    ("AANR", "AANR Member"),
+    ("Visitor", "Visitor"),
+)
 BARCODE_SECRET_SETTING_KEY = "self_checkin_barcode_secret"
 KIOSK_AUTO_RETURN_SECONDS = 60
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
@@ -299,6 +305,29 @@ def _visible_member_audit_entries(audit_entries: list[audit_repository.AuditLogE
         entry
         for entry in audit_entries
         if not entry.field_name.startswith("check-in ")
+    )
+
+
+def _checkin_membership_breakdown(checkins: list[CheckIn]) -> tuple[tuple[str, int], ...]:
+    counts: Counter[str] = Counter()
+    seen_users: set[str] = set()
+    counted_memberships = {
+        membership for _, membership in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
+    }
+    for checkin in checkins:
+        user_key = (
+            f"user:{checkin.user_id}"
+            if checkin.user_id is not None
+            else f"card:{checkin.card_number.strip().casefold()}"
+        )
+        if user_key in seen_users:
+            continue
+        seen_users.add(user_key)
+        if checkin.membership in counted_memberships:
+            counts[checkin.membership] += 1
+    return tuple(
+        (label, counts[membership])
+        for label, membership in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
     )
 
 
@@ -1788,6 +1817,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         return render_template(
             "club_admin/checkins_report.html",
             checkins=checkins,
+            membership_breakdown=_checkin_membership_breakdown(checkins),
             start_date=start_date,
             end_date=end_date,
         )
