@@ -15,7 +15,7 @@ class MemberReportRow:
     member: Member
     address: str
     address_lines: tuple[str, ...]
-    checkin_count: int
+    checkin_count: int | None
     last_check_in_at: datetime | None
     document_count: int = 0
 
@@ -33,6 +33,21 @@ def _date_to_text(value: date | None) -> str | None:
 
 def _text_to_date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
+
+
+def _years_before(value: date, years: int) -> date:
+    try:
+        return value.replace(year=value.year - years)
+    except ValueError:
+        return date(value.year - years, 2, 28)
+
+
+def _member_visit_period_start(membership: str, as_of_date: date) -> date | None:
+    if membership == "AANR Member":
+        return _years_before(as_of_date, 1)
+    if membership == "Visitor":
+        return _years_before(as_of_date, 2)
+    return None
 
 
 def normalize_phone(value: str | None) -> str:
@@ -226,8 +241,21 @@ def list_members(connection: sqlite3.Connection) -> list[Member]:
     return [member_from_row(row) for row in rows]
 
 
-def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReportRow]:
-    '''Return all users with all-time check-in stats for the admin users report.'''
+def list_member_report_rows(
+    connection: sqlite3.Connection,
+    *,
+    as_of_date: date | None = None,
+) -> list[MemberReportRow]:
+    '''Return all users with membership-specific visit counts for the users report.'''
+    period_end_date = as_of_date or date.today()
+    one_year_start = datetime.combine(
+        _years_before(period_end_date, 1),
+        datetime.min.time(),
+    ).isoformat(timespec="seconds")
+    two_year_start = datetime.combine(
+        _years_before(period_end_date, 2),
+        datetime.min.time(),
+    ).isoformat(timespec="seconds")
     rows = connection.execute(
         """
         SELECT
@@ -248,7 +276,12 @@ def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReport
             u.email,
             u.work_phone,
             u.cell_phone,
-            COUNT(c.id) AS checkin_count,
+            COUNT(
+                CASE
+                    WHEN u.membership = 'AANR Member' AND c.check_in_at >= ? THEN 1
+                    WHEN u.membership = 'Visitor' AND c.check_in_at >= ? THEN 1
+                END
+            ) AS checkin_count,
             MAX(c.check_in_at) AS last_check_in_at
         FROM users u
         LEFT JOIN checkins c ON c.user_id = u.id
@@ -271,7 +304,8 @@ def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReport
             u.work_phone,
             u.cell_phone
         ORDER BY u.last_name, u.first_name, u.card_number
-        """
+        """,
+        (one_year_start, two_year_start),
     ).fetchall()
     report_rows: list[MemberReportRow] = []
     for row in rows:
@@ -281,7 +315,11 @@ def list_member_report_rows(connection: sqlite3.Connection) -> list[MemberReport
                 member=member,
                 address=format_member_address(member),
                 address_lines=format_member_address_lines(member),
-                checkin_count=int(row["checkin_count"]),
+                checkin_count=(
+                    int(row["checkin_count"])
+                    if _member_visit_period_start(member.membership, period_end_date) is not None
+                    else None
+                ),
                 last_check_in_at=(
                     datetime.fromisoformat(row["last_check_in_at"])
                     if row["last_check_in_at"]

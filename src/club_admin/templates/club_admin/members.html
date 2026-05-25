@@ -78,7 +78,7 @@
               <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="8" data-sort-type="text">Email <span class="sort-indicator" aria-hidden="true"></span></button></th>
               <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="9" data-sort-type="text">Cell Phone <span class="sort-indicator" aria-hidden="true"></span></button></th>
               <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="10" data-sort-type="number">Docs <span class="sort-indicator" aria-hidden="true"></span></button></th>
-              <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="11" data-sort-type="number">Check-ins <span class="sort-indicator" aria-hidden="true"></span></button></th>
+              <th scope="col" class="numeric nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="11" data-sort-type="number" title="AANR members: visits in the past year. Visitors: visits in the past two years. Associate and Full members: blank.">Visits <span class="sort-indicator" aria-hidden="true"></span></button></th>
               <th scope="col" class="nowrap" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="12" data-sort-type="date">Last Check-in <span class="sort-indicator" aria-hidden="true"></span></button></th>
             </tr>
           </thead>
@@ -105,7 +105,7 @@
                 <td data-sort-value="{{ row.member.email or '' }}">{{ row.member.email or '' }}</td>
                 <td class="nowrap" data-sort-value="{{ row.member.cell_phone or '' }}">{{ row.member.cell_phone or '' }}</td>
                 <td class="numeric" data-sort-value="{{ row.document_count }}">{{ row.document_count or '' }}</td>
-                <td class="numeric" data-sort-value="{{ row.checkin_count }}">{{ row.checkin_count or '' }}</td>
+                <td class="numeric" data-sort-value="{{ row.checkin_count if row.checkin_count is not none else '' }}">{{ row.checkin_count if row.checkin_count is not none else '' }}</td>
                 <td class="nowrap" data-sort-value="{{ row.last_check_in_at.isoformat() if row.last_check_in_at else '' }}">{{ row.last_check_in_at or '' }}</td>
               </tr>
             {% else %}

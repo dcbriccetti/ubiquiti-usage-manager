@@ -874,11 +874,86 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Everytown CA 94000", body)
         self.assertIn("2026-05-03 15:59:20", body)
         self.assertIn("Docs", body)
+        self.assertIn("Visits", body)
+        self.assertIn("AANR members: visits in the past year.", body)
+        self.assertIn("Visitors: visits in the past two years.", body)
+        self.assertIn("Associate and Full members: blank.", body)
         self.assertIn(">2<", body)
         self.assertIn('<td data-sort-value="123">', body)
         self.assertIn('<td class="numeric" data-sort-value="0"></td>', body)
         self.assertIn('data-sort-value="2026-05-03T15:59:20"', body)
         self.assertNotIn(">0<", body)
+
+    def test_member_report_counts_visits_by_membership_period(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            database.init_db(db_path)
+            with closing(database.connect(db_path)) as connection:
+                for member in (
+                    Member(
+                        last_name="AANR",
+                        first_name="Alex",
+                        card_number="100",
+                        membership="AANR Member",
+                    ),
+                    Member(
+                        last_name="Visitor",
+                        first_name="Vera",
+                        card_number="200",
+                        membership="Visitor",
+                    ),
+                    Member(
+                        last_name="Associate",
+                        first_name="Annie",
+                        card_number="300",
+                        membership="Associate Member",
+                    ),
+                    Member(
+                        last_name="Full",
+                        first_name="Frank",
+                        card_number="400",
+                        membership="Full Member",
+                    ),
+                ):
+                    member_repository.upsert_member(connection, member)
+
+                for card_number, membership, check_in_at in (
+                    ("100", "AANR Member", datetime(2025, 5, 24, 9, 0, 0)),
+                    ("100", "AANR Member", datetime(2025, 5, 25, 9, 0, 0)),
+                    ("100", "AANR Member", datetime(2026, 5, 1, 9, 0, 0)),
+                    ("200", "Visitor", datetime(2024, 5, 24, 9, 0, 0)),
+                    ("200", "Visitor", datetime(2024, 5, 25, 9, 0, 0)),
+                    ("200", "Visitor", datetime(2026, 5, 1, 9, 0, 0)),
+                    ("300", "Associate Member", datetime(2026, 5, 1, 9, 0, 0)),
+                    ("400", "Full Member", datetime(2026, 5, 1, 9, 0, 0)),
+                ):
+                    checkin_repository.upsert_checkin(
+                        connection,
+                        CheckIn(
+                            member_id=card_number,
+                            last_name=card_number,
+                            first_name="Test",
+                            card_number=card_number,
+                            check_in_at=check_in_at,
+                            membership=membership,
+                        ),
+                    )
+                connection.commit()
+
+                rows = member_repository.list_member_report_rows(
+                    connection,
+                    as_of_date=datetime(2026, 5, 25).date(),
+                )
+
+        rows_by_card = {row.member.card_number: row for row in rows}
+        self.assertEqual(rows_by_card["100"].checkin_count, 2)
+        self.assertEqual(rows_by_card["200"].checkin_count, 2)
+        self.assertIsNone(rows_by_card["300"].checkin_count)
+        self.assertIsNone(rows_by_card["400"].checkin_count)
+        self.assertEqual(
+            rows_by_card["100"].last_check_in_at,
+            datetime(2026, 5, 1, 9, 0, 0),
+        )
 
     def test_members_map_summarizes_users_by_zip_without_addresses(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
