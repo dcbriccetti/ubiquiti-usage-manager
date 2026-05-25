@@ -13,7 +13,7 @@
       <div>
         <p class="app-title">{{ app_title }}</p>
         <h1>Check-ins</h1>
-        <p class="summary">{{ checkins|length }} check-ins</p>
+        <p class="summary">{{ checkins|length }} {{ 'check-in' if checkins|length == 1 else 'check-ins' }}</p>
         <p class="print-report-range">{{ start_date }} to {{ end_date }}</p>
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">

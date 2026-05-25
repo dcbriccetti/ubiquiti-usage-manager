@@ -143,6 +143,13 @@ class MemberDocument:
 
 
 @dataclass(frozen=True, kw_only=True)
+class MemberDocumentPreview:
+    title: str
+    document_name: str | None = None
+    is_guest_form: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
 class ZipMapPoint:
     zip_code: str
     count: int
@@ -522,6 +529,15 @@ def _id_document_name_for_member(member: Member, documents_dir: str) -> str | No
         if ID_DOCUMENT_NAME_PATTERN.match(normalized_stem):
             fallback_document_name = fallback_document_name or document_name
     return managed_document_name or fallback_document_name
+
+
+def _member_document_preview(member: Member, documents_dir: str) -> MemberDocumentPreview | None:
+    if _guest_form_path_for_member(member, documents_dir) is not None:
+        return MemberDocumentPreview(title="Guest Form", is_guest_form=True)
+    id_document_name = _id_document_name_for_member(member, documents_dir)
+    if id_document_name is None:
+        return None
+    return MemberDocumentPreview(title="Driver License", document_name=id_document_name)
 
 
 def _id_document_storage_path(member: Member, documents_dir: str) -> Path | None:
@@ -1477,12 +1493,9 @@ def create_app(db_path: Path | None = None) -> Flask:
                 entity_type="user",
                 entity_id=member_id,
             )
-        guest_form_available = (
-            _guest_form_path_for_member(
-                member,
-                flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
-            )
-            is not None
+        document_preview = _member_document_preview(
+            member,
+            flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
         )
         other_documents = tuple(
             MemberDocument(name=name)
@@ -1491,6 +1504,9 @@ def create_app(db_path: Path | None = None) -> Flask:
                 flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
                 include_guest_form=False,
             )
+            if document_preview is None
+            or document_preview.document_name is None
+            or name.casefold() != document_preview.document_name.casefold()
         )
 
         return render_template(
@@ -1498,7 +1514,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             member=member,
             checkins=checkins,
             audit_entries=audit_entries,
-            guest_form_available=guest_form_available,
+            document_preview=document_preview,
             other_documents=other_documents,
         )
 

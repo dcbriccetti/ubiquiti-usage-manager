@@ -383,6 +383,25 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("2026-05-03 15:59:20", body)
         self.assertNotIn("Jane", body)
 
+    def test_club_app_renders_singular_checkin_report_count(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            with closing(database.connect(db_path)) as connection:
+                checkin_repository.upsert_checkin(connection, checkin)
+                connection.commit()
+
+            response = client.get(
+                "/checkins/report?start_date=2026-05-03&end_date=2026-05-03"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("1 check-in", body)
+        self.assertNotIn("1 check-ins", body)
+
     def test_member_detail_lists_that_users_checkins(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"

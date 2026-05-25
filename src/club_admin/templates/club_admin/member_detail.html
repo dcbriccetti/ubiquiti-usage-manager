@@ -85,12 +85,12 @@
       </div>
     </section>
 
-    {% if guest_form_available %}
+    {% if document_preview %}
       <section class="guest-form-panel">
-        <h2>Guest Form</h2>
+        <h2>{{ document_preview.title }}</h2>
         <img
-          src="{{ url_for('member_guest_form', member_id=member.id) }}"
-          alt="Guest form for {{ member.first_name }} {{ member.last_name }}"
+          src="{% if document_preview.is_guest_form %}{{ url_for('member_guest_form', member_id=member.id) }}{% else %}{{ url_for('member_document', member_id=member.id, name=document_preview.document_name) }}{% endif %}"
+          alt="{{ document_preview.title }} for {{ member.first_name }} {{ member.last_name }}"
         >
       </section>
     {% endif %}

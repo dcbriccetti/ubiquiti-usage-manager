@@ -1176,6 +1176,83 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(document_response.status_code, 200)
         self.assertEqual(document_bytes, b"synthetic waiver")
 
+    def test_member_detail_shows_driver_license_when_guest_form_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "club-users.db"
+            documents_dir = temp_path / "documents"
+            member_document_dir = documents_dir / "123"
+            member_document_dir.mkdir(parents=True)
+            driver_license_path = member_document_dir / "Driver License.jpg"
+            driver_license_path.write_bytes(b"\xff\xd8\xff\xe0synthetic-license")
+            flask_app = create_admin_app(db_path, str(documents_dir))
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.get(f"/members/{member.id}")
+            document_response = client.get(
+                f"/members/{member.id}/document",
+                query_string={"name": "Driver License.jpg"},
+            )
+            document_bytes = document_response.get_data()
+            document_response.close()
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("<h2>Driver License</h2>", body)
+        self.assertIn(f'/members/{member.id}/document?name=Driver+License.jpg', body)
+        self.assertNotIn(f'/members/{member.id}/guest-form.jpg', body)
+        self.assertIn("No other documents found for this user.", body)
+        self.assertEqual(document_response.status_code, 200)
+        self.assertEqual(document_response.mimetype, "image/jpeg")
+        self.assertEqual(document_bytes, b"\xff\xd8\xff\xe0synthetic-license")
+
+    def test_member_detail_prefers_guest_form_over_driver_license_preview(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "club-users.db"
+            documents_dir = temp_path / "documents"
+            member_document_dir = documents_dir / "123"
+            member_document_dir.mkdir(parents=True)
+            (member_document_dir / "Guest Form.jpg").write_bytes(b"\xff\xd8\xff\xe0guest")
+            (member_document_dir / "Driver License.jpg").write_bytes(
+                b"\xff\xd8\xff\xe0synthetic-license"
+            )
+            flask_app = create_admin_app(db_path, str(documents_dir))
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.get(f"/members/{member.id}")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("<h2>Guest Form</h2>", body)
+        self.assertIn(f'/members/{member.id}/guest-form.jpg', body)
+        self.assertIn("Driver License.jpg", body)
+        self.assertIn(f'/members/{member.id}/document?name=Driver+License.jpg', body)
+
     def test_member_detail_can_attach_document_to_user_folder(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
