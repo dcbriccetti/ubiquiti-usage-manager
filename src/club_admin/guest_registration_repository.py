@@ -4,7 +4,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from club_admin.member_repository import member_from_row
+from club_admin.member_repository import format_phone_number, member_from_row
 from club_admin.models import GuestRegistration, Member
 
 
@@ -29,7 +29,7 @@ def _registration_from_row(row: sqlite3.Row) -> GuestRegistration:
         user_id=row["user_id"],
         visit_date=date.fromisoformat(row["visit_date"]),
         middle_name=row["middle_name"],
-        other_phone=row["other_phone"],
+        other_phone=format_phone_number(row["other_phone"]),
         other_phone_type=row["other_phone_type"],
         marital_status=row["marital_status"],
         partner_name=row["partner_name"],
@@ -77,7 +77,7 @@ def insert_guest_registration(
             registration.user_id,
             registration.visit_date.isoformat(),
             _empty_to_none(registration.middle_name),
-            _empty_to_none(registration.other_phone),
+            format_phone_number(registration.other_phone),
             _empty_to_none(registration.other_phone_type),
             _empty_to_none(registration.marital_status),
             _empty_to_none(registration.partner_name),

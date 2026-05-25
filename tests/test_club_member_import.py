@@ -88,6 +88,41 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(members[0].last_name, "Doe")
         self.assertEqual(members[0].membership, "Visitor")
 
+    def test_member_repository_formats_phone_numbers(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            database.init_db(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                        phone="123.123.1234",
+                        work_phone="+1 234 555 6789 x42",
+                        cell_phone="5105105100",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                stored_values = connection.execute(
+                    """
+                    SELECT phone, work_phone, cell_phone
+                    FROM users
+                    WHERE card_number = ?
+                    """,
+                    ("123",),
+                ).fetchone()
+
+        self.assertEqual(member.phone, "(123) 123-1234")
+        self.assertEqual(member.work_phone, "(234) 555-6789 x42")
+        self.assertEqual(member.cell_phone, "(510) 510-5100")
+        self.assertEqual(stored_values["phone"], "(123) 123-1234")
+        self.assertEqual(stored_values["work_phone"], "(234) 555-6789 x42")
+        self.assertEqual(stored_values["cell_phone"], "(510) 510-5100")
+
     def test_reads_members_csv_after_export_preamble(self) -> None:
         source = io.StringIO(
             "sep=,\n"
@@ -460,8 +495,8 @@ class ClubMemberImportTests(unittest.TestCase):
                     "city": "Everytown",
                     "state": "CA",
                     "zip": "94000",
-                    "cell_phone": "510-510-5100",
-                    "other_phone": "123-123-1234",
+                    "cell_phone": "510.510.5100",
+                    "other_phone": "1231231234",
                     "other_phone_type": "home",
                     "email": "john@example.test",
                     "marital_status": "single",
@@ -487,9 +522,11 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(new_user.card_number, "1000")
         self.assertEqual(new_user.nickname, "Johnny")
         self.assertEqual(new_user.date_of_birth.isoformat(), "1990-06-15")
-        self.assertEqual(new_user.phone, "123-123-1234")
+        self.assertEqual(new_user.phone, "(123) 123-1234")
+        self.assertEqual(new_user.cell_phone, "(510) 510-5100")
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].registration.middle_name, "Q")
+        self.assertEqual(records[0].registration.other_phone, "(123) 123-1234")
         self.assertTrue(records[0].registration.guest_of_member)
         self.assertTrue(records[0].registration.newsletter_opt_out)
         self.assertEqual(len(checkins), 1)

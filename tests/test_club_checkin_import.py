@@ -531,7 +531,7 @@ class ClubCheckInImportTests(unittest.TestCase):
 
             response = flask_app.test_client().post(
                 "/self-checkin",
-                data={"phone": "5105105100", "initials": "JD"},
+                data={"phone": "+1 (510) 510-5100", "initials": "JD"},
             )
 
             with closing(database.connect(db_path)) as connection:

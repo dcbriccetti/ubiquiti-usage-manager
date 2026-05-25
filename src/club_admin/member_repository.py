@@ -27,6 +27,10 @@ def _empty_to_none(value: str | None) -> str | None:
     return stripped or None
 
 
+def _collapse_whitespace(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
 def _date_to_text(value: date | None) -> str | None:
     return value.isoformat() if value is not None else None
 
@@ -52,7 +56,38 @@ def _member_visit_period_start(membership: str, as_of_date: date) -> date | None
 
 def normalize_phone(value: str | None) -> str:
     '''Return only digits from a phone value for matching.'''
-    return re.sub(r"\D+", "", value or "")
+    digits = re.sub(r"\D+", "", value or "")
+    if len(digits) == 11 and digits.startswith("1"):
+        return digits[1:]
+    return digits
+
+
+def format_phone_number(value: str | None) -> str | None:
+    '''Return a display-friendly phone number when the value looks domestic.'''
+    stripped_value = _empty_to_none(value)
+    if stripped_value is None:
+        return None
+
+    extension = ""
+    base_value = stripped_value
+    extension_match = re.search(
+        r"(?i)\s*(?:ext\.?|extension|x)\s*(\d+)\s*$",
+        stripped_value,
+    )
+    if extension_match:
+        extension = f" x{extension_match.group(1)}"
+        base_value = stripped_value[: extension_match.start()]
+
+    digits = normalize_phone(base_value)
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}{extension}"
+    if len(digits) == 7:
+        return f"{digits[:3]}-{digits[3:]}{extension}"
+    return _collapse_whitespace(stripped_value)
+
+
+def _phone_to_none(value: str | None) -> str | None:
+    return format_phone_number(value)
 
 
 def normalize_name_token(value: str | None) -> str:
@@ -83,10 +118,10 @@ def member_from_row(row: sqlite3.Row) -> Member:
         city=row["city"],
         state=row["state"],
         zip=row["zip"],
-        phone=row["phone"],
+        phone=format_phone_number(row["phone"]),
         email=row["email"],
-        work_phone=row["work_phone"],
-        cell_phone=row["cell_phone"],
+        work_phone=format_phone_number(row["work_phone"]),
+        cell_phone=format_phone_number(row["cell_phone"]),
     )
 
 
@@ -158,10 +193,10 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             _empty_to_none(member.city),
             _empty_to_none(member.state),
             _empty_to_none(member.zip),
-            _empty_to_none(member.phone),
+            _phone_to_none(member.phone),
             _empty_to_none(member.email),
-            _empty_to_none(member.work_phone),
-            _empty_to_none(member.cell_phone),
+            _phone_to_none(member.work_phone),
+            _phone_to_none(member.cell_phone),
         ),
     )
 
@@ -203,10 +238,10 @@ def insert_member(connection: sqlite3.Connection, member: Member) -> int:
             _empty_to_none(member.city),
             _empty_to_none(member.state),
             _empty_to_none(member.zip),
-            _empty_to_none(member.phone),
+            _phone_to_none(member.phone),
             _empty_to_none(member.email),
-            _empty_to_none(member.work_phone),
-            _empty_to_none(member.cell_phone),
+            _phone_to_none(member.work_phone),
+            _phone_to_none(member.cell_phone),
         ),
     )
     return int(cursor.lastrowid)
@@ -494,10 +529,10 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
             _empty_to_none(member.city),
             _empty_to_none(member.state),
             _empty_to_none(member.zip),
-            _empty_to_none(member.phone),
+            _phone_to_none(member.phone),
             _empty_to_none(member.email),
-            _empty_to_none(member.work_phone),
-            _empty_to_none(member.cell_phone),
+            _phone_to_none(member.work_phone),
+            _phone_to_none(member.cell_phone),
             member.id,
         ),
     )

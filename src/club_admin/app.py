@@ -232,10 +232,10 @@ def _member_from_form(member_id: int, form_data: Any) -> Member:
         city=form_data.get("city", "").strip() or None,
         state=form_data.get("state", "").strip() or None,
         zip=form_data.get("zip", "").strip() or None,
-        phone=form_data.get("phone", "").strip() or None,
+        phone=member_repository.format_phone_number(form_data.get("phone")),
         email=form_data.get("email", "").strip() or None,
-        work_phone=form_data.get("work_phone", "").strip() or None,
-        cell_phone=form_data.get("cell_phone", "").strip() or None,
+        work_phone=member_repository.format_phone_number(form_data.get("work_phone")),
+        cell_phone=member_repository.format_phone_number(form_data.get("cell_phone")),
     )
 
 
@@ -397,7 +397,7 @@ def _guest_registration_from_form(
     *,
     card_number: str,
 ) -> tuple[Member, GuestRegistration]:
-    other_phone = _visitor_text_or_none(form_data, "other_phone")
+    other_phone = member_repository.format_phone_number(form_data.get("other_phone"))
     other_phone_type = _visitor_choice(form_data, "other_phone_type", {"home", "work", "other"})
     phone = other_phone if other_phone_type != "work" else None
     work_phone = other_phone if other_phone_type == "work" else None
@@ -416,7 +416,7 @@ def _guest_registration_from_form(
         phone=phone,
         email=_visitor_text_or_none(form_data, "email"),
         work_phone=work_phone,
-        cell_phone=_visitor_text_or_none(form_data, "cell_phone"),
+        cell_phone=member_repository.format_phone_number(form_data.get("cell_phone")),
     )
     registration = GuestRegistration(
         visit_date=_parse_visitor_visit_date(form_data),
