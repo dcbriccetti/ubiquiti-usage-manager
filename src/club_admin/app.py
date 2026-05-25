@@ -1326,10 +1326,12 @@ def create_app(db_path: Path | None = None) -> Flask:
                 member = replace(member, card_number=card_number)
 
                 member_id = member_repository.insert_member(connection, member)
+                member = replace(member, id=member_id)
                 guest_registration_repository.insert_guest_registration(
                     connection,
                     replace(registration, user_id=member_id),
                 )
+                _record_self_checkin(connection, member)
                 connection.commit()
             return redirect(url_for("guest_registration_thanks"))
 

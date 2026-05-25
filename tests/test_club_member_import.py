@@ -477,6 +477,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 records = guest_registration_repository.list_guest_registration_records(
                     connection
                 )
+                checkins = checkin_repository.list_checkins(connection)
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("/guest-registration/thanks", response.headers["Location"])
@@ -491,6 +492,12 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(records[0].registration.middle_name, "Q")
         self.assertTrue(records[0].registration.guest_of_member)
         self.assertTrue(records[0].registration.newsletter_opt_out)
+        self.assertEqual(len(checkins), 1)
+        self.assertEqual(checkins[0].user_id, new_user.id)
+        self.assertEqual(checkins[0].card_number, "1000")
+        self.assertEqual(checkins[0].membership, "Visitor")
+        self.assertEqual(checkins[0].last_name, "Doe")
+        self.assertEqual(checkins[0].first_name, "John")
 
     def test_guest_registration_marks_required_fields_without_required_badges(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
