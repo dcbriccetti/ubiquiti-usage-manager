@@ -293,6 +293,14 @@ def _record_checkin_change(
     )
 
 
+def _visible_member_audit_entries(audit_entries: list[audit_repository.AuditLogEntry]):
+    return tuple(
+        entry
+        for entry in audit_entries
+        if not entry.field_name.startswith("check-in ")
+    )
+
+
 def _clear_user_import_data(connection: sqlite3.Connection) -> None:
     connection.execute("DELETE FROM guest_registrations")
     connection.execute("DELETE FROM checkins")
@@ -1513,7 +1521,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             "club_admin/member_detail.html",
             member=member,
             checkins=checkins,
-            audit_entries=audit_entries,
+            audit_entries=_visible_member_audit_entries(audit_entries),
             document_preview=document_preview,
             other_documents=other_documents,
         )

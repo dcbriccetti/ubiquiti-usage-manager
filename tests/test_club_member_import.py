@@ -1745,9 +1745,11 @@ class ClubMemberImportTests(unittest.TestCase):
         )
         self.assertEqual(detail_response.status_code, 200)
         detail_body = detail_response.get_data(as_text=True)
-        self.assertIn("check-in deleted", detail_body)
-        self.assertIn("check-in edited", detail_body)
-        self.assertIn("check-in added", detail_body)
+        self.assertNotIn("check-in deleted", detail_body)
+        self.assertNotIn("check-in edited", detail_body)
+        self.assertNotIn("check-in added", detail_body)
+        self.assertIn("2026-05-02 10:30:00", detail_body)
+        self.assertIn("2026-05-04 18:45:00", detail_body)
 
     def test_edit_member_rejects_bad_checkin_datetime(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1829,6 +1831,42 @@ class ClubMemberImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Change Log", body)
         self.assertIn("Full Member", body)
+
+    def test_member_detail_hides_checkin_audit_log_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                    action="edit",
+                    field_name="check-in edited",
+                    old_value=datetime(2026, 5, 1, 9, 0, 0),
+                    new_value=datetime(2026, 5, 2, 10, 30, 0),
+                )
+                connection.commit()
+
+            response = client.get(f"/members/{member.id}")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Change Log", body)
+        self.assertIn("No changes recorded yet.", body)
+        self.assertNotIn("check-in edited", body)
 
     def test_admin_guest_registration_queue_and_filled_form_use_definition_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
