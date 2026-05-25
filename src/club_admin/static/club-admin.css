@@ -1745,6 +1745,10 @@ th {
 }
 
 @media print {
+  @page checkins-report {
+    margin: 0.4in;
+  }
+
   body,
   .print-body {
     background: #fff;
@@ -1766,8 +1770,10 @@ th {
   }
 
   .checkins-report-page {
+    box-sizing: border-box;
     max-width: none;
-    padding: 0;
+    padding: 0 0.15in 0.15in;
+    page: checkins-report;
   }
 
   .checkins-report-page .app-title,
