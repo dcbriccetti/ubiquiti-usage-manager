@@ -76,6 +76,7 @@ DRIVER_LICENSE_DOCUMENT_NAME = "Driver License.jpg"
 DRIVER_LICENSE_IMAGE_SIZE = (2026, 1152)
 DRIVER_LICENSE_CROP_THRESHOLD = 24
 DRIVER_LICENSE_CROP_ASPECT_FLOOR = 1.45
+DRIVER_LICENSE_DARK_BACKGROUND_LUMINANCE = 100
 ID_DOCUMENT_NAME_PATTERN = re.compile(
     r"^(?:drivers?\s+license|drivers?\s+licence|dl|id|identification)(?:\b|[_\-\s])",
     re.IGNORECASE,
@@ -585,13 +586,53 @@ def _first_content_cluster_end(
     return cluster_end + 1
 
 
-def _image_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
+def _rgb_luminance(rgb: tuple[int, int, int]) -> float:
+    return (0.2126 * rgb[0]) + (0.7152 * rgb[1]) + (0.0722 * rgb[2])
+
+
+def _sample_driver_license_background(image: Image.Image) -> tuple[int, int, int]:
+    width, height = image.size
+    if width <= 0 or height <= 0:
+        return (255, 255, 255)
+
+    edge_x = max(8, int(width * 0.04))
+    edge_y = max(8, int(height * 0.04))
+    step = max(1, min(width, height) // 120)
+    pixels = image.load()
+    samples: list[tuple[int, int, int]] = []
+
+    for y in range(max(0, height - edge_y), height, step):
+        for x in range(0, width, step):
+            samples.append(pixels[x, y])
+    for x in range(max(0, width - edge_x), width, step):
+        for y in range(0, height, step):
+            samples.append(pixels[x, y])
+
+    if not samples:
+        return (255, 255, 255)
+
+    return tuple(
+        sorted(sample[channel] for sample in samples)[len(samples) // 2]
+        for channel in range(3)
+    )
+
+
+def _driver_license_crop_mask(image: Image.Image) -> Image.Image:
     rgb_image = image.convert("RGB")
-    white_background = Image.new("RGB", rgb_image.size, "WHITE")
-    difference = ImageChops.difference(rgb_image, white_background).convert("L")
-    mask = difference.point(
+    background_color = _sample_driver_license_background(rgb_image)
+    if _rgb_luminance(background_color) < DRIVER_LICENSE_DARK_BACKGROUND_LUMINANCE:
+        background = Image.new("RGB", rgb_image.size, background_color)
+    else:
+        background = Image.new("RGB", rgb_image.size, "WHITE")
+    difference = ImageChops.difference(rgb_image, background).convert("L")
+    return difference.point(
         lambda value: 255 if value > DRIVER_LICENSE_CROP_THRESHOLD else 0
     )
+
+
+def _image_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
+    rgb_image = image.convert("RGB")
+    mask = _driver_license_crop_mask(rgb_image)
     mask_pixels = mask.load()
     width, height = mask.size
     ignore_x = max(12, int(width * 0.025))

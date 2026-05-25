@@ -2159,6 +2159,78 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertGreater(blue_bbox[2] - blue_bbox[0], 450)
         self.assertGreater(blue_bbox[3] - blue_bbox[1], 500)
 
+    def test_driver_license_upload_crops_dark_landscape_scanner_background(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "club-users.db"
+            documents_dir = temp_path / "documents"
+            documents_dir.mkdir()
+            flask_app = create_admin_app(db_path, documents_dir=str(documents_dir))
+            visitor_client = flask_app.test_client()
+            visitor_client.post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "date_of_birth": "1990-06-15",
+                    "cell_phone": "510-510-5100",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                    "marital_status": "single",
+                },
+            )
+            with closing(database.connect(db_path)) as connection:
+                record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+
+            upload_image = Image.new("RGB", (3000, 1800), (5, 5, 5))
+            draw = ImageDraw.Draw(upload_image)
+            draw.rectangle((85, 70, 1090, 705), fill=(250, 250, 244), outline=(70, 70, 70), width=4)
+            draw.rectangle((135, 150, 430, 500), fill=(40, 90, 160))
+            draw.rectangle((500, 165, 1000, 215), fill=(30, 30, 30))
+            draw.rectangle((500, 300, 960, 345), fill=(70, 70, 70))
+            draw.rectangle((500, 430, 1040, 475), fill=(70, 70, 70))
+            for y in range(1200, 1680, 65):
+                for x in range(1500, 2800, 100):
+                    draw.rectangle((x, y, x + 7, y + 7), fill=(36, 36, 36))
+            upload_buffer = io.BytesIO()
+            upload_image.save(upload_buffer, format="PNG")
+            upload_buffer.seek(0)
+
+            response = admin_client(flask_app).post(
+                f"/guest-registrations/{record.registration.id}/driver-license",
+                data={"driver_license": (upload_buffer, "scan.png")},
+                content_type="multipart/form-data",
+            )
+
+            saved_license_path = (
+                documents_dir / record.member.card_number / "Driver License.jpg"
+            )
+            with Image.open(saved_license_path) as saved_license_image:
+                saved_size = saved_license_image.size
+                rgb_image = saved_license_image.convert("RGB")
+                blue_mask = Image.new("L", rgb_image.size)
+                rgb_pixels = (
+                    rgb_image.get_flattened_data()
+                    if hasattr(rgb_image, "get_flattened_data")
+                    else rgb_image.getdata()
+                )
+                blue_mask.putdata([
+                    255 if blue > red + 40 and blue > green + 20 else 0
+                    for red, green, blue in rgb_pixels
+                ])
+                blue_bbox = blue_mask.getbbox()
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(saved_size, (2026, 1152))
+        self.assertIsNotNone(blue_bbox)
+        assert blue_bbox is not None
+        self.assertGreater(blue_bbox[2] - blue_bbox[0], 400)
+        self.assertGreater(blue_bbox[3] - blue_bbox[1], 500)
+
     def test_driver_license_repair_recrops_existing_white_canvas_file(self) -> None:
         stored_scan = Image.new("RGB", (2026, 1152), "white")
         draw = ImageDraw.Draw(stored_scan)
@@ -2172,6 +2244,38 @@ class ClubMemberImportTests(unittest.TestCase):
         for y in range(520, 1000, 70):
             for x in range(600, 1500, 95):
                 draw.rectangle((x, y, x + 5, y + 5), fill=(218, 218, 218))
+
+        repaired = _prepare_stored_driver_license_image(stored_scan)
+        rgb_image = repaired.convert("RGB")
+        blue_mask = Image.new("L", rgb_image.size)
+        rgb_pixels = (
+            rgb_image.get_flattened_data()
+            if hasattr(rgb_image, "get_flattened_data")
+            else rgb_image.getdata()
+        )
+        blue_mask.putdata([
+            255 if blue > red + 40 and blue > green + 20 else 0
+            for red, green, blue in rgb_pixels
+        ])
+        blue_bbox = blue_mask.getbbox()
+
+        self.assertEqual(repaired.size, (2026, 1152))
+        self.assertIsNotNone(blue_bbox)
+        assert blue_bbox is not None
+        self.assertGreater(blue_bbox[2] - blue_bbox[0], 450)
+        self.assertGreater(blue_bbox[3] - blue_bbox[1], 500)
+
+    def test_driver_license_repair_recrops_existing_dark_canvas_file(self) -> None:
+        stored_scan = Image.new("RGB", (2026, 1152), (5, 5, 5))
+        draw = ImageDraw.Draw(stored_scan)
+        draw.rectangle((65, 45, 690, 440), fill=(250, 250, 244), outline=(70, 70, 70), width=2)
+        draw.rectangle((95, 95, 275, 310), fill=(40, 90, 160))
+        draw.rectangle((320, 105, 640, 135), fill=(30, 30, 30))
+        draw.rectangle((320, 205, 610, 235), fill=(70, 70, 70))
+        draw.rectangle((320, 305, 655, 335), fill=(70, 70, 70))
+        for y in range(700, 1040, 60):
+            for x in range(1050, 1840, 95):
+                draw.rectangle((x, y, x + 5, y + 5), fill=(36, 36, 36))
 
         repaired = _prepare_stored_driver_license_image(stored_scan)
         rgb_image = repaired.convert("RGB")

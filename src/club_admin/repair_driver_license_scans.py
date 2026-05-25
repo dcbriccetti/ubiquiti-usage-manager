@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 import config as cfg
 from club_admin.app import (
-    DRIVER_LICENSE_CROP_THRESHOLD,
     DRIVER_LICENSE_IMAGE_SIZE,
     SUPPORTED_DOCUMENT_IMAGE_SUFFIXES,
+    _driver_license_crop_mask,
     _prepare_driver_license_image,
 )
 
@@ -79,11 +79,7 @@ def _clusters(values: list[int], *, max_gap: int, min_extent: int) -> list[tuple
 
 
 def _stored_scan_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
-    white_background = Image.new("RGB", image.size, "WHITE")
-    difference = ImageChops.difference(image, white_background).convert("L")
-    mask = difference.point(
-        lambda value: 255 if value > DRIVER_LICENSE_CROP_THRESHOLD else 0
-    )
+    mask = _driver_license_crop_mask(image)
     mask_pixels = mask.load()
     width, height = mask.size
     edge_x = max(12, int(width * 0.025))
