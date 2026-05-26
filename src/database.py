@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
-from sqlalchemy import UniqueConstraint, case, create_engine, String, func, select, event
+from sqlalchemy import case, create_engine, String, func, select, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from clientinfo import ClientInfo
@@ -404,20 +404,6 @@ class FlowImport(Base):
 class WanFlowUsage(Base):
     'WAN-classified flow imported from nfdump/IPFIX captures.'
     __tablename__ = "wan_flow_usage"
-    __table_args__ = (
-        UniqueConstraint(
-            "source_file",
-            "started_at",
-            "proto",
-            "src_ip",
-            "src_port",
-            "dst_ip",
-            "dst_port",
-            "packets",
-            "bytes",
-            name="uq_wan_flow_usage_source_tuple",
-        ),
-    )
 
     id:               Mapped[int]      = mapped_column(primary_key=True, autoincrement=True)
     source_file:      Mapped[str]      = mapped_column(String(255))
