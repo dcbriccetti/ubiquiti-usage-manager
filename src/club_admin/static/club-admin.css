@@ -25,10 +25,6 @@ body {
   max-width: 680px;
 }
 
-.imports-page {
-  max-width: 1180px;
-}
-
 .self-checkin-page {
   max-width: 820px;
   padding: 48px 28px;
@@ -189,32 +185,6 @@ h1 {
   box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
   margin-bottom: 18px;
   padding: 14px;
-}
-
-.imports-panel {
-  background: #fff;
-  box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
-  display: grid;
-  gap: 18px;
-  padding: 16px;
-}
-
-.stacked-import-form {
-  align-items: stretch;
-  display: grid;
-  gap: 14px;
-  grid-template-columns: minmax(440px, 1fr) minmax(320px, 360px);
-}
-
-.import-options {
-  align-content: center;
-  display: grid;
-  gap: 12px;
-}
-
-.stacked-import-form button {
-  min-height: 42px;
-  width: 100%;
 }
 
 .nav-stack,
@@ -571,14 +541,6 @@ th {
 
   .users-toolbar {
     justify-self: stretch;
-    max-width: none;
-  }
-
-  .stacked-import-form {
-    grid-template-columns: 1fr;
-  }
-
-  .import-options {
     max-width: none;
   }
 
@@ -1025,10 +987,6 @@ th {
 .checkbox-field {
   align-items: center;
   flex-direction: row !important;
-}
-
-.import-checkbox-field {
-  display: flex;
 }
 
 .edit-checkins-section {

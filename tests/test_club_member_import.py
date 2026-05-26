@@ -16,7 +16,6 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from club_admin import csv_import
 from club_admin import audit_repository
 from club_admin import checkin_repository
 from club_admin import database
@@ -61,33 +60,6 @@ def admin_client(flask_app):
 
 
 class ClubMemberImportTests(unittest.TestCase):
-    def test_reads_members_csv_with_roster_headers(self) -> None:
-        source = io.StringIO(
-            "Last Name,First Name,Card #,Membership,Member Since,Date of Birth,Expiration,Address,Address2,City,State,Zip,Phone,Email,Work Phone,Cell Phone\n"
-            "Doe,John,123,Visitor,5/1/2020,7/4/1980,10/31/2025,123 Main St,,Everytown,CA,94000,(123) 123-1234,abc@abc.com,,(510) 510-5100\n"
-        )
-
-        members = csv_import.read_members_csv(source)
-
-        self.assertEqual(len(members), 1)
-        self.assertEqual(members[0].card_number, "123")
-        self.assertEqual(members[0].member_since.isoformat(), "2020-05-01")
-        self.assertEqual(members[0].date_of_birth.isoformat(), "1980-07-04")
-        self.assertEqual(members[0].cell_phone, "(510) 510-5100")
-
-    def test_reads_members_csv_with_leading_blank_line(self) -> None:
-        source = io.StringIO(
-            "\n"
-            "Last Name,First Name,Card #,Membership,Expiration\n"
-            "Doe,John,123,Visitor,10/31/2025\n"
-        )
-
-        members = csv_import.read_members_csv(source)
-
-        self.assertEqual(len(members), 1)
-        self.assertEqual(members[0].last_name, "Doe")
-        self.assertEqual(members[0].membership, "Visitor")
-
     def test_member_repository_formats_phone_numbers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -122,74 +94,6 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(stored_values["phone"], "(123) 123-1234")
         self.assertEqual(stored_values["work_phone"], "(234) 555-6789 x42")
         self.assertEqual(stored_values["cell_phone"], "(510) 510-5100")
-
-    def test_reads_members_csv_after_export_preamble(self) -> None:
-        source = io.StringIO(
-            "sep=,\n"
-            "Club User Export\n"
-            "\n"
-            "Last Name,First Name,Card #,Membership,Expiration\n"
-            "Doe,John,123,Visitor,10/31/2025\n"
-        )
-
-        members = csv_import.read_members_csv(source)
-
-        self.assertEqual(len(members), 1)
-        self.assertEqual(members[0].first_name, "John")
-        self.assertEqual(members[0].card_number, "123")
-
-    def test_reads_members_csv_with_merged_first_name_card_header(self) -> None:
-        source = io.StringIO(
-            "Last Name,First NameCard #,Membership,Expiration\n"
-            "Doe,John,123,Visitor,10/31/2025\n"
-        )
-
-        members = csv_import.read_members_csv(source)
-
-        self.assertEqual(len(members), 1)
-        self.assertEqual(members[0].first_name, "John")
-        self.assertEqual(members[0].card_number, "123")
-
-    def test_reads_members_csv_extracts_trailing_parenthesized_nickname(self) -> None:
-        source = io.StringIO(
-            "Last Name,First Name,Card #,Membership\n"
-            "Doe,John (Johnny),123,Visitor\n"
-            "Public,Jane (JP) Smith,456,Full Member\n"
-            "Roe,(none),789,Visitor\n"
-        )
-
-        members = csv_import.read_members_csv(source)
-
-        self.assertEqual(members[0].first_name, "John")
-        self.assertEqual(members[0].nickname, "Johnny")
-        self.assertEqual(members[1].first_name, "Jane (JP) Smith")
-        self.assertIsNone(members[1].nickname)
-        self.assertEqual(members[2].first_name, "(none)")
-        self.assertIsNone(members[2].nickname)
-
-    def test_reads_members_csv_treats_placeholder_address_as_blank(self) -> None:
-        source = io.StringIO(
-            "Last Name,First Name,Card #,Membership,Address,City,State,Zip\n"
-            'Doe,John,123,Visitor,"Address, City CA",,,\n'
-            'Public,Jane,456,Full Member,"Address, City CA 12345",,,\n'
-            "Roe,Richard,789,Visitor,Address,City,CA,12345\n"
-            "Smith,Sue,321,Visitor,Address,Everytown,CA,94000\n"
-            "Stone,Sam,654,Visitor,123 Main St,City,CA,94000\n"
-        )
-
-        members = csv_import.read_members_csv(source)
-
-        self.assertEqual(len(members), 5)
-        self.assertIsNone(members[0].address)
-        self.assertIsNone(members[1].address)
-        self.assertIsNone(members[2].address)
-        self.assertIsNone(members[2].city)
-        self.assertIsNone(members[2].state)
-        self.assertIsNone(members[2].zip)
-        self.assertIsNone(members[3].address)
-        self.assertEqual(members[3].city, "Everytown")
-        self.assertEqual(members[4].address, "123 Main St")
-        self.assertIsNone(members[4].city)
 
     def test_upsert_member_updates_existing_card_number(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -358,7 +262,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Back to Check-in", body)
         self.assertIn("autoReturnDelay = 60000", body)
 
-    def test_import_forms_live_on_dedicated_admin_page(self) -> None:
+    def test_import_feature_is_not_exposed_in_admin_web_app(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
@@ -366,18 +270,17 @@ class ClubMemberImportTests(unittest.TestCase):
 
             members_response = client.get("/members")
             imports_response = client.get("/imports")
+            members_import_response = client.post("/members/import")
+            checkins_import_response = client.post("/checkins/import")
 
         self.assertEqual(members_response.status_code, 200)
         members_body = members_response.get_data(as_text=True)
-        self.assertIn("Imports", members_body)
+        self.assertNotIn('href="/imports"', members_body)
         self.assertNotIn('name="members_csv"', members_body)
         self.assertNotIn('name="checkins_csv"', members_body)
-        self.assertEqual(imports_response.status_code, 200)
-        imports_body = imports_response.get_data(as_text=True)
-        self.assertIn('name="members_csv"', imports_body)
-        self.assertIn('name="remove_existing_users" value="1"', imports_body)
-        self.assertIn("First remove all existing checkins and users", imports_body)
-        self.assertIn('name="checkins_csv"', imports_body)
+        self.assertEqual(imports_response.status_code, 404)
+        self.assertEqual(members_import_response.status_code, 404)
+        self.assertEqual(checkins_import_response.status_code, 404)
 
     def test_admin_can_check_in_selected_members_from_users_page(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -690,7 +593,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('value="June 15"', body)
         self.assertIn('value="Doe"', body)
 
-    def test_club_app_imports_csv_into_configured_database(self) -> None:
+    def test_member_import_route_is_removed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
@@ -709,11 +612,10 @@ class ClubMemberImportTests(unittest.TestCase):
             with closing(database.connect(db_path)) as connection:
                 members = member_repository.list_members(connection)
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(len(members), 1)
-        self.assertEqual(members[0].first_name, "John")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(len(members), 0)
 
-    def test_member_import_can_first_remove_existing_users_and_checkins(self) -> None:
+    def test_removed_member_import_route_does_not_clear_existing_data(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
@@ -765,15 +667,9 @@ class ClubMemberImportTests(unittest.TestCase):
                     new_value="Full Member",
                 )
                 connection.commit()
-            csv_bytes = (
-                b"Last Name,First Name,Card #,Membership,Expiration\n"
-                b"New,User,NEW-1,Full Member,10/31/2026\n"
-            )
-
             response = client.post(
                 "/members/import",
                 data={
-                    "members_csv": (io.BytesIO(csv_bytes), "members.csv"),
                     "remove_existing_users": "1",
                 },
                 content_type="multipart/form-data",
@@ -791,11 +687,11 @@ class ClubMemberImportTests(unittest.TestCase):
                     "SELECT COUNT(*) FROM audit_log WHERE entity_type = 'user'"
                 ).fetchone()[0]
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual([member.card_number for member in members], ["NEW-1"])
-        self.assertEqual(checkin_count, 0)
-        self.assertEqual(guest_registration_count, 0)
-        self.assertEqual(audit_count, 0)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual({member.card_number for member in members}, {"OLD-1", "GUEST-1"})
+        self.assertEqual(checkin_count, 1)
+        self.assertEqual(guest_registration_count, 1)
+        self.assertEqual(audit_count, 1)
 
     def test_members_page_links_names_to_detail_page(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -884,7 +780,7 @@ class ClubMemberImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn('class="page-header users-header"', body)
         self.assertIn('class="nav-links users-nav"', body)
-        self.assertIn('href="/imports"', body)
+        self.assertNotIn('href="/imports"', body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
         self.assertIn('class="users-list-controls"', body)
         self.assertIn('data-table-search', body)

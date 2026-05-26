@@ -36,7 +36,6 @@ from werkzeug.security import check_password_hash
 import config as cfg
 from club_admin import audit_repository
 from club_admin import checkin_repository
-from club_admin import csv_import
 from club_admin import database
 from club_admin import guest_form
 from club_admin import guest_registration_repository
@@ -516,13 +515,6 @@ def _checkin_time_chart(
         ),
         buckets=tuple(buckets),
     )
-
-
-def _clear_user_import_data(connection: sqlite3.Connection) -> None:
-    connection.execute("DELETE FROM guest_registrations")
-    connection.execute("DELETE FROM checkins")
-    connection.execute("DELETE FROM audit_log WHERE entity_type = 'user'")
-    connection.execute("DELETE FROM users")
 
 
 def _visitor_text_or_none(form_data: Any, field_name: str) -> str | None:
@@ -1655,11 +1647,6 @@ def create_app(db_path: Path | None = None) -> Flask:
             checked_in_message = f"Checked in {len(checked_in_members)} users."
         return redirect(url_for("members", checked_in=checked_in_message))
 
-    @flask_app.route("/imports")
-    @require_admin
-    def imports():
-        return render_template("club_admin/imports.html")
-
     @flask_app.route("/members/map")
     @require_admin
     def members_map():
@@ -2185,38 +2172,6 @@ def create_app(db_path: Path | None = None) -> Flask:
                 f"{KIOSK_AUTO_RETURN_SECONDS}; url={url_for('self_checkin')}"
             )
         return response
-
-    @flask_app.post("/members/import")
-    @require_admin
-    def import_members():
-        csv_file = request.files.get("members_csv")
-        if csv_file is None or not csv_file.filename:
-            return "CSV file is required.", 400
-
-        stream = io.StringIO(csv_file.stream.read().decode("utf-8-sig"))
-        members_to_import = csv_import.read_members_csv(stream)
-        with open_connection() as connection:
-            if request.form.get("remove_existing_users") == "1":
-                _clear_user_import_data(connection)
-            for member in members_to_import:
-                member_repository.upsert_member(connection, member)
-            connection.commit()
-        return redirect(url_for("members"))
-
-    @flask_app.post("/checkins/import")
-    @require_admin
-    def import_checkins():
-        csv_file = request.files.get("checkins_csv")
-        if csv_file is None or not csv_file.filename:
-            return "CSV file is required.", 400
-
-        stream = io.StringIO(csv_file.stream.read().decode("utf-8-sig"))
-        checkins_to_import = csv_import.read_checkins_csv(stream)
-        with open_connection() as connection:
-            for checkin in checkins_to_import:
-                checkin_repository.upsert_checkin(connection, checkin)
-            connection.commit()
-        return redirect(url_for("members"))
 
     return flask_app
 

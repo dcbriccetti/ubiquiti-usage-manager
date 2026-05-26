@@ -18,7 +18,6 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from club_admin import checkin_repository
-from club_admin import csv_import
 from club_admin import database
 from club_admin import member_repository
 from club_admin.app import (
@@ -49,70 +48,41 @@ def admin_client(flask_app):
     return client
 
 
-CHECKINS_CSV = (
-    "Member ID,Last Name,First Name,Card #,Check-in Date,Check-in Time,Check-out Time,Total Check-ins,Duration,Membership,Result,Date of Birth\n"
-    "880,Doe,John,'1861',5/3/2026,3:59:20 PM,N/A,1,N/A,Visitor,Check-in OK\n"
-    "35,Doe,Jane,'1024',5/3/2026,2:33:15 PM,N/A,1,N/A,Full Member,Check-in OK\n"
-)
+def checkin_fixture(
+    *,
+    member_id: str = "880",
+    last_name: str = "Doe",
+    first_name: str = "John",
+    card_number: str = "1861",
+    check_in_at: datetime = datetime(2026, 5, 3, 15, 59, 20),
+    membership: str = "Visitor",
+) -> CheckIn:
+    return CheckIn(
+        member_id=member_id,
+        last_name=last_name,
+        first_name=first_name,
+        card_number=card_number,
+        check_in_at=check_in_at,
+        total_checkins=1,
+        membership=membership,
+    )
 
-CHECKINS_RANGE_CSV = (
-    "Member ID,Last Name,First Name,Card #,Check-in Date,Check-in Time,Check-out Time,Total Check-ins,Duration,Membership,Result,Date of Birth\n"
-    "880,Doe,John,'1861',5/1/2026,9:00:00 AM,N/A,1,N/A,Visitor,Check-in OK\n"
-    "880,Doe,John,'1861',5/3/2026,3:59:20 PM,N/A,1,N/A,Visitor,Check-in OK\n"
-    "35,Doe,Jane,'1024',5/4/2026,2:33:15 PM,N/A,1,N/A,Full Member,Check-in OK\n"
-)
+
+def checkin_range_fixtures() -> list[CheckIn]:
+    return [
+        checkin_fixture(check_in_at=datetime(2026, 5, 1, 9, 0, 0)),
+        checkin_fixture(check_in_at=datetime(2026, 5, 3, 15, 59, 20)),
+        checkin_fixture(
+            member_id="35",
+            first_name="Jane",
+            card_number="1024",
+            check_in_at=datetime(2026, 5, 4, 14, 33, 15),
+            membership="Full Member",
+        ),
+    ]
 
 
 class ClubCheckInImportTests(unittest.TestCase):
-    def test_reads_checkins_csv_with_export_headers(self) -> None:
-        checkins = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))
-
-        self.assertEqual(len(checkins), 2)
-        self.assertEqual(checkins[0].member_id, "880")
-        self.assertEqual(checkins[0].card_number, "1861")
-        self.assertEqual(checkins[0].check_in_at, datetime(2026, 5, 3, 15, 59, 20))
-        self.assertIsNone(checkins[0].check_out_at)
-        self.assertEqual(checkins[0].total_checkins, 1)
-        self.assertIsNone(checkins[0].duration)
-
-    def test_reads_checkins_csv_after_report_preamble(self) -> None:
-        source = io.StringIO(
-            "Check-in Detail Report\n"
-            "Generated,5/4/2026\n"
-            "\n"
-            + CHECKINS_CSV
-        )
-
-        checkins = csv_import.read_checkins_csv(source)
-
-        self.assertEqual(len(checkins), 2)
-        self.assertEqual(checkins[1].first_name, "Jane")
-        self.assertEqual(checkins[1].card_number, "1024")
-
-    def test_reads_checkins_csv_with_merged_first_name_card_header(self) -> None:
-        source = io.StringIO(
-            "Member ID,Last Name,First NameCard #,Check-in Date,Check-in Time,Check-out Time,Total Check-ins,Duration,Membership,Result,Date of Birth\n"
-            "880,Doe,John,'1861',5/3/2026,3:59:20 PM,N/A,1,N/A,Visitor,Check-in OK\n"
-        )
-
-        checkins = csv_import.read_checkins_csv(source)
-
-        self.assertEqual(len(checkins), 1)
-        self.assertEqual(checkins[0].first_name, "John")
-        self.assertEqual(checkins[0].card_number, "1861")
-
-    def test_reads_checkins_csv_strips_trailing_parenthesized_nickname(self) -> None:
-        source = io.StringIO(
-            "Member ID,Last Name,First Name,Card #,Check-in Date,Check-in Time,Check-out Time,Total Check-ins,Duration,Membership,Result,Date of Birth\n"
-            "880,Doe,John (Johnny),'1861',5/3/2026,3:59:20 PM,N/A,1,N/A,Visitor,Check-in OK\n"
-            "35,Roe,(none),'1024',5/3/2026,2:33:15 PM,N/A,1,N/A,Visitor,Check-in OK\n"
-        )
-
-        checkins = csv_import.read_checkins_csv(source)
-
-        self.assertEqual(checkins[0].first_name, "John")
-        self.assertEqual(checkins[1].first_name, "(none)")
-
     def test_checkins_table_is_created(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -131,7 +101,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             database.init_db(db_path)
-            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            checkin = checkin_fixture()
             with closing(database.connect(db_path)) as connection:
                 member_repository.upsert_member(
                     connection,
@@ -155,7 +125,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             database.init_db(db_path)
-            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            checkin = checkin_fixture()
             with closing(database.connect(db_path)) as connection:
                 member_repository.upsert_member(
                     connection,
@@ -179,7 +149,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             database.init_db(db_path)
-            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            checkin = checkin_fixture()
             with closing(database.connect(db_path)) as connection:
                 checkin_repository.upsert_checkin(connection, checkin)
                 connection.commit()
@@ -224,7 +194,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             database.init_db(db_path)
-            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            checkin = checkin_fixture()
             with closing(database.connect(db_path)) as connection:
                 checkin_repository.upsert_checkin(connection, checkin)
                 connection.commit()
@@ -262,7 +232,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             database.init_db(db_path)
-            checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_RANGE_CSV))
+            checkins_to_import = checkin_range_fixtures()
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
@@ -287,16 +257,32 @@ class ClubCheckInImportTests(unittest.TestCase):
         )
 
     def test_lists_checkin_report_rows_by_name_before_checkin_time(self) -> None:
-        source = io.StringIO(
-            "Member ID,Last Name,First Name,Card #,Check-in Date,Check-in Time,Check-out Time,Total Check-ins,Duration,Membership,Result,Date of Birth\n"
-            "91,Zebra,Zoe,'2091',5/3/2026,3:59:20 PM,N/A,1,N/A,Visitor,Check-in OK\n"
-            "42,Adams,Ada,'1042',5/3/2026,3:40:00 PM,N/A,1,N/A,Visitor,Check-in OK\n"
-            "91,Zebra,Zoe,'2091',5/3/2026,3:30:00 PM,N/A,1,N/A,Visitor,Check-in OK\n"
-        )
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             database.init_db(db_path)
-            checkins_to_import = csv_import.read_checkins_csv(source)
+            checkins_to_import = [
+                checkin_fixture(
+                    member_id="91",
+                    last_name="Zebra",
+                    first_name="Zoe",
+                    card_number="2091",
+                    check_in_at=datetime(2026, 5, 3, 15, 59, 20),
+                ),
+                checkin_fixture(
+                    member_id="42",
+                    last_name="Adams",
+                    first_name="Ada",
+                    card_number="1042",
+                    check_in_at=datetime(2026, 5, 3, 15, 40, 0),
+                ),
+                checkin_fixture(
+                    member_id="91",
+                    last_name="Zebra",
+                    first_name="Zoe",
+                    card_number="2091",
+                    check_in_at=datetime(2026, 5, 3, 15, 30, 0),
+                ),
+            ]
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
@@ -321,7 +307,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             database.init_db(db_path)
-            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            checkin = checkin_fixture()
             with closing(database.connect(db_path)) as connection:
                 member_repository.upsert_member(
                     connection,
@@ -350,7 +336,7 @@ class ClubCheckInImportTests(unittest.TestCase):
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
             client = admin_client(flask_app)
-            checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_RANGE_CSV))
+            checkins_to_import = checkin_range_fixtures()
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
@@ -481,7 +467,7 @@ class ClubCheckInImportTests(unittest.TestCase):
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
             client = admin_client(flask_app)
-            checkin = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))[0]
+            checkin = checkin_fixture()
             with closing(database.connect(db_path)) as connection:
                 checkin_repository.upsert_checkin(connection, checkin)
                 connection.commit()
@@ -500,7 +486,7 @@ class ClubCheckInImportTests(unittest.TestCase):
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
             client = admin_client(flask_app)
-            checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_RANGE_CSV))
+            checkins_to_import = checkin_range_fixtures()
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
@@ -527,7 +513,16 @@ class ClubCheckInImportTests(unittest.TestCase):
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
             client = admin_client(flask_app)
-            checkins_to_import = csv_import.read_checkins_csv(io.StringIO(CHECKINS_CSV))
+            checkins_to_import = [
+                checkin_fixture(),
+                checkin_fixture(
+                    member_id="35",
+                    first_name="Jane",
+                    card_number="1024",
+                    check_in_at=datetime(2026, 5, 3, 14, 33, 15),
+                    membership="Full Member",
+                ),
+            ]
             with closing(database.connect(db_path)) as connection:
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
@@ -922,7 +917,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("UM1:", body)
         self.assertNotIn("Review my current information", body)
 
-    def test_club_app_imports_checkins_into_configured_database(self) -> None:
+    def test_checkins_import_route_is_removed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
@@ -930,7 +925,7 @@ class ClubCheckInImportTests(unittest.TestCase):
 
             response = client.post(
                 "/checkins/import",
-                data={"checkins_csv": (io.BytesIO(CHECKINS_CSV.encode("utf-8")), "checkins.csv")},
+                data={"checkins_csv": (io.BytesIO(b"not used"), "checkins.csv")},
                 content_type="multipart/form-data",
             )
 
@@ -938,6 +933,6 @@ class ClubCheckInImportTests(unittest.TestCase):
                 users = member_repository.list_members(connection)
                 checkins = checkin_repository.list_checkins(connection)
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(len(users), 2)
-        self.assertEqual(len(checkins), 2)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(len(users), 0)
+        self.assertEqual(len(checkins), 0)
