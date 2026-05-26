@@ -113,10 +113,7 @@
             <span class="sortable-heading" role="button" tabindex="0" data-sort-column="2" data-sort-type="text">First/Nickname <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
           <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="3" data-sort-type="text">Card # <span class="sort-indicator" aria-hidden="true"></span></span>
-          </th>
-          <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="4" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></span>
+            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="3" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
         </tr>
       </thead>
@@ -130,12 +127,11 @@
             <td data-sort-value="{{ checkin.first_name }}">
               <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.first_name }}</a>
             </td>
-            <td data-sort-value="{{ checkin.card_number }}">{{ checkin.card_number }}</td>
             <td data-sort-value="{{ checkin.membership }}">{{ checkin.membership }}</td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="5" class="empty">No check-ins in this date range.</td>
+            <td colspan="4" class="empty">No check-ins in this date range.</td>
           </tr>
         {% endfor %}
       </tbody>

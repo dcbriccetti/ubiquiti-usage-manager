@@ -12,7 +12,7 @@
       <div>
         <p class="app-title">{{ app_title }}</p>
         <h1>{{ member.first_name }} {{ member.last_name }}</h1>
-        <p class="summary">{{ member.membership }} · Card #{{ member.card_number }}</p>
+        <p class="summary">{{ member.membership }}</p>
       </div>
       <div class="nav-stack">
         <nav class="nav-links" aria-label="Club admin navigation">
@@ -43,10 +43,6 @@
           <strong>{{ member.nickname }}</strong>
         </div>
       {% endif %}
-      <div>
-        <span>Card #</span>
-        <strong class="nowrap">{{ member.card_number }}</strong>
-      </div>
       <div>
         <span>Membership</span>
         <strong>{{ member.membership }}</strong>
@@ -166,7 +162,7 @@
         </tr>
       </thead>
       <tbody>
-        {% for entry in audit_entries %}
+        {% for entry in audit_entries if entry.field_name != 'card_number' %}
           <tr>
             <td class="nowrap">{{ entry.changed_at }}</td>
             <td>{{ entry.field_name }}</td>

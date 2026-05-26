@@ -117,7 +117,6 @@
         <tr>
           <th>Last Name</th>
           <th>First Name</th>
-          <th>Card #</th>
           <th>Membership</th>
         </tr>
       </thead>
@@ -126,12 +125,11 @@
           <tr>
             <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.last_name }}</a></td>
             <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.first_name }}</a></td>
-            <td>{{ member.card_number }}</td>
             <td>{{ member.membership }}</td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="4" class="empty">Every imported user has a guest form.</td>
+            <td colspan="3" class="empty">Every imported user has a guest form.</td>
           </tr>
         {% endfor %}
       </tbody>
@@ -142,7 +140,6 @@
       <thead>
         <tr>
           <th>User</th>
-          <th>Card #</th>
           <th>Other Entries</th>
         </tr>
       </thead>
@@ -150,7 +147,6 @@
         {% for member, names in report.user_folders_with_extra_files %}
           <tr>
             <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.last_name }}, {{ member.first_name }}</a></td>
-            <td>{{ member.card_number }}</td>
             <td>
               {% for name in names %}
                 {{ document_entry(name, member.card_number) }}{% if not loop.last %}, {% endif %}
@@ -159,13 +155,13 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="3" class="empty">No other entries found in user folders.</td>
+            <td colspan="2" class="empty">No other entries found in user folders.</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
 
-    <h2>Card Folders Without Imported User</h2>
+    <h2>Document Folders Without Imported User</h2>
     <table>
       <thead>
         <tr>

@@ -7,7 +7,6 @@
       </a>
     </td>
     <td class="nowrap">{{ record.registration.visit_date }}</td>
-    <td>{{ record.member.card_number }}</td>
     <td class="nowrap">{{ record.member.email or '' }}</td>
     <td class="nowrap">{{ record.member.cell_phone or '' }}</td>
     <td class="guest-actions-cell">
@@ -53,6 +52,6 @@
   </tr>
 {% else %}
   <tr>
-    <td colspan="7" class="empty">No guest registrations submitted yet.</td>
+    <td colspan="6" class="empty">No guest registrations submitted yet.</td>
   </tr>
 {% endfor %}

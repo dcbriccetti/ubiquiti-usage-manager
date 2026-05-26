@@ -470,31 +470,31 @@ th {
 
 .users-table th:nth-child(4),
 .users-table td:nth-child(4),
-.users-table th:nth-child(10),
-.users-table td:nth-child(10) {
+.users-table th:nth-child(9),
+.users-table td:nth-child(9) {
   white-space: nowrap;
 }
 
-.users-table th:nth-child(5),
-.users-table td:nth-child(5) {
+.users-table th:nth-child(4),
+.users-table td:nth-child(4) {
   min-width: 9rem;
+}
+
+.users-table th:nth-child(7),
+.users-table td:nth-child(7) {
+  min-width: 13rem;
 }
 
 .users-table th:nth-child(8),
 .users-table td:nth-child(8) {
-  min-width: 13rem;
-}
-
-.users-table th:nth-child(9),
-.users-table td:nth-child(9) {
   max-width: 16rem;
   overflow-wrap: anywhere;
 }
 
+.users-table th:nth-child(10),
+.users-table td:nth-child(10),
 .users-table th:nth-child(11),
-.users-table td:nth-child(11),
-.users-table th:nth-child(12),
-.users-table td:nth-child(12) {
+.users-table td:nth-child(11) {
   min-width: 4.5rem;
 }
 
@@ -545,14 +545,12 @@ th {
 }
 
 .guest-registrations-table th:nth-child(3),
-.guest-registrations-table td:nth-child(3),
-.guest-registrations-table th:nth-child(4),
-.guest-registrations-table td:nth-child(4) {
+.guest-registrations-table td:nth-child(3) {
   width: 7.5rem;
 }
 
-.guest-registrations-table th:nth-child(5),
-.guest-registrations-table td:nth-child(5) {
+.guest-registrations-table th:nth-child(4),
+.guest-registrations-table td:nth-child(4) {
   width: 12rem;
 }
 

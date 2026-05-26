@@ -248,13 +248,13 @@ def _parse_member_form_date(form_data: Any, field_name: str) -> date | None:
         raise MemberFormError("Enter valid user dates.") from error
 
 
-def _member_from_form(member_id: int, form_data: Any) -> Member:
+def _member_from_form(member: Member, form_data: Any) -> Member:
     return Member(
-        id=member_id,
+        id=member.id,
         last_name=form_data.get("last_name", "").strip(),
         first_name=form_data.get("first_name", "").strip(),
         nickname=form_data.get("nickname", "").strip() or None,
-        card_number=form_data.get("card_number", "").strip(),
+        card_number=member.card_number,
         membership=form_data.get("membership", "").strip(),
         member_since=_parse_member_form_date(form_data, "member_since"),
         date_of_birth=_parse_member_form_date(form_data, "date_of_birth"),
@@ -1856,14 +1856,14 @@ def create_app(db_path: Path | None = None) -> Flask:
 
             if request.method == "POST":
                 try:
-                    updated_member = _member_from_form(member_id, request.form)
+                    updated_member = _member_from_form(member, request.form)
                 except MemberFormError as error:
                     abort(400, str(error))
 
                 if not updated_member.last_name or not updated_member.first_name:
                     abort(400, "First and last name are required.")
-                if not updated_member.card_number or not updated_member.membership:
-                    abort(400, "Card number and membership are required.")
+                if not updated_member.membership:
+                    abort(400, "Membership is required.")
                 if updated_member.membership not in MEMBERSHIP_OPTIONS:
                     abort(400, "Choose a valid membership.")
 
