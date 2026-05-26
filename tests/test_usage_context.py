@@ -127,6 +127,141 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(usage_context.service_label_for_flow("UDP", 4500), "IPsec VPN")
         self.assertEqual(usage_context.service_label_for_flow("UDP", 51820), "WireGuard VPN")
 
+    def test_flow_activity_uses_host_labels_to_merge_noisy_ports(self) -> None:
+        mac = "aa:bb:cc:dd:ee:21"
+        flows = [
+            db.WanMacIdentityFlowUsage(
+                source_file="nfcapd.202605091200",
+                started_at=datetime(2026, 5, 9, 12, 0),
+                ended_at=datetime(2026, 5, 9, 12, 1),
+                proto="TCP",
+                src_ip="57.144.220.128",
+                src_port=50121,
+                dst_ip="192.168.1.21",
+                dst_port=52000,
+                packets=10,
+                bytes=10_000_000,
+                direction="download",
+                client_ip="192.168.1.21",
+                mac=mac,
+                name="Phone",
+                user_id="",
+                vlan="Basic",
+            ),
+            db.WanMacIdentityFlowUsage(
+                source_file="nfcapd.202605091201",
+                started_at=datetime(2026, 5, 9, 12, 1),
+                ended_at=datetime(2026, 5, 9, 12, 2),
+                proto="TCP",
+                src_ip="192.168.1.21",
+                src_port=52001,
+                dst_ip="157.240.22.25",
+                dst_port=50321,
+                packets=10,
+                bytes=5_000_000,
+                direction="upload",
+                client_ip="192.168.1.21",
+                mac=mac,
+                name="Phone",
+                user_id="",
+                vlan="Basic",
+            ),
+            db.WanMacIdentityFlowUsage(
+                source_file="nfcapd.202605091202",
+                started_at=datetime(2026, 5, 9, 12, 2),
+                ended_at=datetime(2026, 5, 9, 12, 3),
+                proto="UDP",
+                src_ip="8.8.8.8",
+                src_port=53,
+                dst_ip="192.168.1.21",
+                dst_port=52002,
+                packets=10,
+                bytes=2_000_000,
+                direction="download",
+                client_ip="192.168.1.21",
+                mac=mac,
+                name="Phone",
+                user_id="",
+                vlan="Basic",
+            ),
+        ]
+
+        host_labels = {
+            "57.144.220.128": "Meta host",
+            "157.240.22.25": "Meta host",
+            "8.8.8.8": "Google DNS",
+        }
+        with patch.object(
+            usage_context,
+            "resolve_host_labels",
+            side_effect=lambda ips, wait=True: {ip: host_labels[ip] for ip in ips if ip in host_labels},
+        ):
+            rows = usage_context.build_flow_activity_context(
+                flows,
+                datetime(2026, 5, 9, 0, 0),
+                datetime(2026, 5, 9, 23, 59),
+            )
+
+        self.assertEqual([row["label"] for row in rows], [
+            "Facebook / Instagram / WhatsApp",
+            "DNS lookups",
+        ])
+        self.assertAlmostEqual(rows[0]["total_mb"], 15.0)
+        self.assertAlmostEqual(rows[0]["download_mb"], 10.0)
+        self.assertAlmostEqual(rows[0]["upload_mb"], 5.0)
+        self.assertEqual(rows[0]["flow_count"], 2)
+
+    def test_flow_activity_hides_small_rows_for_longer_ranges(self) -> None:
+        mac = "aa:bb:cc:dd:ee:22"
+        flows = [
+            db.WanMacIdentityFlowUsage(
+                source_file="nfcapd.202605091200",
+                started_at=datetime(2026, 5, 9, 12, 0),
+                ended_at=datetime(2026, 5, 9, 12, 1),
+                proto="TCP",
+                src_ip="93.184.216.34",
+                src_port=443,
+                dst_ip="192.168.1.22",
+                dst_port=52000,
+                packets=10,
+                bytes=60_000_000,
+                direction="download",
+                client_ip="192.168.1.22",
+                mac=mac,
+                name="Laptop",
+                user_id="",
+                vlan="Basic",
+            ),
+            db.WanMacIdentityFlowUsage(
+                source_file="nfcapd.202605091201",
+                started_at=datetime(2026, 5, 9, 12, 1),
+                ended_at=datetime(2026, 5, 9, 12, 2),
+                proto="UDP",
+                src_ip="8.8.8.8",
+                src_port=53,
+                dst_ip="192.168.1.22",
+                dst_port=52001,
+                packets=10,
+                bytes=500_000,
+                direction="download",
+                client_ip="192.168.1.22",
+                mac=mac,
+                name="Laptop",
+                user_id="",
+                vlan="Basic",
+            ),
+        ]
+
+        with patch.object(usage_context, "resolve_host_labels", return_value={}):
+            rows = usage_context.build_flow_activity_context(
+                flows,
+                datetime(2026, 5, 1, 0, 0),
+                datetime(2026, 5, 31, 23, 59),
+            )
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["label"], "Secure web and apps")
+
     def test_wan_chart_buckets_use_flow_end_time(self) -> None:
         flow = db.WanMacFlowUsage(
             source_file="nfcapd.202605100000",

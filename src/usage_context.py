@@ -65,6 +65,29 @@ SERVICE_LABEL_BY_PROTO_PORT = {
     ('UDP', 4500): 'IPsec VPN',
     ('UDP', 51820): 'WireGuard VPN',
 }
+HOST_ACTIVITY_LABEL_BY_HOST_LABEL = {
+    'Apple host': 'Apple / iCloud services',
+    'Meta host': 'Facebook / Instagram / WhatsApp',
+    'Google host': 'Google / YouTube services',
+    'Streaming service host': 'Netflix / streaming video',
+    'Microsoft host': 'Microsoft services',
+    'Microsoft cloud host': 'Microsoft cloud services',
+    'Amazon CDN host': 'CDN-hosted app/media content',
+    'Akamai CDN host': 'CDN-hosted app/media content',
+    'Fastly CDN host': 'CDN-hosted app/media content',
+    'Cloudflare host': 'CDN-hosted app/media content',
+    'Amazon cloud host': 'Cloud/app services',
+}
+SERVICE_LABELS_THAT_BEAT_HOST_LABELS = {
+    'DNS lookups',
+    'Email reading',
+    'Email sending',
+    'IPsec VPN',
+    'SSH / remote login',
+    'Remote desktop',
+    'Time sync',
+    'WireGuard VPN',
+}
 
 
 class ThrottleChartDataset(TypedDict):
@@ -762,6 +785,81 @@ def service_label_for_flow(proto: str, port: int | None) -> str:
     return f'{normalized_proto}/{port}' if normalized_proto else f'Port {port}'
 
 
+def flow_activity_minimum_display_mb(
+    period_start: datetime,
+    period_end: datetime,
+    total_mb: float,
+) -> float:
+    'Return the smallest top-activity row worth showing for a time range.'
+    if total_mb <= 0:
+        return 0.0
+
+    period_days = max((period_end - period_start).total_seconds() / 86_400.0, 0.0)
+    if period_days <= 1.5:
+        range_floor_mb = 1.0
+    elif period_days <= 8.0:
+        range_floor_mb = 5.0
+    else:
+        range_floor_mb = 25.0
+    return min(range_floor_mb, max(1.0, total_mb * 0.02))
+
+
+def host_activity_label_for_flow(service_label: str, endpoint_label: str | None) -> str | None:
+    'Return a human app/provider label when it is more useful than the port label.'
+    if service_label in SERVICE_LABELS_THAT_BEAT_HOST_LABELS or not endpoint_label:
+        return None
+    return HOST_ACTIVITY_LABEL_BY_HOST_LABEL.get(endpoint_label)
+
+
+def merge_flow_activity_accumulators(
+    activity_by_key: dict[tuple[str, str], FlowActivityAccumulator],
+    key: tuple[str, str],
+    label: str,
+    source: FlowActivityAccumulator,
+) -> None:
+    'Merge one raw protocol/port activity into a display activity bucket.'
+    target = activity_by_key.setdefault(key, FlowActivityAccumulator(label=label, endpoint_bytes={}))
+    target.download_bytes += source.download_bytes
+    target.upload_bytes += source.upload_bytes
+    target.flow_count += source.flow_count
+    target_endpoint_bytes = target.endpoint_bytes or {}
+    for endpoint, byte_count in (source.endpoint_bytes or {}).items():
+        target_endpoint_bytes[endpoint] = target_endpoint_bytes.get(endpoint, 0) + byte_count
+    target.endpoint_bytes = target_endpoint_bytes
+
+
+def build_display_flow_activity_accumulators(
+    raw_activity_by_key: dict[tuple[str, int | None], FlowActivityAccumulator],
+) -> dict[tuple[str, str], FlowActivityAccumulator]:
+    'Collapse raw protocol/port buckets into friendlier display buckets where possible.'
+    display_activity_by_key: dict[tuple[str, str], FlowActivityAccumulator] = {}
+    for raw_key, raw_activity in raw_activity_by_key.items():
+        endpoint_bytes = raw_activity.endpoint_bytes or {}
+        top_endpoints = sorted(endpoint_bytes.items(), key=lambda item: item[1], reverse=True)[:3]
+        host_labels = resolve_host_labels([endpoint for endpoint, _ in top_endpoints], wait=False)
+        primary_endpoint_label = None
+        if top_endpoints:
+            primary_endpoint_label = host_labels.get(top_endpoints[0][0])
+        host_activity_label = host_activity_label_for_flow(raw_activity.label, primary_endpoint_label)
+        if host_activity_label:
+            display_key = ('host', host_activity_label)
+            merge_flow_activity_accumulators(
+                display_activity_by_key,
+                display_key,
+                host_activity_label,
+                raw_activity,
+            )
+        else:
+            display_key = ('service', f'{raw_key[0]}/{raw_key[1] or ""}')
+            merge_flow_activity_accumulators(
+                display_activity_by_key,
+                display_key,
+                raw_activity.label,
+                raw_activity,
+            )
+    return display_activity_by_key
+
+
 def build_flow_activity_context(
     flows: list[db.WanMacIdentityFlowUsage],
     period_start: datetime,
@@ -769,7 +867,7 @@ def build_flow_activity_context(
     limit: int = 8,
 ) -> list[FlowActivityContext]:
     'Return top client WAN activity groups for one period.'
-    activity_by_key: dict[tuple[str, int | None], FlowActivityAccumulator] = {}
+    raw_activity_by_key: dict[tuple[str, int | None], FlowActivityAccumulator] = {}
     total_bytes = 0
     for flow in flows:
         usage_at = wan_flow_usage_at(flow)
@@ -779,7 +877,7 @@ def build_flow_activity_context(
         remote_ip, service_port = remote_endpoint_for_flow(flow)
         proto = flow.proto.strip().upper()
         key = (proto, service_port)
-        activity = activity_by_key.setdefault(
+        activity = raw_activity_by_key.setdefault(
             key,
             FlowActivityAccumulator(label=service_label_for_flow(proto, service_port), endpoint_bytes={}),
         )
@@ -793,6 +891,7 @@ def build_flow_activity_context(
         activity.endpoint_bytes = endpoint_bytes
         total_bytes += flow.bytes
 
+    activity_by_key = build_display_flow_activity_accumulators(raw_activity_by_key)
     rows: list[FlowActivityContext] = []
     for activity in activity_by_key.values():
         download_bytes = activity.download_bytes
@@ -832,7 +931,12 @@ def build_flow_activity_context(
             }
         )
 
-    return sorted(rows, key=lambda row: row['total_mb'], reverse=True)[:max(1, limit)]
+    sorted_rows = sorted(rows, key=lambda row: row['total_mb'], reverse=True)
+    minimum_mb = flow_activity_minimum_display_mb(period_start, period_end, total_bytes / 1_000_000.0)
+    visible_rows = [row for row in sorted_rows if row['total_mb'] >= minimum_mb]
+    if not visible_rows and sorted_rows:
+        visible_rows = [sorted_rows[0]]
+    return visible_rows[:max(1, limit)]
 
 
 def build_access_mode_usage_context(
