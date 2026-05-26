@@ -33,7 +33,7 @@ class PlusAdminAccessTests(unittest.TestCase):
     def setUp(self) -> None:
         os.environ.pop("DEV_REQUEST_IP", None)
 
-    def test_configured_lan_admin_password_redirects_page_requests_to_login(self) -> None:
+    def test_configured_lan_admin_password_keeps_dashboard_self_service_fallback(self) -> None:
         with patch.object(app.cfg, "LAN_ADMIN_PASSWORD_HASH", generate_password_hash("secret")):
             flask_app = app.create_app()
 
@@ -47,8 +47,58 @@ class PlusAdminAccessTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/my-usage")
+
+    def test_configured_lan_admin_password_redirects_admin_only_pages_to_login(self) -> None:
+        with patch.object(app.cfg, "LAN_ADMIN_PASSWORD_HASH", generate_password_hash("secret")):
+            flask_app = app.create_app()
+
+        with (
+            patch.object(app.api, "get_api_data", return_value=[]),
+            patch.object(app, "find_client_mac_for_ip", return_value=None),
+        ):
+            response = flask_app.test_client().get(
+                "/wan",
+                environ_base={"REMOTE_ADDR": "10.8.0.12"},
+            )
+
+        self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/login", response.headers["Location"])
-        self.assertIn("next=/dashboard", response.headers["Location"])
+        self.assertIn("next=/wan", response.headers["Location"])
+
+    def test_untrusted_forwarded_for_cannot_spoof_admin_ip(self) -> None:
+        flask_app = app.create_app()
+
+        with (
+            patch.object(app.cfg, "PLUS_ADMIN_IPS", {"192.168.1.10"}),
+            patch.object(app.api, "get_api_data", return_value=[]),
+            patch.object(app, "find_client_mac_for_ip", return_value=None),
+        ):
+            response = flask_app.test_client().get(
+                "/api/dashboard-snapshot",
+                headers={"X-Forwarded-For": "192.168.1.10"},
+                environ_base={"REMOTE_ADDR": "10.8.0.12"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_trusted_proxy_real_ip_can_match_admin_ip(self) -> None:
+        flask_app = app.create_app()
+
+        with (
+            patch.object(app.cfg, "PLUS_ADMIN_IPS", {"192.168.1.10"}),
+            patch.object(app, "build_live_dashboard_payload", return_value={}),
+        ):
+            response = flask_app.test_client().get(
+                "/api/dashboard-snapshot",
+                headers={
+                    "X-Forwarded-For": "203.0.113.200, 192.168.1.10",
+                    "X-Real-IP": "192.168.1.10",
+                },
+                environ_base={"REMOTE_ADDR": "127.0.0.1"},
+            )
+
+        self.assertEqual(response.status_code, 200)
 
     def test_lan_admin_password_login_allows_dashboard_without_plus_identity(self) -> None:
         with patch.object(app.cfg, "LAN_ADMIN_PASSWORD_HASH", generate_password_hash("secret")):

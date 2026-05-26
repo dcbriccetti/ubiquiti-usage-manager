@@ -361,11 +361,11 @@ def create_app() -> Flask:
         if requester_is_plus_admin():
             return None
 
-        if lan_admin_password_login_is_configured() and not request.path.startswith('/api/'):
-            return redirect(url_for("lan_admin_login", next=current_request_url_for_login()))
-
         if self_service_fallback:
             return redirect(url_for("my_usage"))
+
+        if lan_admin_password_login_is_configured() and not request.path.startswith('/api/'):
+            return redirect(url_for("lan_admin_login", next=current_request_url_for_login()))
 
         abort(403)
 
