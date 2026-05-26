@@ -53,6 +53,7 @@ OBSOLETE_INDEX_NAMES = (
     "ix_wan_flow_usage_direction",
     "ix_wan_flow_usage_dst_ip",
     "ix_wan_flow_usage_dst_port",
+    "ix_wan_flow_usage_ended_at",
     "ix_wan_flow_usage_proto",
     "ix_wan_flow_usage_source_file",
     "ix_wan_flow_usage_src_ip",
@@ -408,7 +409,7 @@ class WanFlowUsage(Base):
     id:               Mapped[int]      = mapped_column(primary_key=True, autoincrement=True)
     source_file:      Mapped[str]      = mapped_column(String(255))
     started_at:       Mapped[datetime] = mapped_column(index=True)
-    ended_at:         Mapped[datetime] = mapped_column(index=True)
+    ended_at:         Mapped[datetime] = mapped_column()
     duration_seconds: Mapped[float]    = mapped_column()
     proto:            Mapped[str]      = mapped_column(String(12))
     src_ip:           Mapped[str]      = mapped_column(String(45))
