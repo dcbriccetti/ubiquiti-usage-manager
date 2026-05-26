@@ -939,6 +939,48 @@
             outline: none;
         }
 
+        .admin-login-form {
+            display: grid;
+            gap: var(--space-3);
+            max-width: 360px;
+        }
+
+        .admin-login-form label {
+            display: grid;
+            gap: 6px;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--muted);
+        }
+
+        .admin-login-form input {
+            min-height: 40px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.72);
+            color: var(--ink);
+            font: inherit;
+            padding: 8px 10px;
+        }
+
+        .admin-login-form button {
+            min-height: 40px;
+            border: 1px solid rgba(15, 118, 110, 0.32);
+            border-radius: 8px;
+            background: rgba(15, 118, 110, 0.12);
+            color: var(--accent);
+            cursor: pointer;
+            font: inherit;
+            font-weight: 700;
+            padding: 8px 13px;
+        }
+
+        .admin-login-form button:hover,
+        .admin-login-form button:focus-visible {
+            background: rgba(15, 118, 110, 0.18);
+            outline: none;
+        }
+
         .voucher-action-form {
             margin: 0;
         }

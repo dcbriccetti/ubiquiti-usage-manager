@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero">
+        <div>
+            <p><a href="{{ url_for('my_usage') }}">Back to my usage</a></p>
+            <h1>Admin Login</h1>
+            <p>Use the LAN admin password for dashboard access.</p>
+        </div>
+    </section>
+
+    <section class="grid">
+        <article class="panel">
+            <div class="panel-body">
+                {% if message %}
+                    <p class="warn-text">{{ message }}</p>
+                {% endif %}
+                <form class="admin-login-form" method="post" action="{{ url_for('lan_admin_login') }}">
+                    <input type="hidden" name="next" value="{{ next_url }}">
+                    <label for="admin-password">Password</label>
+                    <input
+                        id="admin-password"
+                        type="password"
+                        name="password"
+                        autocomplete="current-password"
+                        required
+                        {% if not auth_configured %}disabled{% endif %}
+                    >
+                    <button type="submit" {% if not auth_configured %}disabled{% endif %}>Log In</button>
+                </form>
+            </div>
+        </article>
+    </section>
+{% endblock %}

@@ -54,6 +54,17 @@ PYTHONPATH=src .venv/bin/python -c 'from getpass import getpass; from secrets im
 Copy the printed `USER_MANAGEMENT_ADMIN_PASSWORD_HASH` and
 `USER_MANAGEMENT_SESSION_SECRET` lines into `src/config_local.py`. Do not store
 the plain admin password in any file.
+
+The LAN usage dashboard can also use a password-backed admin session, which is
+helpful from VPN or on-site networks when the browser is not connected to Plus
+with a `PLUS_ADMINS` identity. Generate the LAN app hash and session secret with:
+
+```bash
+PYTHONPATH=src .venv/bin/python -c 'from getpass import getpass; from secrets import token_urlsafe; from werkzeug.security import generate_password_hash; p=getpass("LAN admin password: "); q=getpass("Confirm password: "); assert p == q, "passwords did not match"; print("LAN_ADMIN_PASSWORD_HASH =", repr(generate_password_hash(p))); print("LAN_ADMIN_SESSION_SECRET =", repr(token_urlsafe(48)))'
+```
+
+Copy the printed `LAN_ADMIN_PASSWORD_HASH` and `LAN_ADMIN_SESSION_SECRET` lines
+into `src/config_local.py`.
 Check-in procedure:
 
 1. A user can check in on the public self check-in page with phone number plus
@@ -185,6 +196,7 @@ Config values:
 - `ORGANIZATION_TITLE`
 - `PLUS_ADMINS`
 - `PLUS_ADMIN_IPS` (exact IPs or CIDR ranges that bypass UniFi client lookup for admin access, useful for VPN admin clients)
+- `LAN_ADMIN_PASSWORD_HASH` and `LAN_ADMIN_SESSION_SECRET` (optional password login for LAN app admins)
 - `NFDUMP_DIR` (directory containing completed `nfcapd.*` flow capture files)
 - `NFDUMP_BIN` (path/name for the `nfdump` command)
 - `INTERNAL_NETWORKS` (CIDR ranges treated as LAN clients for WAN flow attribution)

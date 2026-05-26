@@ -13,10 +13,12 @@ from datetime import date, datetime
 import ipaddress
 import os
 import re
+from secrets import token_hex
 import time
 from typing import Any, TypedDict, cast
 
-from flask import Flask, Response, abort, jsonify, redirect, render_template, request, stream_with_context, url_for
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, session, stream_with_context, url_for
+from werkzeug.security import check_password_hash
 
 import config as cfg
 import database as db
@@ -65,6 +67,14 @@ def create_app() -> Flask:
     configure_logging()
     db.init_db()
     flask_app = Flask(__name__)
+    flask_app.secret_key = (
+        str(getattr(cfg, "LAN_ADMIN_SESSION_SECRET", "")).strip()
+        or os.getenv("LAN_ADMIN_SESSION_SECRET", "").strip()
+        or token_hex(32)
+    )
+    flask_app.config["LAN_ADMIN_PASSWORD_HASH"] = str(
+        getattr(cfg, "LAN_ADMIN_PASSWORD_HASH", "")
+    ).strip()
     flask_app.jinja_env.filters['internet_data_amount'] = format_internet_data_amount
     flask_app.jinja_env.filters['voucher_data_amount'] = format_voucher_data_amount
     flask_app.jinja_env.filters['voucher_percent'] = format_voucher_percent
@@ -72,6 +82,7 @@ def create_app() -> Flask:
     live_update_boundary_offset_seconds = 3
     admin_auth_cache_seconds = 30.0
     admin_auth_cache_by_ip: dict[str, float] = {}
+    admin_session_key = "lan_admin_authenticated"
 
     def build_report_context(available_months: list[date] | None = None) -> dict[str, object]:
         'Build reusable template/query context for month-selected reports.'
@@ -80,6 +91,28 @@ def create_app() -> Flask:
             request.args.get('month'),
             resolved_months,
         ).as_template_context()
+
+    def lan_admin_password_hash() -> str:
+        'Return the configured LAN admin password hash, if any.'
+        return str(flask_app.config.get("LAN_ADMIN_PASSWORD_HASH", "")).strip()
+
+    def lan_admin_password_login_is_configured() -> bool:
+        'Return True when password-backed LAN admin login is available.'
+        return bool(lan_admin_password_hash())
+
+    def safe_next_url(raw_next_url: str | None) -> str:
+        'Return a local redirect target for admin login/logout flows.'
+        if raw_next_url and raw_next_url.startswith("/") and not raw_next_url.startswith("//"):
+            return raw_next_url
+        return url_for("dashboard")
+
+    def current_request_url_for_login() -> str:
+        'Return the current path/query as a safe local next URL.'
+        return safe_next_url(f"{request.script_root}{request.full_path}".rstrip("?"))
+
+    def requester_has_admin_session() -> bool:
+        'Return True when this browser has completed LAN admin password login.'
+        return session.get(admin_session_key) is True
 
     def render_radius_value(value: object) -> str:
         'Return a readable display value for optional RADIUS account fields.'
@@ -287,6 +320,9 @@ def create_app() -> Flask:
 
     def requester_is_plus_admin() -> bool:
         'Resolve current requester and return whether they are a Plus admin.'
+        if requester_has_admin_session():
+            return True
+
         request_ip = resolve_request_ip()
         if not request_ip:
             return False
@@ -319,11 +355,58 @@ def create_app() -> Flask:
             return remember_admin(is_plus_admin_user(latest_record.user_id, latest_record.vlan))
 
         return False
+
+    def admin_denied_response(*, self_service_fallback: bool = False) -> Any | None:
+        'Return a response for denied admin access, or None when access is allowed.'
+        if requester_is_plus_admin():
+            return None
+
+        if lan_admin_password_login_is_configured() and not request.path.startswith('/api/'):
+            return redirect(url_for("lan_admin_login", next=current_request_url_for_login()))
+
+        if self_service_fallback:
+            return redirect(url_for("my_usage"))
+
+        abort(403)
+
+    @flask_app.route("/admin/login", methods=["GET", "POST"])
+    def lan_admin_login():
+        'Authenticate LAN administrators without relying on Plus network identity.'
+        next_url = safe_next_url(request.values.get("next"))
+        password_hash = lan_admin_password_hash()
+        message = ""
+
+        if requester_has_admin_session():
+            return redirect(next_url)
+
+        if not password_hash:
+            message = "LAN admin password login is not configured."
+        elif request.method == "POST":
+            password = request.form.get("password", "")
+            if check_password_hash(password_hash, password):
+                session[admin_session_key] = True
+                return redirect(next_url)
+            message = "Password was not accepted."
+
+        return render_template(
+            "admin_login.html",
+            message=message,
+            next_url=next_url,
+            auth_configured=bool(password_hash),
+        ), (200 if password_hash else 503)
+
+    @flask_app.post("/admin/logout")
+    def lan_admin_logout():
+        'Clear password-backed LAN admin authentication for this browser.'
+        session.pop(admin_session_key, None)
+        return redirect(url_for("my_usage"))
+
     @flask_app.route("/")
     def dashboard():
         'Render a fast loading screen before the dashboard snapshot is built.'
-        if not requester_is_plus_admin():
-            return redirect(url_for("my_usage"))
+        denied_response = admin_denied_response(self_service_fallback=True)
+        if denied_response is not None:
+            return denied_response
 
         dashboard_args = {}
         if window_value := request.args.get('window'):
@@ -341,8 +424,9 @@ def create_app() -> Flask:
     @flask_app.route("/dashboard")
     def dashboard_report():
         'Render the dashboard with live snapshots and daily usage summaries.'
-        if not requester_is_plus_admin():
-            return redirect(url_for("my_usage"))
+        denied_response = admin_denied_response(self_service_fallback=True)
+        if denied_response is not None:
+            return denied_response
 
         window_name = normalize_window(request.args.get("window"))
         activity_span = normalize_activity_span(request.args.get("activity_span"))
@@ -355,8 +439,9 @@ def create_app() -> Flask:
     @flask_app.route("/insights")
     def insights():
         'Render a fast loading screen before the expensive Insights report.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         report_args = {}
         if month_value := request.args.get('month'):
@@ -372,8 +457,9 @@ def create_app() -> Flask:
     @flask_app.route("/insights/report")
     def insights_report():
         'Render deeper month analytics panels.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         period_context = build_report_context(db.get_usage_months())
         period_start = cast(datetime, period_context['period_start'])
@@ -400,8 +486,9 @@ def create_app() -> Flask:
     @flask_app.route("/wan")
     def wan_usage():
         'Render a fast loading screen before Internet diagnostics.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         return render_template(
             "loading.html",
@@ -413,8 +500,9 @@ def create_app() -> Flask:
     @flask_app.route("/wan/report")
     def wan_usage_report():
         'Render Internet import and attribution diagnostics.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         now = datetime.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -477,8 +565,9 @@ def create_app() -> Flask:
     @flask_app.route("/radius/users")
     def radius_users():
         'Render local RADIUS users configured in UniFi.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         accounts = api.get_radius_accounts()
         radius_user_rows = [
@@ -502,8 +591,9 @@ def create_app() -> Flask:
     @flask_app.route("/vouchers", methods=["GET", "POST"])
     def plus_vouchers():
         'Generate and list home-grown Plus login vouchers.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         generated_vouchers: list[db.PlusVoucherRecord] = []
         voucher_form_message = request.args.get('message', '')
@@ -565,8 +655,9 @@ def create_app() -> Flask:
     @flask_app.route("/vouchers/<int:voucher_id>/consume", methods=["POST"])
     def consume_plus_voucher(voucher_id: int):
         'Remove one voucher RADIUS account and mark the voucher consumed.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         voucher = db.get_plus_voucher(voucher_id)
         if voucher is None:
@@ -595,8 +686,9 @@ def create_app() -> Flask:
     @flask_app.route("/vouchers/batches/<batch_id>/print")
     def plus_voucher_batch_print(batch_id: str):
         'Render a print-optimized sheet for one voucher batch.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         vouchers = db.get_plus_voucher_batch(batch_id)
         if not vouchers:
@@ -614,8 +706,9 @@ def create_app() -> Flask:
     @flask_app.route("/api/dashboard-snapshot")
     def dashboard_snapshot():
         'Return dashboard snapshot data for incremental in-page refresh.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         window_name = normalize_window(request.args.get("window"))
         activity_span = normalize_activity_span(request.args.get("activity_span"))
@@ -624,8 +717,9 @@ def create_app() -> Flask:
     @flask_app.route("/api/dashboard-stream")
     def dashboard_stream():
         'Stream dashboard updates over Server-Sent Events.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         window_name = normalize_window(request.args.get("window"))
         activity_span = normalize_activity_span(request.args.get("activity_span"))
@@ -647,8 +741,9 @@ def create_app() -> Flask:
     @flask_app.route("/clients/<mac>")
     def client_detail(mac: str):
         'Render detail view for one client MAC address.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         try:
             context = get_client_usage_context(mac, include_wan_details=False)
@@ -669,8 +764,9 @@ def create_app() -> Flask:
     @flask_app.route("/clients/<mac>/wan-details")
     def client_wan_details(mac: str):
         'Render deferred WAN detail panels for one client MAC address.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         context: dict[str, object] = dict(get_client_usage_context(mac))
         return render_template(
@@ -682,8 +778,9 @@ def create_app() -> Flask:
     @flask_app.route("/clients/<mac>/flow-activities")
     def client_flow_activities(mac: str):
         'Render the refreshable top Internet activities panel for one client.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         flow_activity_range = normalize_flow_activity_range(request.args.get('flow_activity_range'))
         return render_template(
@@ -707,8 +804,9 @@ def create_app() -> Flask:
     @flask_app.route("/clients/<mac>/usage-today-embed")
     def client_usage_today_embed(mac: str):
         'Render embeddable "Usage Today" panel for one client MAC.'
-        if not requester_is_plus_admin():
-            abort(403)
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
 
         try:
             context = get_client_usage_context(mac)
