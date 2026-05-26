@@ -195,7 +195,6 @@ Config values:
 - `PLUS_REPORT_TITLE` (shown on printed Plus voucher instructions)
 - `ORGANIZATION_TITLE`
 - `PLUS_ADMINS`
-- `PLUS_ADMIN_IPS` (exact IPs or CIDR ranges that bypass UniFi client lookup for admin access, useful for VPN admin clients)
 - `LAN_ADMIN_PASSWORD_HASH` and `LAN_ADMIN_SESSION_SECRET` (optional password login for LAN app admins)
 - `NFDUMP_DIR` (directory containing completed `nfcapd.*` flow capture files)
 - `NFDUMP_BIN` (path/name for the `nfdump` command)

@@ -13,16 +13,22 @@ if str(SRC_DIR) not in sys.path:
 import app
 
 
+def admin_client(flask_app):
+    client = flask_app.test_client()
+    with client.session_transaction() as session:
+        session["lan_admin_authenticated"] = True
+    return client
+
+
 class DashboardRouteTests(unittest.TestCase):
     def test_dashboard_entrypoint_shows_loading_page_before_building_payload(self) -> None:
         flask_app = app.create_app()
 
         with (
-            patch.object(app.cfg, "PLUS_ADMIN_IPS", {"127.0.0.1"}),
             patch.object(app, "build_live_dashboard_payload", side_effect=AssertionError),
             patch.object(app, "render_template", return_value="rendered") as render_template,
         ):
-            response = flask_app.test_client().get(
+            response = admin_client(flask_app).get(
                 "/?window=today&activity_span=24h",
                 environ_base={"REMOTE_ADDR": "127.0.0.1"},
             )
@@ -39,11 +45,10 @@ class DashboardRouteTests(unittest.TestCase):
         flask_app = app.create_app()
 
         with (
-            patch.object(app.cfg, "PLUS_ADMIN_IPS", {"127.0.0.1"}),
             patch.object(app, "build_live_dashboard_payload", return_value={"rows": []}) as build_payload,
             patch.object(app, "render_template", return_value="rendered") as render_template,
         ):
-            response = flask_app.test_client().get(
+            response = admin_client(flask_app).get(
                 "/dashboard?window=today&activity_span=24h",
                 environ_base={"REMOTE_ADDR": "127.0.0.1"},
             )
@@ -94,10 +99,9 @@ class DashboardRouteTests(unittest.TestCase):
         }
 
         with (
-            patch.object(app.cfg, "PLUS_ADMIN_IPS", {"127.0.0.1"}),
             patch.object(app, "get_client_usage_context", return_value=context),
         ):
-            response = flask_app.test_client().get("/clients/aa:bb:cc:dd:ee:ff")
+            response = admin_client(flask_app).get("/clients/aa:bb:cc:dd:ee:ff")
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
@@ -147,10 +151,9 @@ class DashboardRouteTests(unittest.TestCase):
         }
 
         with (
-            patch.object(app.cfg, "PLUS_ADMIN_IPS", {"127.0.0.1"}),
             patch.object(app, "get_client_usage_context", return_value=base_context) as usage_context,
         ):
-            response = flask_app.test_client().get("/clients/aa:bb:cc:dd:ee:ff/wan-details")
+            response = admin_client(flask_app).get("/clients/aa:bb:cc:dd:ee:ff/wan-details")
 
         self.assertEqual(response.status_code, 200)
         usage_context.assert_called_once_with("aa:bb:cc:dd:ee:ff")

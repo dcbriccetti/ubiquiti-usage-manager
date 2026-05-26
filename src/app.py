@@ -10,7 +10,6 @@ Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
 from datetime import date, datetime
-import ipaddress
 import os
 import re
 from secrets import token_hex
@@ -253,29 +252,6 @@ def create_app() -> Flask:
 
         return is_plus_admin_user(live_user_id, live_vlan_name)
 
-    def request_ip_is_plus_admin(request_ip: str) -> bool:
-        'Return True when request IP matches configured admin IP/CIDR allowlist.'
-        try:
-            requester_ip = ipaddress.ip_address(request_ip)
-        except ValueError:
-            flask_app.logger.warning('Ignoring invalid requester IP for admin allowlist: %s', request_ip)
-            return False
-
-        for admin_ip_entry in getattr(cfg, 'PLUS_ADMIN_IPS', set()):
-            admin_ip_text = str(admin_ip_entry).strip()
-            if not admin_ip_text:
-                continue
-            try:
-                if '/' in admin_ip_text:
-                    if requester_ip in ipaddress.ip_network(admin_ip_text, strict=False):
-                        return True
-                elif requester_ip == ipaddress.ip_address(admin_ip_text):
-                    return True
-            except ValueError:
-                flask_app.logger.warning('Ignoring invalid PLUS_ADMIN_IPS entry: %s', admin_ip_text)
-
-        return False
-
     def resolve_request_ip() -> str | None:
         'Return request IP, allowing DEV_REQUEST_IP override for local/remote testing.'
         if dev_request_ip := os.getenv("DEV_REQUEST_IP", "").strip():
@@ -336,9 +312,6 @@ def create_app() -> Flask:
             if result:
                 admin_auth_cache_by_ip[request_ip_text] = time.monotonic() + admin_auth_cache_seconds
             return result
-
-        if request_ip_is_plus_admin(request_ip_text):
-            return remember_admin(True)
 
         live_clients = api.get_api_data("stat/sta")
         detected_mac = get_client_mac_from_records(request_ip_text, live_clients) or find_client_mac_for_ip(request_ip_text)
