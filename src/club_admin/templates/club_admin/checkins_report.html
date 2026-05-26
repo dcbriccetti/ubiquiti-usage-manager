@@ -33,16 +33,72 @@
     </header>
 
     <form class="report-filters" action="{{ url_for('checkins_report') }}" method="get">
-      <label>
-        Start
-        <input type="date" name="start_date" value="{{ start_date }}">
-      </label>
-      <label>
-        End
-        <input type="date" name="end_date" value="{{ end_date }}">
-      </label>
-      <button type="submit">Apply</button>
+      <div class="report-date-fields">
+        <label>
+          Start
+          <input type="date" name="start_date" value="{{ start_date }}">
+        </label>
+        <label>
+          End
+          <input type="date" name="end_date" value="{{ end_date }}">
+        </label>
+        <button type="submit">Apply</button>
+      </div>
+      <div class="report-presets" aria-label="Date range presets">
+        {% for preset in date_presets %}
+          <a
+            href="{{ url_for('checkins_report', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat()) }}"
+            {% if preset.start_date == start_date and preset.end_date == end_date %}class="active" aria-current="page"{% endif %}
+          >{{ preset.label }}</a>
+        {% endfor %}
+      </div>
     </form>
+
+    <section class="checkins-time-chart" aria-label="{{ time_chart.title }}">
+      <div class="checkins-chart-header">
+        <h2>{{ time_chart.title }}</h2>
+        <div class="checkins-chart-legend" aria-label="Membership type legend">
+          {% for label, css_class in time_chart.legend %}
+            <span><span class="checkins-chart-key {{ css_class }}" aria-hidden="true"></span>{{ label }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% if time_chart.buckets %}
+        <div class="checkins-chart-rows">
+          {% for bucket in time_chart.buckets %}
+            {% if bucket.group_label %}
+              <div class="checkins-chart-group">
+                <span>{{ bucket.group_label }}</span>
+                {% if bucket.group_total is not none %}
+                  <span class="checkins-chart-group-total">{{ bucket.group_total }} {{ 'check-in' if bucket.group_total == 1 else 'check-ins' }}</span>
+                {% endif %}
+              </div>
+            {% endif %}
+            <div class="checkins-chart-row">
+              <span class="checkins-chart-label">{{ bucket.label }}</span>
+              <div class="checkins-chart-bar" aria-label="{{ bucket.label }}: {{ bucket.total }} {{ 'check-in' if bucket.total == 1 else 'check-ins' }}">
+                {% if bucket.total %}
+                  {% for segment in bucket.segments %}
+                    <span
+                      class="checkins-chart-segment {{ segment.css_class }}"
+                      style="width: {{ '%.2f'|format(segment.percent) }}%"
+                      title="{{ segment.label }}: {{ segment.count }}"
+                    >
+                      <span>{{ segment.count }}</span>
+                    </span>
+                  {% endfor %}
+                {% else %}
+                  <span class="checkins-chart-empty"></span>
+                {% endif %}
+              </div>
+              <span class="checkins-chart-total">{{ bucket.total }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="checkins-chart-empty-message">No check-ins in this range.</p>
+      {% endif %}
+    </section>
 
     <table class="checkins-table" data-sortable-table>
       <thead>

@@ -619,9 +619,18 @@ th {
   background: #fff;
   box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 10px 18px;
   margin-bottom: 18px;
   padding: 14px;
+}
+
+.report-date-fields {
+  align-items: flex-end;
+  border-right: 1px solid #d9e2ec;
+  display: flex;
+  gap: 12px;
+  padding-right: 18px;
 }
 
 .report-filters label {
@@ -637,6 +646,166 @@ th {
   border-radius: 6px;
   font: inherit;
   padding: 7px 8px;
+}
+
+.report-presets {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 0 2px;
+}
+
+.report-presets a {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #245c9f;
+  font-size: 13px;
+  padding: 7px 9px;
+  text-decoration: none;
+}
+
+.report-presets a:hover {
+  background: #eef2f6;
+}
+
+.report-presets a.active {
+  background: #dbeafe;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.checkins-time-chart {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
+  margin-bottom: 18px;
+  padding: 14px;
+}
+
+.checkins-chart-header {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.checkins-time-chart h2 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.checkins-chart-legend {
+  color: #4b5563;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 10px;
+}
+
+.checkins-chart-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.checkins-chart-key {
+  border: 1px solid rgb(17 24 39 / 20%);
+  display: inline-block;
+  height: 10px;
+  width: 18px;
+}
+
+.checkins-chart-rows {
+  display: grid;
+  gap: 6px;
+}
+
+.checkins-chart-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 54px minmax(120px, 1fr) 34px;
+}
+
+.checkins-chart-group {
+  align-items: baseline;
+  color: #334155;
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.checkins-chart-group-total,
+.checkins-chart-total {
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.checkins-chart-total {
+  text-align: right;
+}
+
+.checkins-chart-label,
+.checkins-chart-empty-message {
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.checkins-chart-bar {
+  align-items: stretch;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  display: flex;
+  min-height: 22px;
+  overflow: hidden;
+}
+
+.checkins-chart-segment {
+  align-items: center;
+  color: #111827;
+  display: flex;
+  font-size: 11px;
+  font-weight: 650;
+  justify-content: center;
+  min-width: 10px;
+}
+
+.checkins-chart-segment span {
+  overflow: hidden;
+  padding: 0 2px;
+  text-overflow: clip;
+}
+
+.checkins-chart-empty {
+  display: block;
+  min-height: 20px;
+  width: 100%;
+}
+
+.checkins-chart-empty-message {
+  margin: 0;
+}
+
+.membership-full {
+  background: #8ecae6;
+}
+
+.membership-assoc {
+  background: #ffb703;
+}
+
+.membership-aanr {
+  background: #90be6d;
+}
+
+.membership-visitor {
+  background: #f28482;
 }
 
 .report-tabs {
@@ -1806,6 +1975,52 @@ th {
     display: inline;
     font-size: 10pt;
     margin: 4px 10px 0 0;
+  }
+
+  .checkins-time-chart {
+    box-shadow: none;
+    margin: 12pt 0;
+    padding: 0;
+  }
+
+  .checkins-time-chart h2 {
+    font-size: 12pt;
+  }
+
+  .checkins-chart-header {
+    margin-bottom: 6pt;
+  }
+
+  .checkins-chart-row {
+    break-inside: avoid;
+    gap: 5pt;
+    grid-template-columns: 42pt minmax(110pt, 1fr) 18pt;
+    page-break-inside: avoid;
+  }
+
+  .checkins-chart-group {
+    color: #111827;
+    font-size: 8pt;
+    margin-top: 4pt;
+  }
+
+  .checkins-chart-label,
+  .checkins-chart-total,
+  .checkins-chart-group-total,
+  .checkins-chart-empty-message,
+  .checkins-chart-legend {
+    color: #111827;
+    font-size: 8pt;
+  }
+
+  .checkins-chart-bar {
+    min-height: 14pt;
+  }
+
+  .checkins-chart-segment {
+    border-right: 1px solid #fff;
+    font-size: 7pt;
+    min-width: 7pt;
   }
 
   .checkins-table {

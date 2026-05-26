@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from secrets import token_hex, token_urlsafe
-from typing import Any
+from typing import Any, cast
 
 from flask import (
     Flask,
@@ -70,10 +70,10 @@ MEMBERSHIP_OPTIONS = (
     "Visitor",
 )
 CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN = (
-    ("Full Member", "Full Member"),
-    ("Assoc.", "Associate Member"),
-    ("AANR", "AANR Member"),
-    ("Visitor", "Visitor"),
+    ("Full Member", "Full Member", "membership-full"),
+    ("Assoc.", "Associate Member", "membership-assoc"),
+    ("AANR", "AANR Member", "membership-aanr"),
+    ("Visitor", "Visitor", "membership-visitor"),
 )
 BARCODE_SECRET_SETTING_KEY = "self_checkin_barcode_secret"
 KIOSK_AUTO_RETURN_SECONDS = 60
@@ -177,6 +177,37 @@ class ZipMapReport:
     configured_zip_count: int
     map_points: tuple[ZipMapPoint, ...]
     unmapped_zip_counts: tuple[ZipCount, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class DateRangePreset:
+    label: str
+    start_date: date
+    end_date: date
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinChartSegment:
+    label: str
+    css_class: str
+    count: int
+    percent: float
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinChartBucket:
+    label: str
+    group_label: str | None
+    group_total: int | None
+    total: int
+    segments: tuple[CheckinChartSegment, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinTimeChart:
+    title: str
+    legend: tuple[tuple[str, str], ...]
+    buckets: tuple[CheckinChartBucket, ...]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -312,7 +343,7 @@ def _checkin_membership_breakdown(checkins: list[CheckIn]) -> tuple[tuple[str, i
     counts: Counter[str] = Counter()
     seen_users: set[str] = set()
     counted_memberships = {
-        membership for _, membership in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
+        membership for _, membership, _ in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
     }
     for checkin in checkins:
         user_key = (
@@ -327,7 +358,163 @@ def _checkin_membership_breakdown(checkins: list[CheckIn]) -> tuple[tuple[str, i
             counts[checkin.membership] += 1
     return tuple(
         (label, counts[membership])
-        for label, membership in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
+        for label, membership, _ in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
+    )
+
+
+def _date_range_presets(today: date) -> tuple[DateRangePreset, ...]:
+    yesterday = today - timedelta(days=1)
+    this_week_start = today - timedelta(days=today.weekday())
+    last_week_start = this_week_start - timedelta(days=7)
+    this_month_start = today.replace(day=1)
+    last_month_end = this_month_start - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+    return (
+        DateRangePreset(label="Today", start_date=today, end_date=today),
+        DateRangePreset(label="Yesterday", start_date=yesterday, end_date=yesterday),
+        DateRangePreset(label="This Week", start_date=this_week_start, end_date=today),
+        DateRangePreset(
+            label="Last Week",
+            start_date=last_week_start,
+            end_date=this_week_start - timedelta(days=1),
+        ),
+        DateRangePreset(label="This Month", start_date=this_month_start, end_date=today),
+        DateRangePreset(
+            label="Last Month",
+            start_date=last_month_start,
+            end_date=last_month_end,
+        ),
+    )
+
+
+def _date_label(value: date) -> str:
+    return f"{value.strftime('%b')} {value.day}"
+
+
+def _hour_label(hour: int) -> str:
+    hour_12 = hour % 12 or 12
+    suffix = "AM" if hour < 12 else "PM"
+    return f"{hour_12} {suffix}"
+
+
+def _week_label(start_date: date, end_date: date) -> str:
+    if start_date == end_date:
+        return _date_label(start_date)
+    return f"{_date_label(start_date)}-{_date_label(end_date)}"
+
+
+def _week_start(value: date) -> date:
+    return value - timedelta(days=value.weekday())
+
+
+def _checkin_time_chart(
+    checkins: list[CheckIn],
+    start_date: date,
+    end_date: date,
+) -> CheckinTimeChart:
+    span_days = (end_date - start_date).days + 1
+    bucket_counts: dict[object, Counter[str]] = {}
+    bucket_labels: dict[object, str] = {}
+    bucket_mode = "day"
+
+    if span_days == 1:
+        title = "Check-ins by Hour"
+        bucket_mode = "hour"
+        for hour in range(24):
+            bucket_counts[hour] = Counter()
+            bucket_labels[hour] = _hour_label(hour)
+        for checkin in checkins:
+            bucket_counts[checkin.check_in_at.hour][checkin.membership] += 1
+    elif span_days <= 62:
+        title = "Check-ins by Day"
+        for day_offset in range(span_days):
+            bucket_date = start_date + timedelta(days=day_offset)
+            bucket_counts[bucket_date] = Counter()
+            bucket_labels[bucket_date] = _date_label(bucket_date)
+        for checkin in checkins:
+            bucket_counts[checkin.check_in_at.date()][checkin.membership] += 1
+    else:
+        title = "Check-ins by Week"
+        bucket_mode = "week"
+        for day_offset in range(0, span_days, 7):
+            bucket_start = start_date + timedelta(days=day_offset)
+            bucket_end = min(bucket_start + timedelta(days=6), end_date)
+            bucket_counts[bucket_start] = Counter()
+            bucket_labels[bucket_start] = _week_label(bucket_start, bucket_end)
+        for checkin in checkins:
+            week_offset = ((checkin.check_in_at.date() - start_date).days // 7) * 7
+            bucket_start = start_date + timedelta(days=week_offset)
+            bucket_counts[bucket_start][checkin.membership] += 1
+
+    bucket_items = list(bucket_counts.items())
+    if bucket_mode == "day":
+        bucket_items = [
+            (bucket, counts)
+            for bucket, counts in bucket_items
+            if sum(counts.values()) > 0
+        ]
+    else:
+        populated_indexes = [
+            index
+            for index, (_, counts) in enumerate(bucket_items)
+            if sum(counts.values()) > 0
+        ]
+        if populated_indexes:
+            bucket_items = bucket_items[populated_indexes[0] : populated_indexes[-1] + 1]
+        else:
+            bucket_items = []
+
+    bucket_totals = {bucket: sum(counts.values()) for bucket, counts in bucket_items}
+    max_total = max(bucket_totals.values(), default=0)
+    day_group_totals: dict[date, int] = {}
+    if bucket_mode == "day":
+        for bucket, total in bucket_totals.items():
+            bucket_date = cast(date, bucket)
+            bucket_week_start = _week_start(bucket_date)
+            day_group_totals[bucket_week_start] = (
+                day_group_totals.get(bucket_week_start, 0) + total
+            )
+    buckets: list[CheckinChartBucket] = []
+    previous_week_start: date | None = None
+    for bucket, counts in bucket_items:
+        group_label = None
+        group_total = None
+        if bucket_mode == "day":
+            bucket_date = cast(date, bucket)
+            bucket_week_start = _week_start(bucket_date)
+            if bucket_week_start != previous_week_start:
+                group_label = f"Week of {_date_label(bucket_week_start)}"
+                group_total = day_group_totals[bucket_week_start]
+                previous_week_start = bucket_week_start
+        segment_rows: list[CheckinChartSegment] = []
+        for label, membership, css_class in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN:
+            count = counts[membership]
+            if count and max_total:
+                segment_rows.append(
+                    CheckinChartSegment(
+                        label=label,
+                        css_class=css_class,
+                        count=count,
+                        percent=(count / max_total) * 100,
+                    )
+                )
+        buckets.append(
+            CheckinChartBucket(
+                label=bucket_labels[bucket],
+                group_label=group_label,
+                group_total=group_total,
+                total=bucket_totals[bucket],
+                segments=tuple(segment_rows),
+            )
+        )
+
+    return CheckinTimeChart(
+        title=title,
+        legend=tuple(
+            (label, css_class)
+            for label, _, css_class in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
+        ),
+        buckets=tuple(buckets),
     )
 
 
@@ -1818,6 +2005,8 @@ def create_app(db_path: Path | None = None) -> Flask:
             "club_admin/checkins_report.html",
             checkins=checkins,
             membership_breakdown=_checkin_membership_breakdown(checkins),
+            time_chart=_checkin_time_chart(checkins, start_date, end_date),
+            date_presets=_date_range_presets(today),
             start_date=start_date,
             end_date=end_date,
         )

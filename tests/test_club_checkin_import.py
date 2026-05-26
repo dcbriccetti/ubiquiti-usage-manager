@@ -367,6 +367,22 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("Check-ins", body)
         self.assertIn('class="page checkins-report-page"', body)
         self.assertIn('class="print-report-range">2026-05-01 to 2026-05-03', body)
+        self.assertIn('class="report-date-fields"', body)
+        self.assertIn('class="report-presets"', body)
+        self.assertIn(">Today</a>", body)
+        self.assertIn(">Yesterday</a>", body)
+        self.assertIn(">This Week</a>", body)
+        self.assertIn(">Last Week</a>", body)
+        self.assertIn(">This Month</a>", body)
+        self.assertIn(">Last Month</a>", body)
+        self.assertIn('class="checkins-time-chart"', body)
+        self.assertIn("Check-ins by Day", body)
+        self.assertIn("Week of Apr 27", body)
+        self.assertIn('class="checkins-chart-group-total">2 check-ins', body)
+        self.assertIn("May 1", body)
+        self.assertNotIn("May 2", body)
+        self.assertIn("May 3", body)
+        self.assertIn('class="checkins-chart-total">1</span>', body)
         self.assertNotIn('class="report-tabs"', body)
         self.assertNotIn('name="view"', body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
@@ -382,6 +398,20 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("2026-05-01 09:00:00", body)
         self.assertIn("2026-05-03 15:59:20", body)
         self.assertNotIn("Jane", body)
+
+    def test_checkin_report_marks_active_date_preset(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+
+            response = client.get("/checkins/report")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertEqual(body.count('aria-current="page"'), 1)
+        self.assertIn('class="active" aria-current="page"', body)
+        self.assertIn(">Today</a>", body)
 
     def test_checkin_report_shows_membership_breakdown_by_distinct_user(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -431,10 +461,19 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertIn('class="checkins-membership-breakdown"', body)
+        self.assertIn("Check-ins by Hour", body)
         self.assertIn("Full Member: 1", body)
         self.assertIn("Assoc.: 1", body)
         self.assertIn("AANR: 1", body)
         self.assertIn("Visitor: 1", body)
+        self.assertIn('class="checkins-chart-total">4</span>', body)
+        self.assertIn('class="checkins-chart-total">1</span>', body)
+        self.assertNotIn('class="checkins-chart-counts"', body)
+        self.assertNotIn("8 AM", body)
+        self.assertIn("9 AM", body)
+        self.assertIn("10 AM", body)
+        self.assertNotIn("11 AM", body)
+        self.assertIn('class="checkins-chart-segment membership-visitor"', body)
 
     def test_club_app_renders_singular_checkin_report_count(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
