@@ -23,7 +23,7 @@
       <input type="hidden" name="next" value="{{ next_url }}">
       <label>
         Password
-        <input type="password" name="password" autocomplete="current-password" required {% if not auth_configured %}disabled{% endif %}>
+        <input type="password" name="password" autocomplete="current-password" required {% if auth_configured %}autofocus{% else %}disabled{% endif %}>
       </label>
       <button type="submit" {% if not auth_configured %}disabled{% endif %}>Log In</button>
     </form>
