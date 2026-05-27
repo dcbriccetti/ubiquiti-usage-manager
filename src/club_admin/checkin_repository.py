@@ -291,18 +291,11 @@ def count_visit_numbers_for_date_range(
     connection: sqlite3.Connection,
     start_date: date,
     end_date: date,
-    *,
-    memberships: tuple[str, ...] | None = None,
-) -> tuple[tuple[int, int], ...]:
-    '''Return counts by each check-in's lifetime ordinal visit number.'''
+) -> tuple[tuple[int, str, int], ...]:
+    '''Return counts by each check-in's lifetime ordinal visit number and membership.'''
     start_at, exclusive_end_at = _date_range_bounds(start_date, end_date)
-    membership_filter = ""
-    parameters: list[str] = [start_at, exclusive_end_at]
-    if memberships:
-        membership_filter = f" AND membership IN ({', '.join('?' for _ in memberships)})"
-        parameters.extend(memberships)
     rows = connection.execute(
-        f"""
+        """
         WITH numbered_checkins AS (
             SELECT
                 id,
@@ -314,15 +307,25 @@ def count_visit_numbers_for_date_range(
                 ) AS visit_number
             FROM checkins
         )
-        SELECT visit_number, COUNT(*) AS checkin_count
+        SELECT
+            visit_number,
+            membership,
+            COUNT(*) AS checkin_count
         FROM numbered_checkins
-        WHERE check_in_at >= ? AND check_in_at < ?{membership_filter}
-        GROUP BY visit_number
-        ORDER BY visit_number
+        WHERE check_in_at >= ? AND check_in_at < ?
+        GROUP BY visit_number, membership
+        ORDER BY visit_number, membership
         """,
-        parameters,
+        (start_at, exclusive_end_at),
     ).fetchall()
-    return tuple((int(row["visit_number"]), int(row["checkin_count"])) for row in rows)
+    return tuple(
+        (
+            int(row["visit_number"]),
+            str(row["membership"]),
+            int(row["checkin_count"]),
+        )
+        for row in rows
+    )
 
 
 def summarize_checkins_by_user(

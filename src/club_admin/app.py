@@ -74,11 +74,6 @@ CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN = (
     ("AANR", "AANR Member", "membership-aanr"),
     ("Visitor", "Visitor", "membership-visitor"),
 )
-CHECKIN_VISIT_NUMBER_MEMBERSHIP_FILTERS = {
-    "both": None,
-    "members": ("Full Member", "Associate Member"),
-    "visitors": ("AANR Member", "Visitor"),
-}
 CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT = 9
 BARCODE_SECRET_SETTING_KEY = "self_checkin_barcode_secret"
 KIOSK_AUTO_RETURN_SECONDS = 60
@@ -524,63 +519,79 @@ def _checkin_time_chart(
 
 
 def _checkin_visit_number_chart(
-    visit_number_counts: tuple[tuple[int, int], ...],
+    visit_number_counts: tuple[tuple[int, str, int], ...],
 ) -> CheckinTimeChart:
-    exact_counts: Counter[int] = Counter()
-    overflow_count = 0
-    for visit_number, count in visit_number_counts:
+    exact_counts: dict[int, Counter[str]] = {}
+    overflow_counts: Counter[str] = Counter()
+    for visit_number, membership, count in visit_number_counts:
         if visit_number <= CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT:
-            exact_counts[visit_number] += count
+            exact_counts.setdefault(visit_number, Counter())[membership] += count
         else:
-            overflow_count += count
+            overflow_counts[membership] += count
 
-    max_total = max([*exact_counts.values(), overflow_count], default=0)
+    totals = [sum(counts.values()) for counts in exact_counts.values()]
+    overflow_total = sum(overflow_counts.values())
+    max_total = max([*totals, overflow_total], default=0)
     buckets = []
     for visit_number in range(1, CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT + 1):
-        count = exact_counts[visit_number]
-        if not count:
+        counts = exact_counts.get(visit_number, Counter())
+        total = sum(counts.values())
+        if not total:
             continue
-        segments = ()
+        segments = []
         if max_total:
-            segments = (
-                CheckinChartSegment(
-                    label="Check-ins",
-                    css_class="visit-number",
-                    count=count,
-                    percent=(count / max_total) * 100,
-                ),
-            )
+            for label, membership, css_class in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN:
+                count = counts[membership]
+                if not count:
+                    continue
+                segments.append(
+                    CheckinChartSegment(
+                        label=label,
+                        css_class=css_class,
+                        count=count,
+                        percent=(count / max_total) * 100,
+                    )
+                )
         buckets.append(
             CheckinChartBucket(
                 label=str(visit_number),
                 group_label=None,
                 group_total=None,
-                total=count,
-                segments=segments,
+                total=total,
+                segments=tuple(segments),
             )
         )
 
-    if overflow_count:
+    if overflow_total:
+        overflow_segments = []
+        for label, membership, css_class in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN:
+            count = overflow_counts[membership]
+            if not count:
+                continue
+            overflow_segments.append(
+                CheckinChartSegment(
+                    label=label,
+                    css_class=css_class,
+                    count=count,
+                    percent=(count / max_total) * 100,
+                )
+            )
         buckets.append(
             CheckinChartBucket(
                 label=f"{CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT + 1}+",
                 group_label=None,
                 group_total=None,
-                total=overflow_count,
-                segments=(
-                    CheckinChartSegment(
-                        label="Check-ins",
-                        css_class="visit-number",
-                        count=overflow_count,
-                        percent=(overflow_count / max_total) * 100,
-                    ),
-                ),
+                total=overflow_total,
+                segments=tuple(overflow_segments),
             )
         )
 
     return CheckinTimeChart(
         title="Check-ins by Check-in Number",
-        legend=(),
+        legend=tuple(
+            (label, css_class)
+            for label, _, css_class in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
+        ),
         buckets=tuple(buckets) if max_total else (),
     )
 
@@ -2049,12 +2060,6 @@ def create_app(db_path: Path | None = None) -> Flask:
         if start_date > end_date:
             abort(400, "Start date must be on or before end date.")
 
-        visit_number_membership = request.args.get("visit_number_membership", "both")
-        visit_number_memberships = CHECKIN_VISIT_NUMBER_MEMBERSHIP_FILTERS.get(
-            visit_number_membership
-        )
-        if visit_number_membership not in CHECKIN_VISIT_NUMBER_MEMBERSHIP_FILTERS:
-            abort(400, "Visit number filter must be both, members, or visitors.")
         with open_connection() as connection:
             checkins = checkin_repository.list_checkins_for_date_range(
                 connection,
@@ -2065,7 +2070,6 @@ def create_app(db_path: Path | None = None) -> Flask:
                 connection,
                 start_date,
                 end_date,
-                memberships=visit_number_memberships,
             )
 
         return render_template(
@@ -2074,7 +2078,6 @@ def create_app(db_path: Path | None = None) -> Flask:
             membership_breakdown=_checkin_membership_breakdown(checkins),
             time_chart=_checkin_time_chart(checkins, start_date, end_date),
             visit_number_chart=_checkin_visit_number_chart(visit_number_counts),
-            visit_number_membership=visit_number_membership,
             date_presets=_date_range_presets(today),
             start_date=start_date,
             end_date=end_date,

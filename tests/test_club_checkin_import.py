@@ -563,9 +563,14 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('aria-label="2: 2 check-ins"', body)
         self.assertNotIn('aria-label="9: 0 check-ins"', body)
         self.assertIn('aria-label="10+: 2 check-ins"', body)
-        self.assertIn('class="checkins-chart-segment visit-number"', body)
+        self.assertIn('aria-label="Check-in group legend"', body)
+        self.assertIn('class="checkins-chart-key membership-full"', body)
+        self.assertIn('class="checkins-chart-key membership-visitor"', body)
+        self.assertIn('class="checkins-chart-segment membership-visitor"', body)
 
-    def test_checkin_report_can_limit_visit_number_chart_by_membership_group(self) -> None:
+    def test_checkin_report_stacks_visit_number_chart_by_membership_type(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
@@ -608,39 +613,12 @@ class ClubCheckInImportTests(unittest.TestCase):
                     checkin_repository.upsert_checkin(connection, checkin)
                 connection.commit()
 
-            both_response = client.get(
+            response = client.get(
                 "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
             )
-            members_response = client.get(
-                "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
-                "&visit_number_membership=members"
-            )
-            visitors_response = client.get(
-                "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
-                "&visit_number_membership=visitors"
-            )
 
-        self.assertEqual(both_response.status_code, 200)
-        both_body = both_response.get_data(as_text=True)
-        self.assertIn('aria-label="1: 4 check-ins"', both_body)
-
-        self.assertEqual(members_response.status_code, 200)
-        members_body = members_response.get_data(as_text=True)
-        self.assertIn('class="chart-toggle-form"', members_body)
-        self.assertIn('name="start_date" value="2026-05-10"', members_body)
-        self.assertIn('name="end_date" value="2026-05-10"', members_body)
-        self.assertIn('name="visit_number_membership"', members_body)
-        self.assertIn('onchange="this.form.submit()"', members_body)
-        self.assertIn("<span>Show</span>", members_body)
-        self.assertIn(">Members and Visitors</option>", members_body)
-        self.assertIn('value="members" selected>Members</option>', members_body)
-        self.assertIn(">Visitors</option>", members_body)
-        self.assertIn("visit_number_membership=members", members_body)
-        self.assertIn('aria-label="1: 2 check-ins"', members_body)
-        self.assertNotIn('aria-label="1: 4 check-ins"', members_body)
-
-        self.assertEqual(visitors_response.status_code, 200)
-        body = visitors_response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
         self.assertIn("Full Member: 1", body)
         self.assertIn("Assoc.: 1", body)
         self.assertIn("AANR: 1", body)
@@ -649,15 +627,18 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn(">Associate</a>", body)
         self.assertIn(">AANR</a>", body)
         self.assertIn(">Visitor</a>", body)
-        self.assertIn('class="chart-toggle-form"', body)
-        self.assertIn('name="start_date" value="2026-05-10"', body)
-        self.assertIn('name="end_date" value="2026-05-10"', body)
-        self.assertIn('name="visit_number_membership"', body)
-        self.assertIn('onchange="this.form.submit()"', body)
-        self.assertIn('value="visitors" selected>Visitors</option>', body)
-        self.assertIn("visit_number_membership=visitors", body)
-        self.assertIn('aria-label="1: 2 check-ins"', body)
-        self.assertNotIn('aria-label="1: 4 check-ins"', body)
+        self.assertNotIn('class="chart-toggle-form"', body)
+        self.assertNotIn('name="visit_number_membership"', body)
+        self.assertNotIn("visit_number_membership=", body)
+        self.assertIn('aria-label="1: 4 check-ins"', body)
+        self.assertIn('title="Full Member: 1"', body)
+        self.assertIn('title="Assoc.: 1"', body)
+        self.assertIn('title="AANR: 1"', body)
+        self.assertIn('title="Visitor: 1"', body)
+        self.assertIn('class="checkins-chart-segment membership-full"', body)
+        self.assertIn('class="checkins-chart-segment membership-assoc"', body)
+        self.assertIn('class="checkins-chart-segment membership-aanr"', body)
+        self.assertIn('class="checkins-chart-segment membership-visitor"', body)
 
     def test_club_app_renders_singular_checkin_report_count(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

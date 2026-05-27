@@ -601,25 +601,11 @@ th {
   gap: 4px;
 }
 
-.report-filters input:not([type="checkbox"]),
-.chart-toggle-form input:not([type="checkbox"]),
-.chart-toggle-form select {
+.report-filters input:not([type="checkbox"]) {
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font: inherit;
   padding: 7px 8px;
-}
-
-.chart-toggle-form {
-  margin: 0;
-}
-
-.chart-select-field {
-  align-items: center;
-  color: #4b5563;
-  display: flex;
-  font-size: 13px;
-  gap: 6px;
 }
 
 .report-toggle {
@@ -790,10 +776,6 @@ th {
 
 .membership-visitor {
   background: #f28482;
-}
-
-.visit-number {
-  background: #5eead4;
 }
 
 .report-tabs {

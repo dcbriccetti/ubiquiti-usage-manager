@@ -46,7 +46,7 @@
       <div class="report-presets" aria-label="Date range presets">
         {% for preset in date_presets %}
           <a
-            href="{% if visit_number_membership != 'both' %}{{ url_for('checkins_report', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat(), visit_number_membership=visit_number_membership) }}{% else %}{{ url_for('checkins_report', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat()) }}{% endif %}"
+            href="{{ url_for('checkins_report', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat()) }}"
             {% if preset.start_date == start_date and preset.end_date == end_date %}class="active" aria-current="page"{% endif %}
           >{{ preset.label }}</a>
         {% endfor %}
@@ -104,18 +104,13 @@
     <section class="checkins-time-chart checkins-visit-number-chart" aria-label="{{ visit_number_chart.title }}">
       <div class="checkins-chart-header">
         <h2>{{ visit_number_chart.title }}</h2>
-        <form class="chart-toggle-form" action="{{ url_for('checkins_report') }}" method="get">
-          <input type="hidden" name="start_date" value="{{ start_date }}">
-          <input type="hidden" name="end_date" value="{{ end_date }}">
-          <label class="chart-select-field">
-            <span>Show</span>
-            <select name="visit_number_membership" onchange="this.form.submit()">
-              <option value="both" {% if visit_number_membership == 'both' %}selected{% endif %}>Members and Visitors</option>
-              <option value="members" {% if visit_number_membership == 'members' %}selected{% endif %}>Members</option>
-              <option value="visitors" {% if visit_number_membership == 'visitors' %}selected{% endif %}>Visitors</option>
-            </select>
-          </label>
-        </form>
+        {% if visit_number_chart.legend %}
+          <div class="checkins-chart-legend" aria-label="Check-in group legend">
+            {% for label, css_class in visit_number_chart.legend %}
+              <span><span class="checkins-chart-key {{ css_class }}" aria-hidden="true"></span>{{ label }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
       </div>
       {% if visit_number_chart.buckets %}
         <div class="checkins-chart-rows">
