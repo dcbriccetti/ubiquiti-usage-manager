@@ -152,14 +152,17 @@
           <th scope="col" class="nowrap" aria-sort="none">
             <span class="sortable-heading" role="button" tabindex="0" data-sort-column="0" data-sort-type="date">Check-in <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
-          <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="1" data-sort-type="text">Last Name <span class="sort-indicator" aria-hidden="true"></span></span>
+          <th scope="col" class="numeric nowrap" aria-sort="none">
+            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="1" data-sort-type="number">Check-in # <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
           <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="2" data-sort-type="text">First/Nickname <span class="sort-indicator" aria-hidden="true"></span></span>
+            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="2" data-sort-type="text">Last Name <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
           <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="3" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></span>
+            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="3" data-sort-type="text">First/Nickname <span class="sort-indicator" aria-hidden="true"></span></span>
+          </th>
+          <th scope="col" aria-sort="none">
+            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="4" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
         </tr>
       </thead>
@@ -167,6 +170,7 @@
         {% for checkin in checkins %}
           <tr data-sortable-row>
             <td class="nowrap" data-sort-value="{{ checkin.check_in_at.isoformat() }}">{{ checkin.check_in_at }}</td>
+            <td class="numeric" data-sort-value="{{ checkin.visit_number or '' }}">{{ checkin.visit_number or '' }}</td>
             <td data-sort-value="{{ checkin.last_name }}">
               <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.last_name }}</a>
             </td>
@@ -177,7 +181,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="4" class="empty">No check-ins in this date range.</td>
+            <td colspan="5" class="empty">No check-ins in this date range.</td>
           </tr>
         {% endfor %}
       </tbody>

@@ -579,7 +579,7 @@ def _checkin_visit_number_chart(
         )
 
     return CheckinTimeChart(
-        title="Check-ins by Visit Number",
+        title="Check-ins by Check-in Number",
         legend=(),
         buckets=tuple(buckets) if max_total else (),
     )

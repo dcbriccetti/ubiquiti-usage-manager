@@ -1962,6 +1962,8 @@ th {
   }
 
   .checkins-time-chart {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
     box-shadow: none;
     margin: 12pt 0;
     padding: 0;
@@ -1999,12 +2001,17 @@ th {
 
   .checkins-chart-bar {
     min-height: 14pt;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
+  .checkins-chart-key,
   .checkins-chart-segment {
     border-right: 1px solid #fff;
     font-size: 7pt;
     min-width: 7pt;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   .checkins-table {

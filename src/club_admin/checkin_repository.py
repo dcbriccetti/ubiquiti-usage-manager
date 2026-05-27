@@ -81,6 +81,11 @@ def checkin_from_row(row: sqlite3.Row) -> CheckIn:
         check_in_at=datetime.fromisoformat(row["check_in_at"]),
         check_out_at=_text_to_datetime(row["check_out_at"]),
         total_checkins=row["total_checkins"],
+        visit_number=(
+            int(row["visit_number"])
+            if "visit_number" in row.keys() and row["visit_number"] is not None
+            else None
+        ),
         duration=row["duration"],
         membership=row["membership"],
     )
@@ -236,26 +241,46 @@ def list_checkins_for_date_range(
     start_at, exclusive_end_at = _date_range_bounds(start_date, end_date)
     rows = connection.execute(
         """
+        WITH numbered_checkins AS (
+            SELECT
+                c.id,
+                c.user_id,
+                c.member_id,
+                c.last_name,
+                COALESCE(NULLIF(u.nickname, ''), c.first_name) AS first_name,
+                c.card_number,
+                c.check_in_at,
+                c.check_out_at,
+                c.total_checkins,
+                ROW_NUMBER() OVER (
+                    PARTITION BY c.user_id
+                    ORDER BY c.check_in_at, c.id
+                ) AS visit_number,
+                c.duration,
+                c.membership
+            FROM checkins c
+            LEFT JOIN users u ON u.id = c.user_id
+        )
         SELECT
-            c.id,
-            c.user_id,
-            c.member_id,
-            c.last_name,
-            COALESCE(NULLIF(u.nickname, ''), c.first_name) AS first_name,
-            c.card_number,
-            c.check_in_at,
-            c.check_out_at,
-            c.total_checkins,
-            c.duration,
-            c.membership
-        FROM checkins c
-        LEFT JOIN users u ON u.id = c.user_id
-        WHERE c.check_in_at >= ? AND c.check_in_at < ?
+            id,
+            user_id,
+            member_id,
+            last_name,
+            first_name,
+            card_number,
+            check_in_at,
+            check_out_at,
+            total_checkins,
+            visit_number,
+            duration,
+            membership
+        FROM numbered_checkins
+        WHERE check_in_at >= ? AND check_in_at < ?
         ORDER BY
-            c.last_name,
-            COALESCE(NULLIF(u.nickname, ''), c.first_name),
-            c.card_number,
-            c.check_in_at DESC
+            last_name,
+            first_name,
+            card_number,
+            check_in_at DESC
         """,
         (start_at, exclusive_end_at),
     ).fetchall()
