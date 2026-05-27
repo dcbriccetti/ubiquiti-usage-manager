@@ -74,6 +74,12 @@ CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN = (
     ("AANR", "AANR Member", "membership-aanr"),
     ("Visitor", "Visitor", "membership-visitor"),
 )
+CHECKIN_VISIT_NUMBER_MEMBERSHIP_FILTERS = {
+    "both": None,
+    "members": ("Full Member", "Associate Member"),
+    "visitors": ("AANR Member", "Visitor"),
+}
+CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT = 9
 BARCODE_SECRET_SETTING_KEY = "self_checkin_barcode_secret"
 KIOSK_AUTO_RETURN_SECONDS = 60
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
@@ -514,6 +520,68 @@ def _checkin_time_chart(
             for label, _, css_class in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
         ),
         buckets=tuple(buckets),
+    )
+
+
+def _checkin_visit_number_chart(
+    visit_number_counts: tuple[tuple[int, int], ...],
+) -> CheckinTimeChart:
+    exact_counts: Counter[int] = Counter()
+    overflow_count = 0
+    for visit_number, count in visit_number_counts:
+        if visit_number <= CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT:
+            exact_counts[visit_number] += count
+        else:
+            overflow_count += count
+
+    max_total = max([*exact_counts.values(), overflow_count], default=0)
+    buckets = []
+    for visit_number in range(1, CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT + 1):
+        count = exact_counts[visit_number]
+        if not count:
+            continue
+        segments = ()
+        if max_total:
+            segments = (
+                CheckinChartSegment(
+                    label="Check-ins",
+                    css_class="visit-number",
+                    count=count,
+                    percent=(count / max_total) * 100,
+                ),
+            )
+        buckets.append(
+            CheckinChartBucket(
+                label=str(visit_number),
+                group_label=None,
+                group_total=None,
+                total=count,
+                segments=segments,
+            )
+        )
+
+    if overflow_count:
+        buckets.append(
+            CheckinChartBucket(
+                label=f"{CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT + 1}+",
+                group_label=None,
+                group_total=None,
+                total=overflow_count,
+                segments=(
+                    CheckinChartSegment(
+                        label="Check-ins",
+                        css_class="visit-number",
+                        count=overflow_count,
+                        percent=(overflow_count / max_total) * 100,
+                    ),
+                ),
+            )
+        )
+
+    return CheckinTimeChart(
+        title="Check-ins by Visit Number",
+        legend=(),
+        buckets=tuple(buckets) if max_total else (),
     )
 
 
@@ -1981,11 +2049,23 @@ def create_app(db_path: Path | None = None) -> Flask:
         if start_date > end_date:
             abort(400, "Start date must be on or before end date.")
 
+        visit_number_membership = request.args.get("visit_number_membership", "both")
+        visit_number_memberships = CHECKIN_VISIT_NUMBER_MEMBERSHIP_FILTERS.get(
+            visit_number_membership
+        )
+        if visit_number_membership not in CHECKIN_VISIT_NUMBER_MEMBERSHIP_FILTERS:
+            abort(400, "Visit number filter must be both, members, or visitors.")
         with open_connection() as connection:
             checkins = checkin_repository.list_checkins_for_date_range(
                 connection,
                 start_date,
                 end_date,
+            )
+            visit_number_counts = checkin_repository.count_visit_numbers_for_date_range(
+                connection,
+                start_date,
+                end_date,
+                memberships=visit_number_memberships,
             )
 
         return render_template(
@@ -1993,6 +2073,8 @@ def create_app(db_path: Path | None = None) -> Flask:
             checkins=checkins,
             membership_breakdown=_checkin_membership_breakdown(checkins),
             time_chart=_checkin_time_chart(checkins, start_date, end_date),
+            visit_number_chart=_checkin_visit_number_chart(visit_number_counts),
+            visit_number_membership=visit_number_membership,
             date_presets=_date_range_presets(today),
             start_date=start_date,
             end_date=end_date,

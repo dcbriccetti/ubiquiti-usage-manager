@@ -462,6 +462,199 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("11 AM", body)
         self.assertIn('class="checkins-chart-segment membership-visitor"', body)
 
+    def test_checkin_report_charts_checkins_by_lifetime_visit_number(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                checkins = [
+                    checkin_fixture(
+                        member_id="100",
+                        card_number="100",
+                        first_name="First",
+                        last_name="Visitor",
+                        check_in_at=datetime(2026, 5, 10, 9, 0, 0),
+                    ),
+                    checkin_fixture(
+                        member_id="200",
+                        card_number="200",
+                        first_name="Second",
+                        last_name="Visitor",
+                        check_in_at=datetime(2026, 5, 1, 9, 0, 0),
+                    ),
+                    checkin_fixture(
+                        member_id="200",
+                        card_number="200",
+                        first_name="Second",
+                        last_name="Visitor",
+                        check_in_at=datetime(2026, 5, 10, 9, 5, 0),
+                    ),
+                    checkin_fixture(
+                        member_id="300",
+                        card_number="300",
+                        first_name="Another",
+                        last_name="Second",
+                        check_in_at=datetime(2026, 5, 2, 9, 10, 0),
+                    ),
+                    checkin_fixture(
+                        member_id="300",
+                        card_number="300",
+                        first_name="Another",
+                        last_name="Second",
+                        check_in_at=datetime(2026, 5, 10, 9, 10, 0),
+                    ),
+                ]
+                for day in range(1, 10):
+                    checkins.append(
+                        checkin_fixture(
+                            member_id="900",
+                            card_number="900",
+                            first_name="Tenth",
+                            last_name="Visitor",
+                            check_in_at=datetime(2026, 4, day, 9, 0, 0),
+                        )
+                    )
+                checkins.append(
+                    checkin_fixture(
+                        member_id="900",
+                        card_number="900",
+                        first_name="Tenth",
+                        last_name="Visitor",
+                        check_in_at=datetime(2026, 5, 10, 9, 15, 0),
+                    )
+                )
+                for day in range(1, 11):
+                    checkins.append(
+                        checkin_fixture(
+                            member_id="901",
+                            card_number="901",
+                            first_name="Eleventh",
+                            last_name="Visitor",
+                            check_in_at=datetime(2026, 4, day, 10, 0, 0),
+                        )
+                    )
+                checkins.append(
+                    checkin_fixture(
+                        member_id="901",
+                        card_number="901",
+                        first_name="Eleventh",
+                        last_name="Visitor",
+                        check_in_at=datetime(2026, 5, 10, 9, 20, 0),
+                    )
+                )
+                for checkin in checkins:
+                    checkin_repository.upsert_checkin(connection, checkin)
+                connection.commit()
+
+            response = client.get(
+                "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Check-ins by Visit Number", body)
+        self.assertIn('class="checkins-time-chart checkins-visit-number-chart"', body)
+        self.assertIn('aria-label="1: 1 check-in"', body)
+        self.assertIn('aria-label="2: 2 check-ins"', body)
+        self.assertNotIn('aria-label="9: 0 check-ins"', body)
+        self.assertIn('aria-label="10+: 2 check-ins"', body)
+        self.assertIn('class="checkins-chart-segment visit-number"', body)
+
+    def test_checkin_report_can_limit_visit_number_chart_by_membership_group(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                for checkin in (
+                    checkin_fixture(
+                        member_id="100",
+                        card_number="100",
+                        first_name="Fran",
+                        last_name="Full",
+                        membership="Full Member",
+                        check_in_at=datetime(2026, 5, 10, 9, 0, 0),
+                    ),
+                    checkin_fixture(
+                        member_id="150",
+                        card_number="150",
+                        first_name="Annie",
+                        last_name="Associate",
+                        membership="Associate Member",
+                        check_in_at=datetime(2026, 5, 10, 9, 3, 0),
+                    ),
+                    checkin_fixture(
+                        member_id="200",
+                        card_number="200",
+                        first_name="Alex",
+                        last_name="AANR",
+                        membership="AANR Member",
+                        check_in_at=datetime(2026, 5, 10, 9, 5, 0),
+                    ),
+                    checkin_fixture(
+                        member_id="300",
+                        card_number="300",
+                        first_name="Vera",
+                        last_name="Visitor",
+                        membership="Visitor",
+                        check_in_at=datetime(2026, 5, 10, 9, 10, 0),
+                    ),
+                ):
+                    checkin_repository.upsert_checkin(connection, checkin)
+                connection.commit()
+
+            both_response = client.get(
+                "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
+            )
+            members_response = client.get(
+                "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
+                "&visit_number_membership=members"
+            )
+            visitors_response = client.get(
+                "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
+                "&visit_number_membership=visitors"
+            )
+
+        self.assertEqual(both_response.status_code, 200)
+        both_body = both_response.get_data(as_text=True)
+        self.assertIn('aria-label="1: 4 check-ins"', both_body)
+
+        self.assertEqual(members_response.status_code, 200)
+        members_body = members_response.get_data(as_text=True)
+        self.assertIn('class="chart-toggle-form"', members_body)
+        self.assertIn('name="start_date" value="2026-05-10"', members_body)
+        self.assertIn('name="end_date" value="2026-05-10"', members_body)
+        self.assertIn('name="visit_number_membership"', members_body)
+        self.assertIn('onchange="this.form.submit()"', members_body)
+        self.assertIn("<span>Show</span>", members_body)
+        self.assertIn(">Members and Visitors</option>", members_body)
+        self.assertIn('value="members" selected>Members</option>', members_body)
+        self.assertIn(">Visitors</option>", members_body)
+        self.assertIn("visit_number_membership=members", members_body)
+        self.assertIn('aria-label="1: 2 check-ins"', members_body)
+        self.assertNotIn('aria-label="1: 4 check-ins"', members_body)
+
+        self.assertEqual(visitors_response.status_code, 200)
+        body = visitors_response.get_data(as_text=True)
+        self.assertIn("Full Member: 1", body)
+        self.assertIn("Assoc.: 1", body)
+        self.assertIn("AANR: 1", body)
+        self.assertIn("Visitor: 1", body)
+        self.assertIn(">Full</a>", body)
+        self.assertIn(">Associate</a>", body)
+        self.assertIn(">AANR</a>", body)
+        self.assertIn(">Visitor</a>", body)
+        self.assertIn('class="chart-toggle-form"', body)
+        self.assertIn('name="start_date" value="2026-05-10"', body)
+        self.assertIn('name="end_date" value="2026-05-10"', body)
+        self.assertIn('name="visit_number_membership"', body)
+        self.assertIn('onchange="this.form.submit()"', body)
+        self.assertIn('value="visitors" selected>Visitors</option>', body)
+        self.assertIn("visit_number_membership=visitors", body)
+        self.assertIn('aria-label="1: 2 check-ins"', body)
+        self.assertNotIn('aria-label="1: 4 check-ins"', body)
+
     def test_club_app_renders_singular_checkin_report_count(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"

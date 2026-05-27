@@ -601,11 +601,35 @@ th {
   gap: 4px;
 }
 
-.report-filters input {
+.report-filters input:not([type="checkbox"]),
+.chart-toggle-form input:not([type="checkbox"]),
+.chart-toggle-form select {
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font: inherit;
   padding: 7px 8px;
+}
+
+.chart-toggle-form {
+  margin: 0;
+}
+
+.chart-select-field {
+  align-items: center;
+  color: #4b5563;
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+}
+
+.report-toggle {
+  align-items: center;
+  flex-direction: row !important;
+  gap: 6px !important;
+}
+
+.report-toggle input {
+  margin: 0;
 }
 
 .report-presets {
@@ -766,6 +790,10 @@ th {
 
 .membership-visitor {
   background: #f28482;
+}
+
+.visit-number {
+  background: #5eead4;
 }
 
 .report-tabs {
