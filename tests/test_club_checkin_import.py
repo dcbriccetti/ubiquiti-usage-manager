@@ -533,8 +533,10 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertNotIn("Recent Check-ins", body)
-        self.assertIn("Last Check-in", body)
-        self.assertIn("2026-05-03 15:59:20", body)
+        self.assertIn("First Visit", body)
+        self.assertIn("Last Visit", body)
+        self.assertIn("2026-05-03", body)
+        self.assertNotIn("2026-05-03 15:59:20", body)
 
     def test_self_checkin_requires_phone_and_initials_to_match(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

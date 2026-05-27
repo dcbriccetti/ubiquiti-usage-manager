@@ -793,23 +793,26 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('data-sort-column="0" data-sort-type="text"', body)
         self.assertNotIn(">Card #<", body)
         self.assertIn('data-sort-column="5" data-sort-type="date"', body)
-        self.assertIn('data-sort-column="6" data-sort-type="text"', body)
+        self.assertIn('data-sort-column="6" data-sort-type="date"', body)
+        self.assertIn('data-sort-column="7" data-sort-type="text"', body)
         self.assertIn('data-sort-column="10" data-sort-type="number"', body)
-        self.assertIn('data-sort-column="11" data-sort-type="date"', body)
+        self.assertIn('data-sort-column="11" data-sort-type="number"', body)
         self.assertIn("No users match this search.", body)
         self.assertNotIn('class="file-field"', body)
         self.assertNotIn("Users CSV", body)
         self.assertNotIn("Check-ins CSV", body)
         self.assertIn("Nickname", body)
         self.assertIn("Johnny", body)
-        self.assertIn("1st Visit", body)
+        self.assertIn("First Visit", body)
+        self.assertIn("Last Visit", body)
         self.assertIn("Date of Birth", body)
-        self.assertIn(">2020-05-01<", body)
+        self.assertIn('data-sort-value="2020-05-01"', body)
+        self.assertIn("2020-05-01", body)
         self.assertIn(">1980-07-04<", body)
         self.assertIn("123 Main St", body)
         self.assertIn("Unit 4", body)
         self.assertIn("Everytown CA 94000", body)
-        self.assertIn("2026-05-03 15:59:20", body)
+        self.assertIn("2026-05-03", body)
         self.assertIn("Docs", body)
         self.assertIn("Visits", body)
         self.assertIn("AANR members: visits in the past year.", body)
@@ -818,8 +821,46 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn(">2<", body)
         self.assertNotIn('<td data-sort-value="123">', body)
         self.assertIn('<td class="numeric" data-sort-value="0"></td>', body)
-        self.assertIn('data-sort-value="2026-05-03T15:59:20"', body)
+        self.assertIn('data-sort-value="2026-05-03"', body)
+        self.assertNotIn("2026-05-03 15:59:20", body)
         self.assertNotIn(">0<", body)
+
+    def test_members_page_shows_first_and_last_visit_dates_without_times(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                        member_since=datetime(2026, 5, 3).date(),
+                    ),
+                )
+                checkin_repository.upsert_checkin(
+                    connection,
+                    CheckIn(
+                        member_id="1",
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        check_in_at=datetime(2026, 5, 3, 15, 59, 20),
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+
+            response = client.get("/members")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertEqual(body.count('data-sort-value="2026-05-03"'), 2)
+        self.assertEqual(body.count(">2026-05-03<"), 2)
+        self.assertNotIn("15:59:20", body)
 
     def test_member_report_counts_visits_by_membership_period(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

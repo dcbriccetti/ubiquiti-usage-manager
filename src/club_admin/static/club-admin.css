@@ -440,8 +440,8 @@ th {
 
 .users-table th:nth-child(4),
 .users-table td:nth-child(4),
-.users-table th:nth-child(9),
-.users-table td:nth-child(9) {
+.users-table th:nth-child(10),
+.users-table td:nth-child(10) {
   white-space: nowrap;
 }
 
@@ -450,21 +450,21 @@ th {
   min-width: 9rem;
 }
 
-.users-table th:nth-child(7),
-.users-table td:nth-child(7) {
+.users-table th:nth-child(8),
+.users-table td:nth-child(8) {
   min-width: 13rem;
 }
 
-.users-table th:nth-child(8),
-.users-table td:nth-child(8) {
+.users-table th:nth-child(9),
+.users-table td:nth-child(9) {
   max-width: 16rem;
   overflow-wrap: anywhere;
 }
 
-.users-table th:nth-child(10),
-.users-table td:nth-child(10),
 .users-table th:nth-child(11),
-.users-table td:nth-child(11) {
+.users-table td:nth-child(11),
+.users-table th:nth-child(12),
+.users-table td:nth-child(12) {
   min-width: 4.5rem;
 }
 
