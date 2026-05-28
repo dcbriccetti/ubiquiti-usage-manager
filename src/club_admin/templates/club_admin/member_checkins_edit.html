@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Edit Check-ins for {{ member.first_name }} {{ member.last_name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Edit Check-ins</h1>
+        <p class="summary">{{ member.first_name }} {{ member.last_name }}</p>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('member_detail', member_id=member.id) }}">Detail</a>
+        <a href="{{ url_for('edit_member', member_id=member.id) }}">Edit User</a>
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('checkins_report') }}">Check-ins</a>
+        <a href="{{ url_for('guest_registrations') }}">Guests</a>
+        <a href="{{ url_for('documents_report') }}">Documents</a>
+        <a href="{{ url_for('recent_changes') }}">Changes</a>
+      </nav>
+    </header>
+
+    <form class="checkins-edit-form" action="{{ url_for('edit_member_checkins', member_id=member.id) }}" method="post" data-checkins-edit-form>
+      <section class="edit-checkins-section" aria-labelledby="edit-checkins-title">
+        <div class="edit-section-heading">
+          <h2 id="edit-checkins-title">Check-ins</h2>
+          <p class="checkins-save-reminder">
+            Date and time changes are saved only by Save Changes. Delete Selected deletes only checked rows.
+          </p>
+        </div>
+        {% if checkins %}
+          <div class="checkins-edit-actions">
+            <button type="submit" name="checkin_action" value="delete_selected" data-delete-selected-checkins>
+              Delete Selected
+            </button>
+          </div>
+        {% endif %}
+        <div class="table-scroll">
+          <table class="checkin-edit-table">
+            <thead>
+              <tr>
+                <th scope="col" class="checkin-select-col">Select</th>
+                <th scope="col">Date and Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for checkin in checkins %}
+                <tr>
+                  <td class="checkin-select-cell">
+                    <label class="checkbox-field">
+                      <input
+                        type="checkbox"
+                        name="delete_checkin_{{ checkin.id }}"
+                        value="1"
+                        data-checkin-dirty-field
+                        data-delete-checkin
+                      >
+                      <span class="visually-hidden">Select check-in at {{ checkin.check_in_at.strftime('%Y-%m-%d %H:%M:%S') }} for deletion</span>
+                    </label>
+                  </td>
+                  <td>
+                    <label>
+                      <span class="visually-hidden">Check-in date and time</span>
+                      <input
+                        class="checkin-datetime-input"
+                        type="datetime-local"
+                        name="checkin_{{ checkin.id }}_check_in_at"
+                        value="{{ checkin.check_in_at.strftime('%Y-%m-%dT%H:%M:%S') }}"
+                        step="1"
+                        required
+                        data-checkin-dirty-field
+                      >
+                    </label>
+                  </td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="2" class="empty">No check-ins recorded for this user.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <label class="new-checkin-field">
+          Add Check-in
+          <input
+            class="checkin-datetime-input"
+            type="datetime-local"
+            name="new_checkin_at"
+            step="1"
+            data-checkin-dirty-field
+          >
+        </label>
+      </section>
+      <button type="submit" data-save-checkin-changes>Save Changes</button>
+    </form>
+  </main>
+  <script>
+    (() => {
+      const form = document.querySelector("[data-checkins-edit-form]");
+      const fields = Array.from(document.querySelectorAll("[data-checkin-dirty-field]"));
+      const deleteSelectedButton = document.querySelector("[data-delete-selected-checkins]");
+      const deleteCheckboxes = Array.from(document.querySelectorAll("[data-delete-checkin]"));
+      let isSubmitting = false;
+
+      if (!form || fields.length === 0) {
+        return;
+      }
+
+      fields.forEach((field) => {
+        if (field instanceof HTMLInputElement && field.type === "checkbox") {
+          field.dataset.initialChecked = field.checked ? "1" : "0";
+          return;
+        }
+        field.dataset.initialValue = field.value;
+      });
+
+      const fieldChanged = (field) => {
+        if (!(field instanceof HTMLInputElement)) {
+          return false;
+        }
+        if (field.type === "checkbox") {
+          return (field.checked ? "1" : "0") !== field.dataset.initialChecked;
+        }
+        return field.value !== (field.dataset.initialValue || "");
+      };
+
+      form.addEventListener("submit", () => {
+        isSubmitting = true;
+      });
+      const updateDeleteSelectedButton = () => {
+        if (!deleteSelectedButton) {
+          return;
+        }
+        deleteSelectedButton.disabled = !deleteCheckboxes.some((checkbox) => checkbox.checked);
+      };
+      const hasUnsavedNonDeleteChanges = () =>
+        fields.some((field) => !field.matches("[data-delete-checkin]") && fieldChanged(field));
+      deleteSelectedButton?.addEventListener("click", (event) => {
+        if (!hasUnsavedNonDeleteChanges()) {
+          return;
+        }
+        const confirmed = window.confirm(
+          "Delete selected check-ins without saving other changes?"
+        );
+        if (!confirmed) {
+          event.preventDefault();
+        }
+      });
+      deleteCheckboxes.forEach((checkbox) => {
+        checkbox.addEventListener("change", updateDeleteSelectedButton);
+      });
+      updateDeleteSelectedButton();
+      fields.forEach((field) => {
+        field.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") {
+            return;
+          }
+          event.preventDefault();
+          field.blur();
+        });
+      });
+      window.addEventListener("beforeunload", (event) => {
+        if (isSubmitting || !fields.some(fieldChanged)) {
+          return;
+        }
+        event.preventDefault();
+        event.returnValue = "";
+      });
+    })();
+  </script>
+</body>
+</html>

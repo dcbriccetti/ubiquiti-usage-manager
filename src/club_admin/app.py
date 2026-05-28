@@ -2065,7 +2065,6 @@ def create_app(db_path: Path | None = None) -> Flask:
             member = member_repository.get_member(connection, member_id)
             if member is None:
                 abort(404)
-            checkins = checkin_repository.list_checkins_for_user(connection, member_id)
 
             if request.method == "POST":
                 try:
@@ -2081,15 +2080,76 @@ def create_app(db_path: Path | None = None) -> Flask:
                     abort(400, "Choose a valid membership.")
 
                 try:
+                    member_repository.update_member(connection, updated_member)
+                    for field_name in EDITABLE_MEMBER_FIELDS:
+                        old_value = getattr(member, field_name)
+                        new_value = getattr(updated_member, field_name)
+                        if old_value != new_value:
+                            audit_repository.record_field_change(
+                                connection,
+                                entity_type="user",
+                                entity_id=member_id,
+                                action="edit",
+                                field_name=field_name,
+                                old_value=old_value,
+                                new_value=new_value,
+                            )
+                    connection.commit()
+                except sqlite3.IntegrityError as error:
+                    connection.rollback()
+                    error_message = str(error)
+                    if "users.card_number" in error_message:
+                        abort(400, "Another user already has that card number.")
+                    abort(400, "Could not save the user.")
+                return redirect(url_for("member_detail", member_id=member_id))
+
+        return render_template(
+            "club_admin/member_edit.html",
+            member=member,
+            membership_options=MEMBERSHIP_OPTIONS,
+        )
+
+    @flask_app.route("/members/<int:member_id>/checkins/edit", methods=["GET", "POST"])
+    @require_admin
+    def edit_member_checkins(member_id: int):
+        with open_connection() as connection:
+            member = member_repository.get_member(connection, member_id)
+            if member is None:
+                abort(404)
+            checkins = checkin_repository.list_checkins_for_user(connection, member_id)
+
+            if request.method == "POST":
+                try:
+                    if request.form.get("checkin_action") == "delete_selected":
+                        deleted_checkin_ids = {
+                            checkin.id
+                            for checkin in checkins
+                            if checkin.id is not None
+                            and request.form.get(f"delete_checkin_{checkin.id}") == "1"
+                        }
+                        for checkin_id in deleted_checkin_ids:
+                            deleted_checkin = next(
+                                checkin for checkin in checkins if checkin.id == checkin_id
+                            )
+                            checkin_repository.delete_checkin_for_user(
+                                connection,
+                                checkin_id=checkin_id,
+                                user_id=member_id,
+                            )
+                            _record_checkin_change(
+                                connection,
+                                member_id=member_id,
+                                field_name="check-in deleted",
+                                old_value=deleted_checkin.check_in_at,
+                                new_value=None,
+                            )
+                        connection.commit()
+                        return redirect(url_for("edit_member_checkins", member_id=member_id))
+
                     edited_checkins = []
-                    deleted_checkin_ids = set()
                     for checkin in checkins:
                         if checkin.id is None:
                             continue
-                        if request.form.get(f"delete_checkin_{checkin.id}") == "1":
-                            deleted_checkin_ids.add(checkin.id)
-                            continue
-
                         check_in_at = _parse_checkin_datetime(
                             request.form.get(f"checkin_{checkin.id}_check_in_at", ""),
                             required=True,
@@ -2097,9 +2157,9 @@ def create_app(db_path: Path | None = None) -> Flask:
                         assert check_in_at is not None
                         edited_checkins.append(
                             _checkin_for_member(
-                                updated_member,
+                                member,
                                 check_in_at=check_in_at,
-                                member_id=checkin.member_id or updated_member.card_number,
+                                member_id=checkin.member_id or member.card_number,
                                 existing_checkin=checkin,
                             )
                         )
@@ -2110,31 +2170,14 @@ def create_app(db_path: Path | None = None) -> Flask:
                     )
                     new_checkin = (
                         _checkin_for_member(
-                            updated_member,
+                            member,
                             check_in_at=new_check_in_at,
-                            member_id=_member_id_for_manual_checkin(updated_member, checkins),
+                            member_id=_member_id_for_manual_checkin(member, checkins),
                         )
                         if new_check_in_at is not None
                         else None
                     )
 
-                    member_repository.update_member(connection, updated_member)
-                    for checkin_id in deleted_checkin_ids:
-                        deleted_checkin = next(
-                            checkin for checkin in checkins if checkin.id == checkin_id
-                        )
-                        checkin_repository.delete_checkin_for_user(
-                            connection,
-                            checkin_id=checkin_id,
-                            user_id=member_id,
-                        )
-                        _record_checkin_change(
-                            connection,
-                            member_id=member_id,
-                            field_name="check-in deleted",
-                            old_value=deleted_checkin.check_in_at,
-                            new_value=None,
-                        )
                     for edited_checkin in edited_checkins:
                         checkin_repository.update_checkin_for_user(connection, edited_checkin)
                         original_checkin = next(
@@ -2157,38 +2200,20 @@ def create_app(db_path: Path | None = None) -> Flask:
                             old_value=None,
                             new_value=new_checkin.check_in_at,
                         )
-
-                    for field_name in EDITABLE_MEMBER_FIELDS:
-                        old_value = getattr(member, field_name)
-                        new_value = getattr(updated_member, field_name)
-                        if old_value != new_value:
-                            audit_repository.record_field_change(
-                                connection,
-                                entity_type="user",
-                                entity_id=member_id,
-                                action="edit",
-                                field_name=field_name,
-                                old_value=old_value,
-                                new_value=new_value,
-                            )
                     connection.commit()
                 except CheckInFormError as error:
                     abort(400, str(error))
                 except sqlite3.IntegrityError as error:
                     connection.rollback()
-                    error_message = str(error)
-                    if "checkins" in error_message:
+                    if "checkins" in str(error):
                         abort(400, "A check-in already exists for that date and time.")
-                    if "users.card_number" in error_message:
-                        abort(400, "Another user already has that card number.")
-                    abort(400, "Could not save the user or check-ins.")
+                    abort(400, "Could not save the check-ins.")
                 return redirect(url_for("member_detail", member_id=member_id))
 
         return render_template(
-            "club_admin/member_edit.html",
+            "club_admin/member_checkins_edit.html",
             member=member,
             checkins=checkins,
-            membership_options=MEMBERSHIP_OPTIONS,
         )
 
     @flask_app.route("/checkins/report")

@@ -988,6 +988,7 @@ th {
 
 .admin-login-form label,
 .edit-form label,
+.checkins-edit-form label,
 .self-checkin-form label,
 .guest-registration-form label {
   color: #4b5563;
@@ -1034,23 +1035,51 @@ th {
   margin: 8px 0 0;
 }
 
+.checkins-edit-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.checkins-edit-actions button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
 .table-scroll {
   overflow-x: auto;
 }
 
 .checkin-edit-table {
   box-shadow: none;
-  min-width: min(100%, 420px);
-  width: 100%;
+  min-width: 0;
+  width: fit-content;
 }
 
-.checkin-edit-table th:nth-child(2),
-.checkin-edit-table td:nth-child(2) {
-  width: 9rem;
+.checkin-edit-table th,
+.checkin-edit-table td {
+  border-bottom: 0;
+  padding-bottom: 1px;
+  padding-top: 1px;
 }
 
-.checkin-edit-table input[type="datetime-local"] {
-  min-width: 14rem;
+.checkin-edit-table th {
+  background: transparent;
+  padding-bottom: 2px;
+}
+
+.checkin-edit-table .checkin-select-col,
+.checkin-edit-table .checkin-select-cell {
+  width: 4rem;
+}
+
+.checkin-edit-table .checkbox-field {
+  gap: 0;
+  justify-content: center;
+  min-height: 28px;
+}
+
+.checkin-edit-table label {
+  gap: 0;
 }
 
 .new-checkin-field {
@@ -1059,6 +1088,7 @@ th {
 
 .edit-form input,
 .edit-form select,
+.checkins-edit-form input,
 .self-checkin-form input,
 .guest-registration-form input,
 .guest-registration-form select {
@@ -1066,6 +1096,29 @@ th {
   border-radius: 6px;
   font: inherit;
   padding: 7px 8px;
+}
+
+.edit-form .checkin-datetime-input,
+.checkins-edit-form .checkin-datetime-input {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  line-height: 1.2;
+  min-width: 14rem;
+  padding: 2px 0;
+  width: 15rem;
+}
+
+.edit-form .checkin-datetime-input:focus,
+.checkins-edit-form .checkin-datetime-input:focus {
+  background: #fff;
+  border-color: #93b4d8;
+  border-radius: 4px;
+  outline: 2px solid #bfdbfe;
+  outline-offset: 0;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 .self-checkin-page .self-checkin-form input {
