@@ -1733,7 +1733,24 @@ def create_app(db_path: Path | None = None) -> Flask:
                     connection,
                     replace(registration, user_id=member_id),
                 )
-                _record_self_checkin(connection, member)
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=member_id,
+                    action="edit",
+                    field_name="guest registration submitted",
+                    old_value=None,
+                    new_value=registration.visit_date,
+                )
+                checkin_result = _record_self_checkin(connection, member)
+                if checkin_result.recorded:
+                    _record_checkin_change(
+                        connection,
+                        member_id=member_id,
+                        field_name="check-in added",
+                        old_value=None,
+                        new_value=checkin_result.check_in_at,
+                    )
                 connection.commit()
             return redirect(url_for("guest_registration_thanks"))
 
@@ -2169,6 +2186,17 @@ def create_app(db_path: Path | None = None) -> Flask:
 
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         uploaded_file.save(destination_path)
+        with open_connection() as connection:
+            audit_repository.record_field_change(
+                connection,
+                entity_type="user",
+                entity_id=member_id,
+                action="edit",
+                field_name="document attached",
+                old_value=None,
+                new_value=destination_path.name,
+            )
+            connection.commit()
         return redirect(url_for("member_detail", member_id=member_id))
 
     @flask_app.route("/members/<int:member_id>/edit", methods=["GET", "POST"])
@@ -2468,6 +2496,17 @@ def create_app(db_path: Path | None = None) -> Flask:
         if destination_path is None:
             abort(400, "Document storage is not configured.")
         _save_driver_license_image(uploaded_file, destination_path)
+        with open_connection() as connection:
+            audit_repository.record_field_change(
+                connection,
+                entity_type="user",
+                entity_id=record.member.id,
+                action="edit",
+                field_name="driver license uploaded",
+                old_value=None,
+                new_value=destination_path.name,
+            )
+            connection.commit()
         return redirect(url_for("filled_guest_registration_form", registration_id=registration_id))
 
     @flask_app.route("/self-checkin", methods=["GET", "POST"])

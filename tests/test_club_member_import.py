@@ -513,10 +513,15 @@ class ClubMemberImportTests(unittest.TestCase):
                     connection
                 )
                 checkins = checkin_repository.list_checkins(connection)
+                new_user = next(user for user in users if user.last_name == "Doe")
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=new_user.id,
+                )
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("/guest-registration/thanks", response.headers["Location"])
-        new_user = next(user for user in users if user.last_name == "Doe")
         self.assertEqual(len(users), 3)
         self.assertEqual(new_user.membership, "Visitor")
         self.assertEqual(new_user.card_number, "1000")
@@ -533,6 +538,12 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(checkins[0].user_id, new_user.id)
         self.assertEqual(checkins[0].card_number, "1000")
         self.assertEqual(checkins[0].membership, "Visitor")
+        audit_by_field = {entry.field_name: entry for entry in audit_entries}
+        self.assertEqual(
+            audit_by_field["guest registration submitted"].new_value,
+            "2026-05-14",
+        )
+        self.assertIsNotNone(audit_by_field["check-in added"].new_value)
         self.assertEqual(checkins[0].last_name, "Doe")
         self.assertEqual(checkins[0].first_name, "John")
 
@@ -1786,6 +1797,12 @@ class ClubMemberImportTests(unittest.TestCase):
             duplicate_document_path = documents_dir / "123" / "Insurance Card 2.pdf"
             saved_document_bytes = saved_document_path.read_bytes()
             duplicate_document_bytes = duplicate_document_path.read_bytes()
+            with closing(database.connect(db_path)) as connection:
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
@@ -1800,6 +1817,13 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(
             duplicate_document_bytes,
             b"replacement insurance card",
+        )
+        self.assertEqual(
+            [entry.new_value for entry in audit_entries],
+            ["Insurance Card 2.pdf", "Insurance Card.pdf"],
+        )
+        self.assertTrue(
+            all(entry.field_name == "document attached" for entry in audit_entries)
         )
 
     def test_member_detail_guest_form_lookup_uses_card_folder_and_guest_form_prefix(self) -> None:
@@ -2657,9 +2681,17 @@ class ClubMemberImportTests(unittest.TestCase):
             )
             with Image.open(saved_license_path) as saved_license_image:
                 saved_license_size = saved_license_image.size
+            with closing(database.connect(db_path)) as connection:
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=record.member.id,
+                )
 
         self.assertEqual(upload_response.status_code, 302)
         self.assertEqual(saved_license_size, (2026, 1152))
+        self.assertEqual(audit_entries[0].field_name, "driver license uploaded")
+        self.assertEqual(audit_entries[0].new_value, "Driver License.jpg")
         self.assertEqual(queue_response.status_code, 200)
         self.assertIn("Guest Registrations", queue_body)
         self.assertIn("Print Form", queue_body)
