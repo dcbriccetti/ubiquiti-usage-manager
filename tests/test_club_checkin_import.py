@@ -5,7 +5,7 @@ import sys
 import tempfile
 from contextlib import closing
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -821,6 +821,90 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("1861", body)
         self.assertNotIn("UM1:", body)
         self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_ignores_repeat_checkin_within_one_hour(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            client = flask_app.test_client()
+            first_response = client.post(
+                "/self-checkin",
+                data={"phone": "+1 (510) 510-5100", "initials": "JD"},
+            )
+            second_response = client.post(
+                "/self-checkin",
+                data={"phone": "+1 (510) 510-5100", "initials": "JD"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertEqual(len(checkins), 1)
+        body = second_response.get_data(as_text=True)
+        self.assertIn('class="self-checkin-status is-success"', body)
+        self.assertIn("Already checked in within the past hour.", body)
+
+    def test_self_checkin_records_again_after_one_hour(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            old_checkin_at = datetime.now().replace(microsecond=0) - timedelta(
+                hours=1,
+                minutes=1,
+            )
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                checkin_repository.upsert_checkin(
+                    connection,
+                    CheckIn(
+                        user_id=member.id,
+                        member_id=str(member.id),
+                        last_name=member.last_name,
+                        first_name=member.first_name,
+                        card_number=member.card_number,
+                        check_in_at=old_checkin_at,
+                        membership=member.membership,
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "+1 (510) 510-5100", "initials": "JD"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Check-in recorded.", response.get_data(as_text=True))
+        self.assertEqual(len(checkins), 2)
 
     def test_self_checkin_barcode_survives_app_restart(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

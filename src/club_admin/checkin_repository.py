@@ -232,6 +232,42 @@ def list_checkins_for_user(connection: sqlite3.Connection, user_id: int) -> list
     return [checkin_from_row(row) for row in rows]
 
 
+def latest_checkin_for_user_between(
+    connection: sqlite3.Connection,
+    *,
+    user_id: int,
+    start_at: datetime,
+    end_at: datetime,
+) -> CheckIn | None:
+    '''Return the newest check-in for one user inside a datetime window.'''
+    row = connection.execute(
+        """
+        SELECT
+            id,
+            user_id,
+            member_id,
+            last_name,
+            first_name,
+            card_number,
+            check_in_at,
+            check_out_at,
+            total_checkins,
+            duration,
+            membership
+        FROM checkins
+        WHERE user_id = ? AND check_in_at >= ? AND check_in_at <= ?
+        ORDER BY check_in_at DESC, id DESC
+        LIMIT 1
+        """,
+        (
+            user_id,
+            _datetime_to_text(start_at),
+            _datetime_to_text(end_at),
+        ),
+    ).fetchone()
+    return checkin_from_row(row) if row is not None else None
+
+
 def list_checkins_for_date_range(
     connection: sqlite3.Connection,
     start_date: date,

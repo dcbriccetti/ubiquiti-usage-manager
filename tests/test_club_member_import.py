@@ -405,6 +405,56 @@ class ClubMemberImportTests(unittest.TestCase):
             self.assertIsNone(checkin_audit_entries[0].old_value)
             self.assertIsNotNone(checkin_audit_entries[0].new_value)
 
+    def test_admin_checkin_ignores_recent_repeat_checkin(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            first_response = client.post(
+                "/members/check-ins",
+                data={"member_ids": [str(member.id)]},
+                follow_redirects=True,
+            )
+            second_response = client.post(
+                "/members/check-ins",
+                data={"member_ids": [str(member.id)]},
+                follow_redirects=True,
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins_for_user(connection, member.id)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertIn("Checked in John Doe.", first_response.get_data(as_text=True))
+        self.assertEqual(second_response.status_code, 200)
+        self.assertIn(
+            "Already checked in within the past hour.",
+            second_response.get_data(as_text=True),
+        )
+        self.assertEqual(len(checkins), 1)
+        checkin_audit_entries = [
+            entry for entry in audit_entries if entry.field_name == "check-in added"
+        ]
+        self.assertEqual(len(checkin_audit_entries), 1)
+
     def test_guest_registration_creates_visitor_user_without_admin_login(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"

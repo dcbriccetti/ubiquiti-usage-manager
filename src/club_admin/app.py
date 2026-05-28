@@ -75,6 +75,7 @@ CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN = (
     ("Visitor", "Visitor", "membership-visitor"),
 )
 CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT = 9
+LIVE_CHECKIN_REPEAT_WINDOW = timedelta(hours=1)
 BARCODE_SECRET_SETTING_KEY = "self_checkin_barcode_secret"
 KIOSK_AUTO_RETURN_SECONDS = 60
 SUPPORTED_DOCUMENT_IMAGE_SUFFIXES = {".gif", ".jpeg", ".jpg", ".png", ".webp"}
@@ -208,6 +209,12 @@ class CheckinTimeChart:
     title: str
     legend: tuple[tuple[str, str], ...]
     buckets: tuple[CheckinChartBucket, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class LiveCheckInResult:
+    check_in_at: datetime
+    recorded: bool
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1497,8 +1504,24 @@ def _code128b_svg(value: str) -> str:
     )
 
 
-def _record_self_checkin(connection: sqlite3.Connection, member: Member) -> datetime:
+def _record_self_checkin(
+    connection: sqlite3.Connection,
+    member: Member,
+) -> LiveCheckInResult:
     check_in_at = datetime.now().replace(microsecond=0)
+    if member.id is not None:
+        recent_checkin = checkin_repository.latest_checkin_for_user_between(
+            connection,
+            user_id=member.id,
+            start_at=check_in_at - LIVE_CHECKIN_REPEAT_WINDOW,
+            end_at=check_in_at,
+        )
+        if recent_checkin is not None:
+            return LiveCheckInResult(
+                check_in_at=recent_checkin.check_in_at,
+                recorded=False,
+            )
+
     checkin_repository.upsert_checkin(
         connection,
         CheckIn(
@@ -1511,7 +1534,7 @@ def _record_self_checkin(connection: sqlite3.Connection, member: Member) -> date
             membership=member.membership,
         ),
     )
-    return check_in_at
+    return LiveCheckInResult(check_in_at=check_in_at, recorded=True)
 
 
 def create_app(db_path: Path | None = None) -> Flask:
@@ -1722,27 +1745,43 @@ def create_app(db_path: Path | None = None) -> Flask:
             return redirect(url_for("members", checked_in="Select at least one user to check in."))
 
         checked_in_members: list[Member] = []
+        recent_repeat_members: list[Member] = []
         with open_connection() as connection:
             for member_id in selected_member_ids:
                 member = member_repository.get_member(connection, member_id)
                 if member is None:
                     abort(404)
-                check_in_at = _record_self_checkin(connection, member)
-                _record_checkin_change(
-                    connection,
-                    member_id=member_id,
-                    field_name="check-in added",
-                    old_value=None,
-                    new_value=check_in_at,
-                )
-                checked_in_members.append(member)
+                checkin_result = _record_self_checkin(connection, member)
+                if checkin_result.recorded:
+                    _record_checkin_change(
+                        connection,
+                        member_id=member_id,
+                        field_name="check-in added",
+                        old_value=None,
+                        new_value=checkin_result.check_in_at,
+                    )
+                    checked_in_members.append(member)
+                else:
+                    recent_repeat_members.append(member)
             connection.commit()
 
-        if len(checked_in_members) == 1:
+        if len(checked_in_members) == 1 and not recent_repeat_members:
             member = checked_in_members[0]
             checked_in_message = f"Checked in {member.first_name} {member.last_name}."
-        else:
+        elif checked_in_members:
             checked_in_message = f"Checked in {len(checked_in_members)} users."
+            if recent_repeat_members:
+                checked_in_message += (
+                    f" Ignored {len(recent_repeat_members)} recent repeat "
+                    f"{'check-in' if len(recent_repeat_members) == 1 else 'check-ins'}."
+                )
+        elif len(recent_repeat_members) == 1:
+            checked_in_message = "Already checked in within the past hour."
+        else:
+            checked_in_message = (
+                f"{len(recent_repeat_members)} users were already checked in "
+                "within the past hour."
+            )
         return redirect(url_for("members", checked_in=checked_in_message))
 
     @flask_app.route("/members/map")
@@ -2229,6 +2268,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         if request.method == "POST":
             barcode_token = request.form.get("barcode_token", "").strip()
             member = None
+            checkin_result: LiveCheckInResult | None = None
             with open_connection() as connection:
                 if barcode_token:
                     barcode_secret = _barcode_secret_for_connection(
@@ -2249,7 +2289,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                         initials,
                     )
                 if member is not None:
-                    _record_self_checkin(connection, member)
+                    checkin_result = _record_self_checkin(connection, member)
                     if not barcode_token:
                         barcode_secret = _barcode_secret_for_connection(
                             connection,
@@ -2263,7 +2303,11 @@ def create_app(db_path: Path | None = None) -> Flask:
                     connection.commit()
             checkin_success = member is not None
             message = (
-                "Check-in recorded."
+                (
+                    "Check-in recorded."
+                    if checkin_result is not None and checkin_result.recorded
+                    else "Already checked in within the past hour."
+                )
                 if checkin_success
                 else "No matching user was found. Please check your barcode, phone number, and initials or first name."
             )
