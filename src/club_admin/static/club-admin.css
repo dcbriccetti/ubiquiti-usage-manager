@@ -362,8 +362,9 @@ th {
 
 .users-table {
   max-width: none;
-  min-width: 100%;
-  width: max-content;
+  min-width: 108rem;
+  table-layout: fixed;
+  width: 108rem;
 }
 
 .users-table th,
@@ -429,13 +430,13 @@ th {
 .users-table td:nth-child(1),
 .users-table th:nth-child(2),
 .users-table td:nth-child(2) {
-  min-width: 8rem;
+  width: 8rem;
   white-space: nowrap;
 }
 
 .users-table th:nth-child(3),
 .users-table td:nth-child(3) {
-  min-width: 7rem;
+  width: 7rem;
 }
 
 .users-table th:nth-child(4),
@@ -447,25 +448,40 @@ th {
 
 .users-table th:nth-child(4),
 .users-table td:nth-child(4) {
-  min-width: 9rem;
+  width: 8.5rem;
+}
+
+.users-table th:nth-child(5),
+.users-table td:nth-child(5),
+.users-table th:nth-child(6),
+.users-table td:nth-child(6),
+.users-table th:nth-child(7),
+.users-table td:nth-child(7) {
+  width: 7.25rem;
 }
 
 .users-table th:nth-child(8),
 .users-table td:nth-child(8) {
-  min-width: 13rem;
+  width: 11rem;
 }
 
 .users-table th:nth-child(9),
 .users-table td:nth-child(9) {
-  max-width: 16rem;
-  overflow-wrap: anywhere;
+  max-width: none;
+  white-space: nowrap;
+  width: 17rem;
+}
+
+.users-table th:nth-child(10),
+.users-table td:nth-child(10) {
+  width: 10rem;
 }
 
 .users-table th:nth-child(11),
 .users-table td:nth-child(11),
 .users-table th:nth-child(12),
 .users-table td:nth-child(12) {
-  min-width: 4.5rem;
+  width: 3.5rem;
 }
 
 .member-select {
