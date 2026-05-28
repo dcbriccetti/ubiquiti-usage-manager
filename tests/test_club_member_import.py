@@ -827,6 +827,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('class="nav-links users-nav"', body)
         self.assertNotIn('href="/imports"', body)
         self.assertIn('href="/changes"', body)
+        self.assertNotIn('href="/self-checkin">Self Check-in</a>', body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
         self.assertIn('class="users-list-controls"', body)
         self.assertIn('data-table-search', body)
