@@ -337,6 +337,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                     ),
@@ -1253,6 +1254,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                     ),
@@ -1300,6 +1302,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                     ),
@@ -1986,6 +1989,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     Member(
                         last_name="Doe",
                         first_name="John",
+                        nickname="Johnny",
                         card_number="123",
                         membership="Visitor",
                     ),
@@ -2045,7 +2049,8 @@ class ClubMemberImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Recent Changes", body)
         self.assertIn('class="active" href="/changes" aria-current="page"', body)
-        self.assertIn(">John Doe</a>", body)
+        self.assertIn(">Johnny Doe</a>", body)
+        self.assertNotIn(">John Doe</a>", body)
         self.assertIn(">Jane Smith</a>", body)
         self.assertIn("membership", body)
         self.assertIn("Visitor", body)

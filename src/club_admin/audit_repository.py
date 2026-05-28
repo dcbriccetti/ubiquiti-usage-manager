@@ -25,17 +25,23 @@ class RecentAuditLogEntry:
 
     entry: AuditLogEntry
     member_first_name: str | None
+    member_nickname: str | None
     member_last_name: str | None
 
     @property
     def has_member(self) -> bool:
-        return self.member_first_name is not None or self.member_last_name is not None
+        return (
+            self.member_first_name is not None
+            or self.member_nickname is not None
+            or self.member_last_name is not None
+        )
 
     @property
     def member_display_name(self) -> str:
+        first_or_nickname = self.member_nickname or self.member_first_name
         name = " ".join(
             part
-            for part in (self.member_first_name, self.member_last_name)
+            for part in (first_or_nickname, self.member_last_name)
             if part
         ).strip()
         return name or f"{self.entry.entity_type} #{self.entry.entity_id}"
@@ -133,6 +139,7 @@ def list_recent_audit_log(
             audit_log.new_value,
             audit_log.changed_at,
             users.first_name AS member_first_name,
+            users.nickname AS member_nickname,
             users.last_name AS member_last_name
         FROM audit_log
         LEFT JOIN users
@@ -148,6 +155,7 @@ def list_recent_audit_log(
         RecentAuditLogEntry(
             entry=_entry_from_row(row),
             member_first_name=row["member_first_name"],
+            member_nickname=row["member_nickname"],
             member_last_name=row["member_last_name"],
         )
         for row in rows
