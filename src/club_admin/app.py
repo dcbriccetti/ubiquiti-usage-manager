@@ -1561,6 +1561,25 @@ def create_app(db_path: Path | None = None) -> Flask:
 
         return wrapped
 
+    public_endpoints = {
+        "static",
+        "index",
+        "guest_registration",
+        "guest_registration_thanks",
+        "admin_login",
+        "admin_logout",
+        "self_checkin",
+    }
+
+    @flask_app.before_request
+    def require_admin_for_private_routes():
+        if request.endpoint in public_endpoints:
+            return None
+        if session.get("user_management_admin_authenticated") is True:
+            return None
+        next_url = f"{request.script_root}{request.full_path}".rstrip("?")
+        return redirect(url_for("admin_login", next=next_url))
+
     @flask_app.context_processor
     def inject_app_title() -> dict[str, str]:
         organization_name = str(cfg.USER_MANAGEMENT_ORGANIZATION_NAME).strip()

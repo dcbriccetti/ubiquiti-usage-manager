@@ -205,6 +205,40 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/admin/login", response.headers["Location"])
 
+    def test_private_routes_redirect_to_login_when_not_authenticated(self) -> None:
+        private_routes = (
+            ("GET", "/members"),
+            ("POST", "/members/check-ins"),
+            ("GET", "/members/map"),
+            ("POST", "/members/map/zip-coordinates/import"),
+            ("POST", "/members/map/zip-coordinates"),
+            ("GET", "/members/1"),
+            ("GET", "/changes"),
+            ("GET", "/members/1/guest-form.jpg"),
+            ("GET", "/members/1/document"),
+            ("POST", "/members/1/documents"),
+            ("GET", "/members/1/edit"),
+            ("POST", "/members/1/edit"),
+            ("GET", "/checkins/report"),
+            ("GET", "/documents/report"),
+            ("GET", "/documents/image"),
+            ("GET", "/guest-registrations"),
+            ("GET", "/guest-registrations/recent"),
+            ("GET", "/guest-registrations/1/form"),
+            ("POST", "/guest-registrations/1/driver-license"),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = flask_app.test_client()
+
+            for method, path in private_routes:
+                with self.subTest(method=method, path=path):
+                    response = client.open(path, method=method)
+
+                    self.assertEqual(response.status_code, 302)
+                    self.assertIn("/admin/login", response.headers["Location"])
+
     def test_admin_login_rejects_wrong_password(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -245,6 +279,16 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('href="/guest-registration"', body)
         self.assertIn('name="phone" autocomplete="tel" required autofocus', body)
         self.assertNotIn('name="barcode_token"\n                  autocomplete="off"\n                  autofocus', body)
+
+    def test_guest_registration_page_stays_public_without_admin_login(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().get("/guest-registration")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Guest Registration", response.get_data(as_text=True))
 
     def test_guest_registration_thanks_returns_to_self_checkin_after_delay(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
