@@ -276,6 +276,49 @@ def list_members(connection: sqlite3.Connection) -> list[Member]:
     return [member_from_row(row) for row in rows]
 
 
+def list_members_checked_in_for_date_range(
+    connection: sqlite3.Connection,
+    start_date: date,
+    end_date: date,
+) -> list[Member]:
+    '''Return distinct users who checked in during the date range.'''
+    start_at = datetime.combine(start_date, datetime.min.time()).isoformat(
+        timespec="seconds"
+    )
+    exclusive_end_at = datetime.combine(
+        end_date + date.resolution,
+        datetime.min.time(),
+    ).isoformat(timespec="seconds")
+    rows = connection.execute(
+        """
+        SELECT DISTINCT
+            u.id,
+            u.last_name,
+            u.first_name,
+            u.nickname,
+            u.card_number,
+            u.membership,
+            u.member_since,
+            u.date_of_birth,
+            u.address,
+            u.address2,
+            u.city,
+            u.state,
+            u.zip,
+            u.phone,
+            u.email,
+            u.work_phone,
+            u.cell_phone
+        FROM users u
+        INNER JOIN checkins c ON c.user_id = u.id
+        WHERE c.check_in_at >= ? AND c.check_in_at < ?
+        ORDER BY u.last_name, u.first_name, u.card_number
+        """,
+        (start_at, exclusive_end_at),
+    ).fetchall()
+    return [member_from_row(row) for row in rows]
+
+
 def list_member_report_rows(
     connection: sqlite3.Connection,
     *,

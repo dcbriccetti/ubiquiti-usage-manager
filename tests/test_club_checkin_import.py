@@ -361,6 +361,11 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn(">Last Week</a>", body)
         self.assertIn(">This Month</a>", body)
         self.assertIn(">Last Month</a>", body)
+        self.assertIn(
+            'href="/members/map?start_date=2026-05-01&amp;end_date=2026-05-03"',
+            body,
+        )
+        self.assertIn(">Map</a>", body)
         self.assertIn('class="checkins-time-chart"', body)
         self.assertIn("Check-ins by Day", body)
         self.assertIn("Week of Apr 27", body)

@@ -212,7 +212,6 @@ class ClubMemberImportTests(unittest.TestCase):
             ("POST", "/members/check-ins"),
             ("GET", "/members/export.csv"),
             ("GET", "/members/map"),
-            ("POST", "/members/map/zip-coordinates/import"),
             ("POST", "/members/map/zip-coordinates"),
             ("GET", "/members/1"),
             ("GET", "/changes"),
@@ -879,6 +878,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('class="nav-links users-nav"', body)
         self.assertNotIn('href="/imports"', body)
         self.assertIn('href="/changes"', body)
+        self.assertNotIn('href="/members/map">Map</a>', body)
         self.assertNotIn('href="/self-checkin">Self Check-in</a>', body)
         self.assertLess(
             body.index('href="/checkins/report"'),
@@ -1172,15 +1172,46 @@ class ClubMemberImportTests(unittest.TestCase):
                 ):
                     member_repository.upsert_member(connection, member)
                 connection.commit()
+                members_by_card = {
+                    member.card_number: member
+                    for member in member_repository.list_members(connection)
+                }
+                for card_number, check_in_at in (
+                    ("123", datetime(2026, 5, 3, 9, 0, 0)),
+                    ("123", datetime(2026, 5, 4, 9, 0, 0)),
+                    ("456", datetime(2026, 5, 3, 10, 0, 0)),
+                    ("789", datetime(2026, 4, 30, 10, 0, 0)),
+                    ("321", datetime(2026, 5, 3, 11, 0, 0)),
+                ):
+                    member = members_by_card[card_number]
+                    checkin_repository.upsert_checkin(
+                        connection,
+                        CheckIn(
+                            user_id=member.id,
+                            member_id=str(member.id),
+                            last_name=member.last_name,
+                            first_name=member.first_name,
+                            card_number=member.card_number,
+                            check_in_at=check_in_at,
+                            membership=member.membership,
+                        ),
+                    )
+                connection.commit()
 
-            response = client.get("/members/map")
+            response = client.get("/members/map?start_date=2026-05-01&end_date=2026-05-31")
             body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("User ZIP Map", body)
+        self.assertIn("Check-in ZIP Map", body)
+        self.assertIn("2026-05-01 to 2026-05-31", body)
+        self.assertIn('action="/members/map"', body)
+        self.assertIn('name="start_date" value="2026-05-01"', body)
+        self.assertIn('name="end_date" value="2026-05-31"', body)
+        self.assertIn("Checked-in Users", body)
+        self.assertIn("With ZIP", body)
         self.assertIn("94000", body)
-        self.assertIn("94001", body)
         self.assertIn("99999", body)
+        self.assertNotIn('"zip_code": "94001"', body)
         self.assertNotIn("ZIPs Needing Coordinates", body)
         self.assertNotIn("Unmapped ZIPs", body)
         self.assertNotIn("Mapped ZIPs", body)
@@ -1190,8 +1221,12 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("https://tile.openstreetmap.org/{z}/{x}/{y}.png", body)
         self.assertIn("api.zippopotam.us/us/", body)
         self.assertIn("/members/map/zip-coordinates", body)
+        self.assertNotIn("/members/map/zip-coordinates/import", body)
+        self.assertNotIn('name="zip_coordinates_csv"', body)
+        self.assertNotIn("Import ZIP Coordinates", body)
         self.assertIn('"zip_code": "94000"', body)
         self.assertIn('"count": 2', body)
+        self.assertIn('"lookupZips": [{"count": 1, "zip_code": "99999"}]', body)
         self.assertNotIn("123 Main St", body)
         self.assertNotIn("456 Oak Ave", body)
         self.assertNotIn("789 Pine Rd", body)
@@ -1217,8 +1252,22 @@ class ClubMemberImportTests(unittest.TestCase):
                     ),
                 )
                 connection.commit()
+                member = member_repository.list_members(connection)[0]
+                checkin_repository.upsert_checkin(
+                    connection,
+                    CheckIn(
+                        user_id=member.id,
+                        member_id=str(member.id),
+                        last_name=member.last_name,
+                        first_name=member.first_name,
+                        card_number=member.card_number,
+                        check_in_at=datetime(2026, 5, 3, 9, 0, 0),
+                        membership=member.membership,
+                    ),
+                )
+                connection.commit()
 
-            response = client.get("/members/map")
+            response = client.get("/members/map?start_date=2026-05-01&end_date=2026-05-31")
             body = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
@@ -1228,50 +1277,6 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("api.zippopotam.us/us/", body)
         self.assertNotIn("No ZIP coordinates are configured", body)
         self.assertNotIn("123 Main St", body)
-
-    def test_members_map_imports_zip_coordinate_csv_for_local_cache(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            db_path = Path(temp_dir) / "club-users.db"
-            flask_app = create_admin_app(db_path)
-            client = admin_client(flask_app)
-            with closing(database.connect(db_path)) as connection:
-                member_repository.upsert_member(
-                    connection,
-                    Member(
-                        last_name="Doe",
-                        first_name="John",
-                        nickname="Johnny",
-                        card_number="123",
-                        membership="Visitor",
-                        address="123 Main St",
-                        city="Everytown",
-                        state="CA",
-                        zip="94000",
-                    ),
-                )
-                connection.commit()
-
-            import_response = client.post(
-                "/members/map/zip-coordinates/import",
-                data={
-                    "zip_coordinates_csv": (
-                        io.BytesIO(b"zip,latitude,longitude\n94000,37.1,-122.1\n"),
-                        "zip_coordinates.csv",
-                    )
-                },
-                content_type="multipart/form-data",
-            )
-            map_response = client.get("/members/map")
-            body = map_response.get_data(as_text=True)
-
-        self.assertEqual(import_response.status_code, 302)
-        self.assertIn("imported=1", import_response.headers["Location"])
-        self.assertEqual(map_response.status_code, 200)
-        self.assertIn('"points": [{"count": 1, "latitude": 37.1, "longitude": -122.1, "zip_code": "94000"}]', body)
-        self.assertIn('"lookupZips": []', body)
-        self.assertNotIn("Mapped ZIPs", body)
-        self.assertNotIn("<th>Latitude</th>", body)
-        self.assertNotIn("<th>Longitude</th>", body)
 
     def test_members_map_saves_auto_located_zip_coordinates(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1294,6 +1299,20 @@ class ClubMemberImportTests(unittest.TestCase):
                     ),
                 )
                 connection.commit()
+                member = member_repository.list_members(connection)[0]
+                checkin_repository.upsert_checkin(
+                    connection,
+                    CheckIn(
+                        user_id=member.id,
+                        member_id=str(member.id),
+                        last_name=member.last_name,
+                        first_name=member.first_name,
+                        card_number=member.card_number,
+                        check_in_at=datetime(2026, 5, 3, 9, 0, 0),
+                        membership=member.membership,
+                    ),
+                )
+                connection.commit()
 
             save_response = client.post(
                 "/members/map/zip-coordinates",
@@ -1307,7 +1326,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     ]
                 },
             )
-            map_response = client.get("/members/map")
+            map_response = client.get("/members/map?start_date=2026-05-01&end_date=2026-05-31")
             body = map_response.get_data(as_text=True)
 
         self.assertEqual(save_response.status_code, 200)

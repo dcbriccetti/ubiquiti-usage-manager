@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ app_title }} | User ZIP Map</title>
+  <title>{{ app_title }} | Check-in ZIP Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
@@ -12,48 +12,58 @@
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
-        <h1>User ZIP Map</h1>
-        <p class="summary">{{ report.users_with_zip }} users with ZIP codes</p>
+        <h1>Check-in ZIP Map</h1>
+        <p class="summary">{{ report.users_with_zip }} checked-in {{ 'user' if report.users_with_zip == 1 else 'users' }} with ZIP codes</p>
+        <p class="print-report-range">{{ start_date }} to {{ end_date }}</p>
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
         <a href="{{ url_for('checkins_report') }}">Check-ins</a>
         <a href="{{ url_for('guest_registrations') }}">Guests</a>
-        <a href="{{ url_for('members_map') }}">Map</a>
         <a href="{{ url_for('documents_report') }}">Documents</a>
         <a href="{{ url_for('recent_changes') }}">Changes</a>
       </nav>
     </header>
 
+    <form class="report-filters" action="{{ url_for('members_map') }}" method="get">
+      <div class="report-date-fields">
+        <label>
+          Start
+          <input type="date" name="start_date" value="{{ start_date }}">
+        </label>
+        <label>
+          End
+          <input type="date" name="end_date" value="{{ end_date }}">
+        </label>
+        <button type="submit">Apply</button>
+      </div>
+      <div class="report-presets" aria-label="Date range presets">
+        {% for preset in date_presets %}
+          <a
+            href="{{ url_for('members_map', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat()) }}"
+            {% if preset.start_date == start_date and preset.end_date == end_date %}class="active" aria-current="page"{% endif %}
+          >{{ preset.label }}</a>
+        {% endfor %}
+      </div>
+    </form>
+
     <section class="report-counters" aria-label="ZIP map summary">
       <div>
-        <span>Total Users</span>
+        <span>Checked-in Users</span>
         <strong>{{ report.total_users }}</strong>
       </div>
       <div>
-        <span>Users With ZIP</span>
+        <span>With ZIP</span>
         <strong>{{ report.users_with_zip }}</strong>
       </div>
     </section>
 
-    {% if request.args.get('imported') %}
-      <p class="notice">{{ request.args.get('imported') }} ZIP coordinates imported.</p>
-    {% endif %}
-    {% if request.args.get('saved') %}
-      <p class="notice">{{ request.args.get('saved') }} ZIP coordinates auto-located and saved.</p>
-    {% endif %}
-
-    <form class="import-form map-import-form" action="{{ url_for('import_zip_coordinates') }}" method="post" enctype="multipart/form-data">
-      <input type="file" name="zip_coordinates_csv" accept=".csv,text/csv" required>
-      <button type="submit">Import ZIP Coordinates</button>
-    </form>
-
-    <section class="zip-map-panel" aria-label="Map of user ZIP codes">
+    <section class="zip-map-panel" aria-label="Map of checked-in user ZIP codes">
       {% if report.users_with_zip %}
         <div id="user-zip-map" class="zip-map"></div>
         <p id="zip-map-status" class="summary"></p>
       {% else %}
-        <p class="notice">No users have ZIP codes yet.</p>
+        <p class="notice">No checked-in users have ZIP codes in this date range.</p>
       {% endif %}
     </section>
   </main>
@@ -162,7 +172,7 @@
                 body: JSON.stringify({ coordinates: locatedCoordinates }),
               });
               if (saveResponse.ok) {
-                window.location.replace("{{ url_for('members_map') }}?saved=" + encodeURIComponent(locatedCoordinates.length));
+                window.location.replace("{{ url_for('members_map', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}");
                 return;
               }
             } catch (error) {

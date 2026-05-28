@@ -25,7 +25,6 @@
         <a href="{{ url_for('members') }}">Users</a>
         <a href="{{ url_for('checkins_report') }}">Check-ins</a>
         <a href="{{ url_for('guest_registrations') }}">Guests</a>
-        <a href="{{ url_for('members_map') }}">Map</a>
         <a href="{{ url_for('documents_report') }}">Documents</a>
         <a href="{{ url_for('recent_changes') }}">Changes</a>
       </nav>
@@ -50,6 +49,7 @@
             {% if preset.start_date == start_date and preset.end_date == end_date %}class="active" aria-current="page"{% endif %}
           >{{ preset.label }}</a>
         {% endfor %}
+        <a href="{{ url_for('members_map', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}">Map</a>
       </div>
     </form>
 

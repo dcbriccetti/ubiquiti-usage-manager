@@ -395,6 +395,20 @@ def _date_range_presets(today: date) -> tuple[DateRangePreset, ...]:
     )
 
 
+def _date_range_from_request(today: date) -> tuple[date, date]:
+    start_date_raw = request.args.get("start_date", today.isoformat())
+    end_date_raw = request.args.get("end_date", today.isoformat())
+    try:
+        start_date = date.fromisoformat(start_date_raw)
+        end_date = date.fromisoformat(end_date_raw)
+    except ValueError:
+        abort(400, "Date range must use YYYY-MM-DD dates.")
+
+    if start_date > end_date:
+        abort(400, "Start date must be on or before end date.")
+    return start_date, end_date
+
+
 def _date_label(value: date) -> str:
     return f"{value.strftime('%b')} {value.day}"
 
@@ -1865,8 +1879,14 @@ def create_app(db_path: Path | None = None) -> Flask:
     @flask_app.route("/members/map")
     @require_admin
     def members_map():
+        today = date.today()
+        start_date, end_date = _date_range_from_request(today)
         with open_connection() as connection:
-            roster = member_repository.list_members(connection)
+            roster = member_repository.list_members_checked_in_for_date_range(
+                connection,
+                start_date,
+                end_date,
+            )
             stored_coordinates = zip_repository.list_zip_coordinates(connection)
         coordinates = {
             **_normalized_zip_coordinates(
@@ -1899,26 +1919,10 @@ def create_app(db_path: Path | None = None) -> Flask:
             report=report,
             map_points=map_points,
             lookup_zips=lookup_zips,
+            date_presets=_date_range_presets(today),
+            start_date=start_date,
+            end_date=end_date,
         )
-
-    @flask_app.post("/members/map/zip-coordinates/import")
-    @require_admin
-    def import_zip_coordinates():
-        csv_file = request.files.get("zip_coordinates_csv")
-        if csv_file is None or not csv_file.filename:
-            abort(400, "Choose a ZIP coordinate CSV file.")
-
-        text = io.TextIOWrapper(csv_file.stream, encoding="utf-8-sig", newline="")
-        try:
-            coordinates = zip_repository.read_zip_coordinates_csv(text)
-        except ValueError as error:
-            abort(400, str(error))
-
-        with open_connection() as connection:
-            imported_count = zip_repository.upsert_zip_coordinates(connection, coordinates)
-            connection.commit()
-
-        return redirect(url_for("members_map", imported=imported_count))
 
     @flask_app.post("/members/map/zip-coordinates")
     @require_admin
@@ -2191,17 +2195,7 @@ def create_app(db_path: Path | None = None) -> Flask:
     @require_admin
     def checkins_report():
         today = date.today()
-        default_start_date = today
-        start_date_raw = request.args.get("start_date", default_start_date.isoformat())
-        end_date_raw = request.args.get("end_date", today.isoformat())
-        try:
-            start_date = date.fromisoformat(start_date_raw)
-            end_date = date.fromisoformat(end_date_raw)
-        except ValueError:
-            abort(400, "Date range must use YYYY-MM-DD dates.")
-
-        if start_date > end_date:
-            abort(400, "Start date must be on or before end date.")
+        start_date, end_date = _date_range_from_request(today)
 
         with open_connection() as connection:
             checkins = checkin_repository.list_checkins_for_date_range(
