@@ -92,6 +92,9 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS ix_audit_log_entity
 ON audit_log (entity_type, entity_id, changed_at);
 
+CREATE INDEX IF NOT EXISTS ix_audit_log_changed_at
+ON audit_log (changed_at, id);
+
 CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

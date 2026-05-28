@@ -1851,6 +1851,13 @@ def create_app(db_path: Path | None = None) -> Flask:
             other_documents=other_documents,
         )
 
+    @flask_app.route("/changes")
+    @require_admin
+    def recent_changes():
+        with open_connection() as connection:
+            changes = audit_repository.list_recent_audit_log(connection)
+        return render_template("club_admin/recent_changes.html", changes=changes)
+
     @flask_app.route("/members/<int:member_id>/guest-form.jpg")
     @require_admin
     def member_guest_form(member_id: int):

@@ -781,6 +781,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('class="page-header users-header"', body)
         self.assertIn('class="nav-links users-nav"', body)
         self.assertNotIn('href="/imports"', body)
+        self.assertIn('href="/changes"', body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
         self.assertIn('class="users-list-controls"', body)
         self.assertIn('data-table-search', body)
@@ -1929,6 +1930,88 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Change Log", body)
         self.assertIn("No changes recorded yet.", body)
         self.assertNotIn("check-in edited", body)
+
+    def test_recent_changes_page_lists_visible_audit_log_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Smith",
+                        first_name="Jane",
+                        card_number="456",
+                        membership="Full Member",
+                    ),
+                )
+                connection.commit()
+                john, jane = member_repository.list_members(connection)
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=john.id,
+                    action="edit",
+                    field_name="membership",
+                    old_value="Visitor",
+                    new_value="Full Member",
+                )
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=john.id,
+                    action="edit",
+                    field_name="card_number",
+                    old_value="123",
+                    new_value="999",
+                )
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=john.id,
+                    action="edit",
+                    field_name="check-in added",
+                    old_value=None,
+                    new_value=datetime(2026, 5, 4, 18, 45, 0),
+                )
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=jane.id,
+                    action="edit",
+                    field_name="check-in edited",
+                    old_value=datetime(2026, 5, 1, 9, 0, 0),
+                    new_value=datetime(2026, 5, 2, 10, 30, 0),
+                )
+                connection.commit()
+
+            response = client.get("/changes")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Recent Changes", body)
+        self.assertIn('class="active" href="/changes" aria-current="page"', body)
+        self.assertIn(">John Doe</a>", body)
+        self.assertIn(">Jane Smith</a>", body)
+        self.assertIn("membership", body)
+        self.assertIn("Visitor", body)
+        self.assertIn("Full Member", body)
+        self.assertIn("check-in edited", body)
+        self.assertIn("2026-05-01 09:00:00", body)
+        self.assertIn("2026-05-02 10:30:00", body)
+        self.assertNotIn("card_number", body)
+        self.assertNotIn("check-in added", body)
+        self.assertLess(body.index("check-in edited"), body.index("membership"))
 
     def test_admin_guest_registration_queue_and_filled_form_use_definition_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

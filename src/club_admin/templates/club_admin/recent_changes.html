@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Recent Changes</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Recent Changes</h1>
+        <p class="summary">{{ changes|length }} {{ 'change' if changes|length == 1 else 'changes' }}</p>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('guest_registrations') }}">Guests</a>
+        <a href="{{ url_for('members_map') }}">Map</a>
+        <a href="{{ url_for('documents_report') }}">Documents</a>
+        <a href="{{ url_for('checkins_report') }}">Check-ins</a>
+        <a class="active" href="{{ url_for('recent_changes') }}" aria-current="page">Changes</a>
+        <a href="{{ url_for('self_checkin') }}">Self Check-in</a>
+      </nav>
+    </header>
+
+    <table>
+      <thead>
+        <tr>
+          <th class="nowrap">Changed</th>
+          <th>User</th>
+          <th>Field</th>
+          <th>Old Value</th>
+          <th>New Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for change in changes %}
+          <tr>
+            <td class="nowrap">{{ change.entry.changed_at }}</td>
+            <td>
+              {% if change.entry.entity_type == 'user' and change.has_member %}
+                <a href="{{ url_for('member_detail', member_id=change.entry.entity_id) }}">{{ change.member_display_name }}</a>
+              {% else %}
+                {{ change.member_display_name }}
+              {% endif %}
+            </td>
+            <td>{{ change.entry.field_name }}</td>
+            <td>{{ change.entry.old_value or '' }}</td>
+            <td>{{ change.entry.new_value or '' }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="5" class="empty">No changes recorded yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>
