@@ -58,6 +58,7 @@
         </select>
       </label>
       <button class="users-search-reset" type="button" data-table-search-reset disabled>Reset Search</button>
+      <a class="button-link users-export" href="{{ url_for('export_members_csv') }}">Export CSV</a>
       <button class="users-bulk-checkin" type="submit" form="members-checkin-form" data-checkin-submit disabled>Check In Selected</button>
     </section>
 

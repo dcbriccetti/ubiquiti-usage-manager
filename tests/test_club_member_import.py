@@ -1,3 +1,4 @@
+import csv
 import io
 import sys
 import tempfile
@@ -209,6 +210,7 @@ class ClubMemberImportTests(unittest.TestCase):
         private_routes = (
             ("GET", "/members"),
             ("POST", "/members/check-ins"),
+            ("GET", "/members/export.csv"),
             ("GET", "/members/map"),
             ("POST", "/members/map/zip-coordinates/import"),
             ("POST", "/members/map/zip-coordinates"),
@@ -878,6 +880,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertNotIn('href="/imports"', body)
         self.assertIn('href="/changes"', body)
         self.assertNotIn('href="/self-checkin">Self Check-in</a>', body)
+        self.assertIn('href="/members/export.csv"', body)
+        self.assertIn("Export CSV", body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
         self.assertIn('class="users-list-controls"', body)
         self.assertIn('data-table-search', body)
@@ -921,6 +925,83 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('data-sort-value="2026-05-03"', body)
         self.assertNotIn("2026-05-03 15:59:20", body)
         self.assertNotIn(">0<", body)
+
+    def test_members_export_downloads_users_csv(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            db_path = temp_path / "club-users.db"
+            documents_dir = temp_path / "documents"
+            card_123_dir = documents_dir / "123"
+            card_123_dir.mkdir(parents=True)
+            (card_123_dir / "Guest Form scan.JPG").write_bytes(b"\xff\xd8\xff\xe0test-jpeg")
+            (card_123_dir / "waiver.pdf").write_text("synthetic waiver")
+            flask_app = create_admin_app(db_path, str(documents_dir))
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        nickname="Johnny",
+                        card_number="123",
+                        membership="Visitor",
+                        member_since=datetime(2020, 5, 1).date(),
+                        date_of_birth=datetime(1980, 7, 4).date(),
+                        address="123 Main St",
+                        address2="Unit 4",
+                        city="Everytown",
+                        state="CA",
+                        zip="94000",
+                        phone="510-111-2222",
+                        email="john@example.test",
+                        work_phone="510-222-3333",
+                        cell_phone="510-333-4444",
+                    ),
+                )
+                checkin_repository.upsert_checkin(
+                    connection,
+                    CheckIn(
+                        member_id="1",
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        check_in_at=datetime(2026, 5, 3, 15, 59, 20),
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+
+            response = client.get("/members/export.csv")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn(
+            "attachment; filename=users-",
+            response.headers["Content-Disposition"],
+        )
+        rows = list(csv.DictReader(io.StringIO(response.get_data(as_text=True))))
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["Card Number"], "123")
+        self.assertEqual(row["Last Name"], "Doe")
+        self.assertEqual(row["First Name"], "John")
+        self.assertEqual(row["Nickname"], "Johnny")
+        self.assertEqual(row["Membership"], "Visitor")
+        self.assertEqual(row["First Visit"], "2020-05-01")
+        self.assertEqual(row["Last Visit"], "2026-05-03")
+        self.assertEqual(row["Date of Birth"], "1980-07-04")
+        self.assertEqual(row["Address"], "123 Main St")
+        self.assertEqual(row["Address 2"], "Unit 4")
+        self.assertEqual(row["City"], "Everytown")
+        self.assertEqual(row["State"], "CA")
+        self.assertEqual(row["ZIP"], "94000")
+        self.assertEqual(row["Phone"], "(510) 111-2222")
+        self.assertEqual(row["Email"], "john@example.test")
+        self.assertEqual(row["Work Phone"], "(510) 222-3333")
+        self.assertEqual(row["Cell Phone"], "(510) 333-4444")
+        self.assertEqual(row["Documents"], "2")
+        self.assertEqual(row["Visits In Period"], "1")
 
     def test_members_page_shows_first_and_last_visit_dates_without_times(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

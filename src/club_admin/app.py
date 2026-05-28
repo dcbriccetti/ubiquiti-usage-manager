@@ -1,6 +1,7 @@
 '''Flask app for club user management.'''
 
 import base64
+import csv
 import hashlib
 import hmac
 import io
@@ -618,6 +619,63 @@ def _visitor_choice(
 ) -> str | None:
     value = form_data.get(field_name, "").strip()
     return value if value in allowed_values else None
+
+
+def _members_csv(roster: list[member_repository.MemberReportRow]) -> str:
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(
+        (
+            "User ID",
+            "Card Number",
+            "Last Name",
+            "First Name",
+            "Nickname",
+            "Membership",
+            "First Visit",
+            "Last Visit",
+            "Date of Birth",
+            "Address",
+            "Address 2",
+            "City",
+            "State",
+            "ZIP",
+            "Phone",
+            "Email",
+            "Work Phone",
+            "Cell Phone",
+            "Documents",
+            "Visits In Period",
+        )
+    )
+    for row in roster:
+        member = row.member
+        last_visit = row.last_check_in_at.date() if row.last_check_in_at else None
+        writer.writerow(
+            (
+                member.id or "",
+                member.card_number,
+                member.last_name,
+                member.first_name,
+                member.nickname or "",
+                member.membership,
+                member.member_since or "",
+                last_visit or "",
+                member.date_of_birth or "",
+                member.address or "",
+                member.address2 or "",
+                member.city or "",
+                member.state or "",
+                member.zip or "",
+                member.phone or "",
+                member.email or "",
+                member.work_phone or "",
+                member.cell_phone or "",
+                row.document_count,
+                "" if row.checkin_count is None else row.checkin_count,
+            )
+        )
+    return output.getvalue()
 
 
 def _parse_visitor_visit_date(form_data: Any) -> date:
@@ -1728,6 +1786,26 @@ def create_app(db_path: Path | None = None) -> Flask:
             members=roster,
             checkin_message=request.args.get("checked_in", "").strip(),
         )
+
+    @flask_app.route("/members/export.csv")
+    @require_admin
+    def export_members_csv():
+        with open_connection() as connection:
+            roster = member_repository.list_member_report_rows(connection)
+        document_counts = _document_counts_by_member(
+            [row.member for row in roster],
+            flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
+        )
+        roster = [
+            replace(row, document_count=document_counts.get(row.member.id or 0, 0))
+            for row in roster
+        ]
+        response = make_response(_members_csv(roster))
+        response.headers["Content-Type"] = "text/csv; charset=utf-8"
+        response.headers["Content-Disposition"] = (
+            f"attachment; filename=users-{date.today().isoformat()}.csv"
+        )
+        return response
 
     @flask_app.post("/members/check-ins")
     @require_admin
