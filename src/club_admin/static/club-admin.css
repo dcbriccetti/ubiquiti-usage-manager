@@ -258,6 +258,10 @@ button:disabled {
   background: #5b6472;
 }
 
+.button-link.danger {
+  background: #b42318;
+}
+
 .summary {
   color: #5b6472;
   margin: 6px 0 0;
@@ -1417,6 +1421,220 @@ th {
   white-space: nowrap;
 }
 
+.member-notes-section {
+  margin: 28px 0 34px;
+  max-width: 820px;
+}
+
+.section-title-row {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  max-width: 720px;
+}
+
+.section-title-row h2 {
+  margin: 0;
+}
+
+.member-notes-section h2,
+.member-documents-section h2 {
+  margin-bottom: 10px;
+}
+
+.member-note-add-panel {
+  position: relative;
+}
+
+.member-note-add-panel > summary {
+  background: #245c9f;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1.2;
+  list-style: none;
+  padding: 7px 10px;
+}
+
+.member-note-add-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.member-note-add-panel[open] {
+  flex-basis: 100%;
+}
+
+.member-note-add-panel[open] > summary {
+  margin-bottom: 8px;
+}
+
+.member-note-form {
+  align-items: center;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
+  display: inline-grid;
+  gap: 12px;
+  grid-template-columns: auto auto;
+  margin-bottom: 12px;
+  max-width: 100%;
+  padding: 14px;
+}
+
+.member-note-fields {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(14rem, 20rem) minmax(18rem, 26rem);
+  min-width: 0;
+}
+
+.member-note-form label,
+.member-note-edit label {
+  color: #4b5563;
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  gap: 4px;
+}
+
+.member-note-form input[type="text"],
+.member-note-form textarea,
+.member-note-edit input[type="text"],
+.member-note-edit textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+  padding: 7px 8px;
+}
+
+.member-note-form textarea,
+.member-note-edit textarea {
+  min-height: 38px;
+  resize: vertical;
+}
+
+.member-note-actions,
+.member-note-row-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.member-note-actions button,
+.member-note-row-actions button {
+  white-space: nowrap;
+}
+
+.member-notes-list {
+  display: grid;
+  gap: 8px;
+}
+
+.member-note {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
+  max-width: 720px;
+  padding: 12px 14px;
+}
+
+.member-note-header {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.member-note-header time {
+  color: #6b7280;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.member-note h3 {
+  font-size: 17px;
+  margin: 0;
+}
+
+.member-note p {
+  color: #374151;
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+.member-note-edit {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(14rem, 20rem) minmax(18rem, 26rem) auto;
+  max-width: 100%;
+}
+
+.member-note-row-actions {
+  align-items: flex-start;
+  margin-top: 10px;
+}
+
+.member-note-edit-panel {
+  display: block;
+}
+
+.member-note-edit-panel > summary {
+  background: #5b6472;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  display: inline-block;
+  font-size: 14px;
+  line-height: 1.2;
+  list-style: none;
+  padding: 6px 10px;
+}
+
+.member-note-edit-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.member-note-edit-panel[open] > summary {
+  margin-bottom: 10px;
+}
+
+.member-note-edit-panel .member-note-edit {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 10px;
+}
+
+.member-note-row-actions form {
+  margin: 0;
+}
+
+.member-note-row-actions button {
+  font-size: 14px;
+  line-height: 1.2;
+  padding: 6px 10px;
+}
+
+.member-documents-section {
+  margin: 28px 0 24px;
+  max-width: 920px;
+}
+
+.member-documents-section .member-document-upload {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
+  box-sizing: border-box;
+  margin-bottom: 12px;
+  padding: 12px;
+  width: fit-content;
+}
+
+.member-documents-section table {
+  max-width: 680px;
+}
+
 .detail-wide {
   grid-column: 1 / -1;
 }
@@ -1930,6 +2148,21 @@ th {
   .section-heading-row,
   .self-checkin-form {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .member-note-form {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .member-note-fields,
+  .member-note-edit {
+    grid-template-columns: 1fr;
+  }
+
+  .section-title-row {
+    align-items: flex-start;
     flex-direction: column;
   }
 

@@ -95,6 +95,18 @@ ON audit_log (entity_type, entity_id, changed_at);
 CREATE INDEX IF NOT EXISTS ix_audit_log_changed_at
 ON audit_log (changed_at, id);
 
+CREATE TABLE IF NOT EXISTS user_notes (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    summary TEXT NOT NULL CHECK (length(trim(summary)) > 0 AND length(summary) <= 120),
+    details TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS ix_user_notes_user_created
+ON user_notes (user_id, created_at);
+
 CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,

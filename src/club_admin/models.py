@@ -62,3 +62,15 @@ class GuestRegistration:
     user_id: int | None = None
     created_at: datetime | None = None
     id: int | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class UserNote:
+    '''One admin note attached to a club user.'''
+
+    user_id: int
+    summary: str
+    details: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    id: int | None = None

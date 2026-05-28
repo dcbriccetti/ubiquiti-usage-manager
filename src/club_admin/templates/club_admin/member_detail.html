@@ -89,8 +89,66 @@
       </section>
     {% endif %}
 
-    <div class="section-heading-row">
-      <h2>Other Documents</h2>
+    <section class="member-notes-section" aria-labelledby="member-notes-title">
+      <div class="section-title-row">
+        <h2 id="member-notes-title">Notes</h2>
+        <details class="member-note-add-panel">
+          <summary>Add Note</summary>
+          <form class="member-note-form" action="{{ url_for('add_member_note', member_id=member.id) }}" method="post">
+            <div class="member-note-fields">
+              <label>
+                <span>Summary</span>
+                <input type="text" name="summary" maxlength="120" required>
+              </label>
+              <label>
+                <span>Details</span>
+                <textarea name="details" rows="2"></textarea>
+              </label>
+            </div>
+            <div class="member-note-actions">
+              <button type="submit">Save Note</button>
+            </div>
+          </form>
+        </details>
+      </div>
+      <div class="member-notes-list">
+        {% for note in notes %}
+          <article class="member-note">
+            <div class="member-note-header">
+              <time datetime="{{ note.created_at.isoformat() if note.created_at else '' }}">{{ note.created_at.strftime('%Y-%m-%d') if note.created_at else '' }}</time>
+            </div>
+            <h3>{{ note.summary }}</h3>
+            {% if note.details %}
+              <p>{{ note.details }}</p>
+            {% endif %}
+            <div class="member-note-row-actions">
+              <details class="member-note-edit-panel">
+                <summary>Edit</summary>
+                <form class="member-note-edit" action="{{ url_for('edit_member_note', member_id=member.id, note_id=note.id) }}" method="post">
+                  <label>
+                    <span>Summary</span>
+                    <input type="text" name="summary" maxlength="120" value="{{ note.summary }}" required>
+                  </label>
+                  <label>
+                    <span>Details</span>
+                    <textarea name="details" rows="2">{{ note.details or '' }}</textarea>
+                  </label>
+                  <button type="submit" class="button-link secondary">Save Note</button>
+                </form>
+              </details>
+              <form action="{{ url_for('delete_member_note', member_id=member.id, note_id=note.id) }}" method="post">
+                <button type="submit" class="button-link danger" onclick="return confirm('Delete this note?')">Delete</button>
+              </form>
+            </div>
+          </article>
+        {% else %}
+          <p class="empty">No notes recorded for this user.</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="member-documents-section" aria-labelledby="member-documents-title">
+      <h2 id="member-documents-title">Other Documents</h2>
       <form
         class="member-document-upload"
         action="{{ url_for('upload_member_document', member_id=member.id) }}"
@@ -103,29 +161,29 @@
         </label>
         <button type="submit">Attach Document</button>
       </form>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Document</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for document in other_documents %}
+      <table>
+        <thead>
           <tr>
-            <td>
-              <a href="{{ url_for('member_document', member_id=member.id, name=document.name) }}" target="_blank" rel="noopener">
-                {{ document.name }}
-              </a>
-            </td>
+            <th>Document</th>
           </tr>
-        {% else %}
-          <tr>
-            <td class="empty">No other documents found for this user.</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for document in other_documents %}
+            <tr>
+              <td>
+                <a href="{{ url_for('member_document', member_id=member.id, name=document.name) }}" target="_blank" rel="noopener">
+                  {{ document.name }}
+                </a>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td class="empty">No other documents found for this user.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
 
     <h2>All Check-ins</h2>
     <p>

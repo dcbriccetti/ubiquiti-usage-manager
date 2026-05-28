@@ -41,6 +41,7 @@ from club_admin import database
 from club_admin import guest_form
 from club_admin import guest_registration_repository
 from club_admin import member_repository
+from club_admin import user_note_repository
 from club_admin import zip_repository
 from club_admin.models import CheckIn, GuestRegistration, Member
 
@@ -1966,6 +1967,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                 entity_type="user",
                 entity_id=member_id,
             )
+            notes = user_note_repository.list_user_notes(connection, member_id)
         document_preview = _member_document_preview(
             member,
             flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
@@ -1986,10 +1988,121 @@ def create_app(db_path: Path | None = None) -> Flask:
             "club_admin/member_detail.html",
             member=member,
             checkins=checkins,
+            notes=notes,
             audit_entries=_visible_member_audit_entries(audit_entries),
             document_preview=document_preview,
             other_documents=other_documents,
         )
+
+    @flask_app.post("/members/<int:member_id>/notes")
+    @require_admin
+    def add_member_note(member_id: int):
+        with open_connection() as connection:
+            member = member_repository.get_member(connection, member_id)
+            if member is None:
+                abort(404)
+            try:
+                note = user_note_repository.note_from_values(
+                    user_id=member_id,
+                    summary=request.form.get("summary", ""),
+                    details=request.form.get("details", ""),
+                )
+            except ValueError as error:
+                abort(400, str(error))
+            user_note_repository.add_user_note(connection, note)
+            audit_repository.record_field_change(
+                connection,
+                entity_type="user",
+                entity_id=member_id,
+                action="edit",
+                field_name="note added",
+                old_value=None,
+                new_value=note.summary,
+            )
+            connection.commit()
+        return redirect(url_for("member_detail", member_id=member_id))
+
+    @flask_app.post("/members/<int:member_id>/notes/<int:note_id>/edit")
+    @require_admin
+    def edit_member_note(member_id: int, note_id: int):
+        with open_connection() as connection:
+            member = member_repository.get_member(connection, member_id)
+            if member is None:
+                abort(404)
+            try:
+                note = user_note_repository.note_from_values(
+                    user_id=member_id,
+                    summary=request.form.get("summary", ""),
+                    details=request.form.get("details", ""),
+                )
+            except ValueError as error:
+                abort(400, str(error))
+            note = replace(note, id=note_id)
+            existing_note = user_note_repository.get_user_note(
+                connection,
+                note_id=note_id,
+                user_id=member_id,
+            )
+            if existing_note is None:
+                abort(404)
+            summary_changed = existing_note.summary != note.summary
+            details_changed = existing_note.details != note.details
+            if not user_note_repository.update_user_note(connection, note):
+                abort(404)
+            if summary_changed:
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=member_id,
+                    action="edit",
+                    field_name="note edited",
+                    old_value=existing_note.summary,
+                    new_value=note.summary,
+                )
+            elif details_changed:
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=member_id,
+                    action="edit",
+                    field_name="note details edited",
+                    old_value=None,
+                    new_value=note.summary,
+                )
+            connection.commit()
+        return redirect(url_for("member_detail", member_id=member_id))
+
+    @flask_app.post("/members/<int:member_id>/notes/<int:note_id>/delete")
+    @require_admin
+    def delete_member_note(member_id: int, note_id: int):
+        with open_connection() as connection:
+            member = member_repository.get_member(connection, member_id)
+            if member is None:
+                abort(404)
+            existing_note = user_note_repository.get_user_note(
+                connection,
+                note_id=note_id,
+                user_id=member_id,
+            )
+            if existing_note is None:
+                abort(404)
+            if not user_note_repository.delete_user_note(
+                connection,
+                note_id=note_id,
+                user_id=member_id,
+            ):
+                abort(404)
+            audit_repository.record_field_change(
+                connection,
+                entity_type="user",
+                entity_id=member_id,
+                action="edit",
+                field_name="note deleted",
+                old_value=existing_note.summary,
+                new_value=None,
+            )
+            connection.commit()
+        return redirect(url_for("member_detail", member_id=member_id))
 
     @flask_app.route("/changes")
     @require_admin

@@ -22,6 +22,7 @@ from club_admin import checkin_repository
 from club_admin import database
 from club_admin import guest_registration_repository
 from club_admin import member_repository
+from club_admin import user_note_repository
 from club_admin.repair_driver_license_scans import _prepare_stored_driver_license_image
 from club_admin.app import create_app
 from club_admin.models import CheckIn, GuestRegistration, Member
@@ -1391,6 +1392,224 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("(510) 510-5100", body)
         self.assertIn("Edit Check-ins", body)
         self.assertIn(f'/members/{member.id}/checkins/edit', body)
+        self.assertIn("Notes", body)
+        self.assertIn("Add Note", body)
+
+    def test_member_detail_can_add_note(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.post(
+                f"/members/{member.id}/notes",
+                data={
+                    "summary": "  Next   visit free  ",
+                    "details": "Comped because the printer failed.",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                notes = user_note_repository.list_user_notes(connection, member.id)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+            detail_response = client.get(f"/members/{member.id}")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0].summary, "Next visit free")
+        self.assertEqual(notes[0].details, "Comped because the printer failed.")
+        self.assertEqual(audit_entries[0].field_name, "note added")
+        self.assertIsNone(audit_entries[0].old_value)
+        self.assertEqual(audit_entries[0].new_value, "Next visit free")
+        body = detail_response.get_data(as_text=True)
+        self.assertIn("Next visit free", body)
+        self.assertIn("Comped because the printer failed.", body)
+        self.assertIn("Edit", body)
+        self.assertIn("Delete", body)
+
+    def test_member_detail_can_edit_note(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                note_id = user_note_repository.add_user_note(
+                    connection,
+                    user_note_repository.note_from_values(
+                        user_id=member.id,
+                        summary="Next visit free",
+                        details="Old details.",
+                    ),
+                )
+                connection.commit()
+
+            response = client.post(
+                f"/members/{member.id}/notes/{note_id}/edit",
+                data={
+                    "summary": "Good board candidate",
+                    "details": "Helpful with orientation.",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                notes = user_note_repository.list_user_notes(connection, member.id)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(notes[0].summary, "Good board candidate")
+        self.assertEqual(notes[0].details, "Helpful with orientation.")
+        self.assertIsNotNone(notes[0].updated_at)
+        self.assertEqual(audit_entries[0].field_name, "note edited")
+        self.assertEqual(audit_entries[0].old_value, "Next visit free")
+        self.assertEqual(audit_entries[0].new_value, "Good board candidate")
+
+    def test_member_detail_logs_detail_only_note_edit_clearly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                note_id = user_note_repository.add_user_note(
+                    connection,
+                    user_note_repository.note_from_values(
+                        user_id=member.id,
+                        summary="Teaches computer science",
+                        details="Original details.",
+                    ),
+                )
+                connection.commit()
+
+            response = client.post(
+                f"/members/{member.id}/notes/{note_id}/edit",
+                data={
+                    "summary": "Teaches computer science",
+                    "details": "Updated details.",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(audit_entries[0].field_name, "note details edited")
+        self.assertIsNone(audit_entries[0].old_value)
+        self.assertEqual(audit_entries[0].new_value, "Teaches computer science")
+
+    def test_member_detail_can_delete_note(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+                note_id = user_note_repository.add_user_note(
+                    connection,
+                    user_note_repository.note_from_values(
+                        user_id=member.id,
+                        summary="Incident report",
+                        details="Details kept elsewhere.",
+                    ),
+                )
+                connection.commit()
+
+            response = client.post(f"/members/{member.id}/notes/{note_id}/delete")
+
+            with closing(database.connect(db_path)) as connection:
+                notes = user_note_repository.list_user_notes(connection, member.id)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(notes, [])
+        self.assertEqual(audit_entries[0].field_name, "note deleted")
+        self.assertEqual(audit_entries[0].old_value, "Incident report")
+        self.assertIsNone(audit_entries[0].new_value)
+
+    def test_member_note_requires_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.post(
+                f"/members/{member.id}/notes",
+                data={"summary": " ", "details": "No summary."},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Note summary is required.", response.get_data(as_text=True))
 
     def test_member_detail_shows_guest_form_image_when_configured_file_exists(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
