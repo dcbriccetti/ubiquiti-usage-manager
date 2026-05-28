@@ -880,6 +880,10 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertNotIn('href="/imports"', body)
         self.assertIn('href="/changes"', body)
         self.assertNotIn('href="/self-checkin">Self Check-in</a>', body)
+        self.assertLess(
+            body.index('href="/checkins/report"'),
+            body.index('href="/guest-registrations"'),
+        )
         self.assertIn('href="/members/export.csv"', body)
         self.assertIn("Export CSV", body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
