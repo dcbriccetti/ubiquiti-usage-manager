@@ -197,6 +197,61 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("member_since", columns)
         self.assertIn("date_of_birth", columns)
 
+    def test_database_removes_guest_registration_middle_name_column(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            with closing(database.connect(db_path)) as connection:
+                connection.executescript(
+                    """
+                    CREATE TABLE users (
+                        id INTEGER PRIMARY KEY,
+                        last_name TEXT NOT NULL,
+                        first_name TEXT NOT NULL,
+                        card_number TEXT NOT NULL UNIQUE,
+                        membership TEXT NOT NULL,
+                        imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE TABLE guest_registrations (
+                        id INTEGER PRIMARY KEY,
+                        user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
+                        visit_date TEXT NOT NULL,
+                        middle_name TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    INSERT INTO users (
+                        id,
+                        last_name,
+                        first_name,
+                        card_number,
+                        membership
+                    )
+                    VALUES (1, 'Doe', 'John', '1000', 'Visitor');
+                    INSERT INTO guest_registrations (
+                        user_id,
+                        visit_date,
+                        middle_name
+                    )
+                    VALUES (1, '2026-05-14', 'Q');
+                    """
+                )
+                connection.commit()
+
+            database.init_db(db_path)
+
+            with closing(database.connect(db_path)) as connection:
+                columns = {
+                    row["name"]
+                    for row in connection.execute(
+                        "PRAGMA table_info(guest_registrations)"
+                    ).fetchall()
+                }
+                registration_count = connection.execute(
+                    "SELECT COUNT(*) FROM guest_registrations"
+                ).fetchone()[0]
+
+        self.assertNotIn("middle_name", columns)
+        self.assertEqual(registration_count, 1)
+
     def test_admin_pages_redirect_to_login_when_not_authenticated(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -276,10 +331,15 @@ class ClubMemberImportTests(unittest.TestCase):
             response = flask_app.test_client().get("/self-checkin")
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0")
         body = response.get_data(as_text=True)
         self.assertIn("Self Check-in", body)
         self.assertIn('href="/guest-registration"', body)
-        self.assertIn('name="phone" autocomplete="tel" required autofocus', body)
+        self.assertIn('method="post" autocomplete="off"', body)
+        self.assertIn('name="phone" autocomplete="off" required autofocus', body)
+        self.assertIn('name="initials" maxlength="40" autocomplete="off" required', body)
+        self.assertNotIn('autocomplete="tel"', body)
+        self.assertNotIn('autocomplete="given-name"', body)
         self.assertNotIn('name="barcode_token"\n                  autocomplete="off"\n                  autofocus', body)
 
     def test_guest_registration_page_stays_public_without_admin_login(self) -> None:
@@ -290,6 +350,7 @@ class ClubMemberImportTests(unittest.TestCase):
             response = flask_app.test_client().get("/guest-registration")
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0")
         self.assertIn("Guest Registration", response.get_data(as_text=True))
 
     def test_guest_registration_thanks_returns_to_self_checkin_after_delay(self) -> None:
@@ -300,6 +361,7 @@ class ClubMemberImportTests(unittest.TestCase):
             response = flask_app.test_client().get("/guest-registration/thanks")
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0")
         self.assertEqual(response.headers["Refresh"], "60; url=/self-checkin")
         body = response.get_data(as_text=True)
         self.assertIn("Registration Submitted", body)
@@ -489,7 +551,6 @@ class ClubMemberImportTests(unittest.TestCase):
                     "last_name": "Doe",
                     "first_name": "John",
                     "date_of_birth": "1990-06-15",
-                    "middle_name": "Q",
                     "nickname": "Johnny",
                     "address": "123 Main St",
                     "city": "Everytown",
@@ -530,7 +591,6 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(new_user.phone, "(123) 123-1234")
         self.assertEqual(new_user.cell_phone, "(510) 510-5100")
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0].registration.middle_name, "Q")
         self.assertEqual(records[0].registration.other_phone, "(123) 123-1234")
         self.assertTrue(records[0].registration.guest_of_member)
         self.assertTrue(records[0].registration.newsletter_opt_out)
@@ -547,6 +607,50 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(checkins[0].last_name, "Doe")
         self.assertEqual(checkins[0].first_name, "John")
 
+    def test_guest_registration_normalizes_obvious_casing_without_lowercasing_email(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "visit_date": "2026-05-14",
+                    "last_name": "  baroni  ",
+                    "first_name": "jimbo",
+                    "nickname": "sammy",
+                    "date_of_birth": "2000-01-01",
+                    "address": "123 jeff st",
+                    "city": "lafayette",
+                    "state": "ca",
+                    "zip": "945491234",
+                    "cell_phone": "510-510-5100",
+                    "email": "  Jimbo.Baroni@Example.TEST  ",
+                    "marital_status": "single",
+                    "partner_name": "jane doe",
+                    "guest_of_member": "1",
+                    "member_name": "john member",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                member = member_repository.list_members(connection)[0]
+                record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(member.last_name, "Baroni")
+        self.assertEqual(member.first_name, "Jimbo")
+        self.assertEqual(member.nickname, "Sammy")
+        self.assertEqual(member.address, "123 Jeff St")
+        self.assertEqual(member.city, "Lafayette")
+        self.assertEqual(member.state, "CA")
+        self.assertEqual(member.zip, "94549-1234")
+        self.assertEqual(member.email, "Jimbo.Baroni@Example.TEST")
+        self.assertEqual(record.registration.partner_name, "Jane Doe")
+        self.assertEqual(record.registration.member_name, "John Member")
+
     def test_guest_registration_marks_required_fields_without_required_badges(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -562,14 +666,27 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('Contact <span class="visually-hidden">required</span>', body)
         self.assertIn("A phone number or email is required.", body)
         self.assertIn('class="detail-wide required-field"', body)
+        self.assertIn('class="guest-registration-visit-strip"', body)
+        self.assertLess(body.index('id="visit-section-title"'), body.index('id="visitor-section-title"'))
+        self.assertIn('method="post" autocomplete="off"', body)
+        self.assertIn('name="last_name" value="" autocomplete="off" required autofocus', body)
+        self.assertIn('<input type="date" name="visit_date" value="', body)
+        self.assertRegex(body, r'name="visit_date" value="[^"]+" required tabindex="-1"')
         self.assertNotIn('name="cell_phone" value="" autocomplete="tel" inputmode="tel" required', body)
         self.assertNotIn('name="other_phone" value="" inputmode="tel" required', body)
         self.assertNotIn('name="email" value="" autocomplete="email" required', body)
-        self.assertIn('name="date_of_birth" value="" autocomplete="bday" required', body)
-        self.assertIn('name="address" value="" autocomplete="street-address" required', body)
-        self.assertIn('name="zip" value="" autocomplete="postal-code" inputmode="numeric" required data-zip-lookup', body)
-        self.assertIn('name="city" value="" autocomplete="address-level2" required data-city-field', body)
-        self.assertIn('name="state" value="" autocomplete="address-level1" maxlength="2" required data-state-field', body)
+        self.assertIn('name="date_of_birth" value="" autocomplete="off" required', body)
+        self.assertIn('name="address" value="" autocomplete="off" required', body)
+        self.assertIn('name="zip" value="" autocomplete="off" inputmode="numeric" required data-zip-lookup', body)
+        self.assertIn('name="city" value="" autocomplete="off" required tabindex="-1" data-city-field', body)
+        self.assertIn('name="state" value="" autocomplete="off" maxlength="2" required tabindex="-1" data-state-field', body)
+        self.assertNotIn('autocomplete="family-name"', body)
+        self.assertNotIn('autocomplete="given-name"', body)
+        self.assertNotIn('autocomplete="bday"', body)
+        self.assertNotIn('autocomplete="street-address"', body)
+        self.assertNotIn('autocomplete="postal-code"', body)
+        self.assertNotIn('autocomplete="address-level2"', body)
+        self.assertNotIn('autocomplete="address-level1"', body)
         self.assertLess(body.index('name="zip"'), body.index('name="city"'))
         self.assertLess(body.index('name="zip"'), body.index('name="state"'))
         self.assertIn("https://api.zippopotam.us/us/", body)
@@ -2642,7 +2759,6 @@ class ClubMemberImportTests(unittest.TestCase):
                     "last_name": "Doe",
                     "first_name": "John",
                     "date_of_birth": "1990-06-15",
-                    "middle_name": "Q",
                     "nickname": "Johnny",
                     "cell_phone": "510-510-5100",
                     "email": "john@example.test",

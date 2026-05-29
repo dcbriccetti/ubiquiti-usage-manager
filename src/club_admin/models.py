@@ -50,7 +50,6 @@ class GuestRegistration:
     '''A first-time visitor registration submitted before signing the guest form.'''
 
     visit_date: date
-    middle_name: str | None = None
     other_phone: str | None = None
     other_phone_type: str | None = None
     marital_status: str | None = None

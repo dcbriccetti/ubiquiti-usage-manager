@@ -10,7 +10,6 @@ DEFAULT_LABELS = {
     "name": "Name",
     "last_name": "Last Name",
     "first_name": "First Name",
-    "middle_name": "Middle",
     "nickname": "Nickname or Preferred Name",
     "date_of_birth": "Date of Birth",
     "address": "Street Address",

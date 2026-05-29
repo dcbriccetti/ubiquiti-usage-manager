@@ -28,7 +28,6 @@ def _registration_from_row(row: sqlite3.Row) -> GuestRegistration:
         id=row["registration_id"],
         user_id=row["user_id"],
         visit_date=date.fromisoformat(row["visit_date"]),
-        middle_name=row["middle_name"],
         other_phone=format_phone_number(row["other_phone"]),
         other_phone_type=row["other_phone_type"],
         marital_status=row["marital_status"],
@@ -61,7 +60,6 @@ def insert_guest_registration(
         INSERT INTO guest_registrations (
             user_id,
             visit_date,
-            middle_name,
             other_phone,
             other_phone_type,
             marital_status,
@@ -71,12 +69,11 @@ def insert_guest_registration(
             heard_about,
             newsletter_opt_out
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             registration.user_id,
             registration.visit_date.isoformat(),
-            _empty_to_none(registration.middle_name),
             format_phone_number(registration.other_phone),
             _empty_to_none(registration.other_phone_type),
             _empty_to_none(registration.marital_status),
@@ -96,7 +93,6 @@ def _guest_registration_select_sql() -> str:
             g.id AS registration_id,
             g.user_id,
             g.visit_date,
-            g.middle_name,
             g.other_phone,
             g.other_phone_type,
             g.marital_status,

@@ -881,7 +881,8 @@ th {
   padding-top: 0;
 }
 
-.guest-registration-section h2 {
+.guest-registration-section h2,
+.guest-registration-visit-strip h2 {
   color: #20242c;
   font-size: 15px;
   font-weight: 650;
@@ -914,8 +915,16 @@ th {
   gap: 6px;
 }
 
-.guest-registration-section.compact-section {
-  grid-template-columns: minmax(220px, 320px);
+.guest-registration-visit-strip {
+  align-items: end;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  gap: 14px;
+  padding-bottom: 14px;
+}
+
+.guest-registration-visit-strip h2 {
+  min-width: 70px;
 }
 
 .guest-registration-form label > span {
@@ -933,6 +942,10 @@ th {
 
 .state-field {
   max-width: 110px;
+}
+
+.visit-date-field {
+  max-width: 240px;
 }
 
 .form-actions {
@@ -1968,6 +1981,7 @@ th {
   }
 
   .guest-registration-form .required-note,
+  .guest-registration-form .guest-registration-visit-strip,
   .guest-registration-form .form-actions {
     grid-column: 1 / -1;
   }
@@ -1982,10 +1996,6 @@ th {
   .guest-registration-section:nth-of-type(2) {
     border-top: 0;
     padding-top: 0;
-  }
-
-  .guest-registration-section.compact-section {
-    grid-template-columns: minmax(180px, 260px);
   }
 
   .guest-registration-section h2 {
@@ -2173,9 +2183,13 @@ th {
 
   .self-checkin-form,
   .barcode-checkin-form,
-  .guest-registration-section,
-  .guest-registration-section.compact-section {
+  .guest-registration-section {
     grid-template-columns: 1fr;
+  }
+
+  .guest-registration-visit-strip {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .state-field {

@@ -22,37 +22,33 @@
       <p class="notice">{{ message }}</p>
     {% endif %}
 
-    <form class="edit-form guest-registration-form" action="{{ url_for('guest_registration') }}" method="post">
+    <form class="edit-form guest-registration-form" action="{{ url_for('guest_registration') }}" method="post" autocomplete="off">
       <p class="required-note">Items marked <span aria-hidden="true">•</span> are required.</p>
-      <section class="guest-registration-section compact-section" aria-labelledby="visit-section-title">
+      <section class="guest-registration-visit-strip" aria-labelledby="visit-section-title">
         <h2 id="visit-section-title">Visit</h2>
-        <label class="required-field">
+        <label class="required-field visit-date-field">
           <span>Visit Date</span>
-          <input type="date" name="visit_date" value="{{ form_data.get('visit_date', today) }}" required>
+          <input type="date" name="visit_date" value="{{ form_data.get('visit_date', today) }}" required tabindex="-1">
         </label>
       </section>
 
-      <section class="guest-registration-section" aria-labelledby="name-section-title">
-        <h2 id="name-section-title">Name</h2>
+      <section class="guest-registration-section" aria-labelledby="visitor-section-title">
+        <h2 id="visitor-section-title">Visitor</h2>
         <label class="required-field">
           <span>Last Name</span>
-          <input type="text" name="last_name" value="{{ form_data.get('last_name', '') }}" autocomplete="family-name" required>
+          <input type="text" name="last_name" value="{{ form_data.get('last_name', '') }}" autocomplete="off" required autofocus>
         </label>
         <label class="required-field">
           <span>First Name</span>
-          <input type="text" name="first_name" value="{{ form_data.get('first_name', '') }}" autocomplete="given-name" required>
-        </label>
-        <label>
-          <span>Middle</span>
-          <input type="text" name="middle_name" value="{{ form_data.get('middle_name', '') }}" autocomplete="additional-name">
+          <input type="text" name="first_name" value="{{ form_data.get('first_name', '') }}" autocomplete="off" required>
         </label>
         <label>
           <span>Nickname or Preferred Name</span>
-          <input type="text" name="nickname" value="{{ form_data.get('nickname', '') }}">
+          <input type="text" name="nickname" value="{{ form_data.get('nickname', '') }}" autocomplete="off">
         </label>
         <label class="required-field">
           <span>Date of Birth</span>
-          <input type="date" name="date_of_birth" value="{{ form_data.get('date_of_birth', '') }}" autocomplete="bday" required>
+          <input type="date" name="date_of_birth" value="{{ form_data.get('date_of_birth', '') }}" autocomplete="off" required>
         </label>
       </section>
 
@@ -61,11 +57,11 @@
         <p class="section-note detail-wide">A phone number or email is required.</p>
         <label>
           <span>Cell Phone</span>
-          <input type="tel" name="cell_phone" value="{{ form_data.get('cell_phone', '') }}" autocomplete="tel" inputmode="tel">
+          <input type="tel" name="cell_phone" value="{{ form_data.get('cell_phone', '') }}" autocomplete="off" inputmode="tel">
         </label>
         <label>
           <span>Other Phone</span>
-          <input type="tel" name="other_phone" value="{{ form_data.get('other_phone', '') }}" inputmode="tel">
+          <input type="tel" name="other_phone" value="{{ form_data.get('other_phone', '') }}" autocomplete="off" inputmode="tel">
         </label>
         <label>
           <span>Other Phone Type</span>
@@ -78,7 +74,7 @@
         </label>
         <label>
           <span>Email Address</span>
-          <input type="email" name="email" value="{{ form_data.get('email', '') }}" autocomplete="email">
+          <input type="email" name="email" value="{{ form_data.get('email', '') }}" autocomplete="off">
         </label>
       </section>
 
@@ -86,19 +82,19 @@
         <h2 id="address-section-title">Address</h2>
         <label class="detail-wide required-field">
           <span>Street Address</span>
-          <input type="text" name="address" value="{{ form_data.get('address', '') }}" autocomplete="street-address" required>
+          <input type="text" name="address" value="{{ form_data.get('address', '') }}" autocomplete="off" required>
         </label>
         <label class="required-field">
           <span>Zip Code</span>
-          <input type="text" name="zip" value="{{ form_data.get('zip', '') }}" autocomplete="postal-code" inputmode="numeric" required data-zip-lookup>
+          <input type="text" name="zip" value="{{ form_data.get('zip', '') }}" autocomplete="off" inputmode="numeric" required data-zip-lookup>
         </label>
         <label class="required-field">
           <span>City</span>
-          <input type="text" name="city" value="{{ form_data.get('city', '') }}" autocomplete="address-level2" required data-city-field>
+          <input type="text" name="city" value="{{ form_data.get('city', '') }}" autocomplete="off" required tabindex="-1" data-city-field>
         </label>
         <label class="state-field required-field">
           <span>State</span>
-          <input type="text" name="state" value="{{ form_data.get('state', '') }}" autocomplete="address-level1" maxlength="2" required data-state-field>
+          <input type="text" name="state" value="{{ form_data.get('state', '') }}" autocomplete="off" maxlength="2" required tabindex="-1" data-state-field>
         </label>
       </section>
 
@@ -115,7 +111,7 @@
         </label>
         <label>
           <span>Partner With Me Today</span>
-          <input type="text" name="partner_name" value="{{ form_data.get('partner_name', '') }}">
+          <input type="text" name="partner_name" value="{{ form_data.get('partner_name', '') }}" autocomplete="off">
         </label>
         <label class="checkbox-field">
           <input type="checkbox" name="guest_of_member" value="1" {% if form_data.get('guest_of_member') %}checked{% endif %}>
@@ -123,11 +119,11 @@
         </label>
         <label>
           <span>Member Name</span>
-          <input type="text" name="member_name" value="{{ form_data.get('member_name', '') }}">
+          <input type="text" name="member_name" value="{{ form_data.get('member_name', '') }}" autocomplete="off">
         </label>
         <label class="detail-wide">
           <span>How Did You Hear About Us?</span>
-          <input type="text" name="heard_about" value="{{ form_data.get('heard_about', '') }}">
+          <input type="text" name="heard_about" value="{{ form_data.get('heard_about', '') }}" autocomplete="off">
         </label>
         <label class="checkbox-field detail-wide">
           <input type="checkbox" name="newsletter_opt_out" value="1" {% if form_data.get('newsletter_opt_out') %}checked{% endif %}>

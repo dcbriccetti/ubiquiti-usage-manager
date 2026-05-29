@@ -91,6 +91,13 @@ ID_DOCUMENT_NAME_PATTERN = re.compile(
     re.IGNORECASE,
 )
 BARCODE_TOKEN_VERSION = "UM1"
+PUBLIC_KIOSK_ENDPOINTS = frozenset(
+    {
+        "guest_registration",
+        "guest_registration_thanks",
+        "self_checkin",
+    }
+)
 CODE128_PATTERNS = (
     "212222", "222122", "222221", "121223", "121322", "131222", "122213", "122312",
     "132212", "221213", "221312", "231212", "112232", "122132", "122231", "113222",
@@ -619,8 +626,41 @@ def _checkin_visit_number_chart(
     )
 
 
+def _collapsed_text(value: str | None) -> str:
+    return " ".join(str(value or "").strip().split())
+
+
 def _visitor_text_or_none(form_data: Any, field_name: str) -> str | None:
-    return form_data.get(field_name, "").strip() or None
+    value = _collapsed_text(form_data.get(field_name, ""))
+    return value or None
+
+
+def _titlecase_text(value: str | None) -> str | None:
+    cleaned_value = _collapsed_text(value)
+    if not cleaned_value:
+        return None
+    if cleaned_value.islower() or cleaned_value.isupper():
+        return cleaned_value.title()
+    return cleaned_value
+
+
+def _visitor_title_text_or_none(form_data: Any, field_name: str) -> str | None:
+    return _titlecase_text(form_data.get(field_name, ""))
+
+
+def _visitor_state_or_none(form_data: Any) -> str | None:
+    value = _collapsed_text(form_data.get("state", ""))
+    return value.upper() if value else None
+
+
+def _visitor_zip_or_none(form_data: Any) -> str | None:
+    value = _collapsed_text(form_data.get("zip", ""))
+    digits = re.sub(r"\D+", "", value)
+    if len(digits) == 9:
+        return f"{digits[:5]}-{digits[5:]}"
+    if len(digits) >= 5:
+        return digits[:5]
+    return value or None
 
 
 def _visitor_bool(form_data: Any, field_name: str) -> bool:
@@ -741,16 +781,16 @@ def _guest_registration_from_form(
     work_phone = other_phone if other_phone_type == "work" else None
 
     member = Member(
-        last_name=form_data.get("last_name", "").strip(),
-        first_name=form_data.get("first_name", "").strip(),
-        nickname=_visitor_text_or_none(form_data, "nickname"),
+        last_name=_visitor_title_text_or_none(form_data, "last_name") or "",
+        first_name=_visitor_title_text_or_none(form_data, "first_name") or "",
+        nickname=_visitor_title_text_or_none(form_data, "nickname"),
         card_number=card_number,
         membership="Visitor",
         date_of_birth=_parse_visitor_date_of_birth(form_data),
-        address=_visitor_text_or_none(form_data, "address"),
-        city=_visitor_text_or_none(form_data, "city"),
-        state=_visitor_text_or_none(form_data, "state"),
-        zip=_visitor_text_or_none(form_data, "zip"),
+        address=_visitor_title_text_or_none(form_data, "address"),
+        city=_visitor_title_text_or_none(form_data, "city"),
+        state=_visitor_state_or_none(form_data),
+        zip=_visitor_zip_or_none(form_data),
         phone=phone,
         email=_visitor_text_or_none(form_data, "email"),
         work_phone=work_phone,
@@ -758,7 +798,6 @@ def _guest_registration_from_form(
     )
     registration = GuestRegistration(
         visit_date=_parse_visitor_visit_date(form_data),
-        middle_name=_visitor_text_or_none(form_data, "middle_name"),
         other_phone=other_phone,
         other_phone_type=other_phone_type,
         marital_status=_visitor_choice(
@@ -766,9 +805,9 @@ def _guest_registration_from_form(
             "marital_status",
             {"single", "married", "recognized_couple"},
         ),
-        partner_name=_visitor_text_or_none(form_data, "partner_name"),
+        partner_name=_visitor_title_text_or_none(form_data, "partner_name"),
         guest_of_member=_visitor_bool(form_data, "guest_of_member"),
-        member_name=_visitor_text_or_none(form_data, "member_name"),
+        member_name=_visitor_title_text_or_none(form_data, "member_name"),
         heard_about=_visitor_text_or_none(form_data, "heard_about"),
         newsletter_opt_out=_visitor_bool(form_data, "newsletter_opt_out"),
     )
@@ -1675,6 +1714,14 @@ def create_app(db_path: Path | None = None) -> Flask:
             return None
         next_url = f"{request.script_root}{request.full_path}".rstrip("?")
         return redirect(url_for("admin_login", next=next_url))
+
+    @flask_app.after_request
+    def prevent_public_kiosk_cache(response):
+        if request.endpoint in PUBLIC_KIOSK_ENDPOINTS:
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
     @flask_app.context_processor
     def inject_app_title() -> dict[str, str]:

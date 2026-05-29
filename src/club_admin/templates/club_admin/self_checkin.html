@@ -63,7 +63,7 @@
               <h2 id="barcode-checkin-heading">Barcode Scan</h2>
               <p>Scan your saved barcode. Click on or tab into the Barcode field, then scan your barcode.</p>
             </div>
-            <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+            <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post" autocomplete="off">
               <label>
                 <span>Barcode</span>
                 <input
@@ -81,14 +81,14 @@
               <h2 id="manual-checkin-heading">Phone Check-in</h2>
               <p>Enter your phone number and initials or first name.</p>
             </div>
-            <form class="self-checkin-form manual-checkin-form" action="{{ url_for('self_checkin') }}" method="post">
+            <form class="self-checkin-form manual-checkin-form" action="{{ url_for('self_checkin') }}" method="post" autocomplete="off">
               <label>
                 <span>Phone Number</span>
-                <input type="tel" name="phone" autocomplete="tel" required autofocus>
+                <input type="tel" name="phone" autocomplete="off" required autofocus>
               </label>
               <label>
                 <span>Initials or First Name</span>
-                <input type="text" name="initials" maxlength="40" autocomplete="given-name" required>
+                <input type="text" name="initials" maxlength="40" autocomplete="off" required>
               </label>
               <div class="checkin-action-row">
                 <button type="submit" data-manual-checkin-submit disabled>Check In</button>

@@ -39,7 +39,6 @@ CREATE TABLE IF NOT EXISTS guest_registrations (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
     visit_date TEXT NOT NULL CHECK (visit_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
-    middle_name TEXT,
     other_phone TEXT,
     other_phone_type TEXT CHECK (other_phone_type IS NULL OR other_phone_type IN ('home', 'work', 'other')),
     marital_status TEXT CHECK (marital_status IS NULL OR marital_status IN ('single', 'married', 'recognized_couple')),
@@ -204,6 +203,14 @@ def _ensure_user_date_columns(connection: sqlite3.Connection) -> None:
         )
 
 
+def _drop_guest_registration_middle_name_column(connection: sqlite3.Connection) -> None:
+    if not _table_exists(connection, "guest_registrations"):
+        return
+    columns = _column_names(connection, "guest_registrations")
+    if "middle_name" in columns:
+        connection.execute("ALTER TABLE guest_registrations DROP COLUMN middle_name")
+
+
 def init_db(db_path: Path | None = None) -> None:
     '''Create club-user tables if they do not exist.'''
     connection = connect(db_path)
@@ -211,6 +218,7 @@ def init_db(db_path: Path | None = None) -> None:
         _validate_existing_schema(connection)
         connection.executescript(SCHEMA_SQL)
         _ensure_user_date_columns(connection)
+        _drop_guest_registration_middle_name_column(connection)
         _validate_foreign_keys(connection)
         connection.commit()
     finally:
