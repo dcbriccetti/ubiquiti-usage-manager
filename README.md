@@ -1,5 +1,12 @@
 UniFi usage dashboard + monitor for tracking client usage and applying policy-based speed limits.
 
+## Documentation
+
+- `README.md`: app structure, local run commands, and configuration notes for
+  both the LAN dashboard and club user-management app.
+- `deploy/README.md`: production paths, systemd units, routine deploys,
+  backups, and maintenance commands.
+
 ## App Structure
 
 This repo is being migrated gradually from one flat LAN-management app into
@@ -42,8 +49,9 @@ Set `USER_MANAGEMENT_ORGANIZATION_NAME` in `src/config_local.py` to change the v
 When deploying behind the same Nginx server as the LAN app, set
 `USER_MANAGEMENT_URL_PREFIX = '/users'` so user-management links and static
 assets stay under `/users/...`.
-Self check-in is public. User lists, details, reports, imports, and edits
-require admin login. Set `USER_MANAGEMENT_ADMIN_PASSWORD_HASH` in ignored
+Self check-in and guest registration are public. User lists, details, reports,
+exports, documents, notes, and edits require admin login. Set
+`USER_MANAGEMENT_ADMIN_PASSWORD_HASH` in ignored
 `src/config_local.py`; the app fails closed for admin pages when no hash is
 configured. Generate a hash with:
 
@@ -55,6 +63,12 @@ Copy the printed `USER_MANAGEMENT_ADMIN_PASSWORD_HASH` and
 `USER_MANAGEMENT_SESSION_SECRET` lines into `src/config_local.py`. Do not store
 the plain admin password in any file.
 
+Admin login uses a signed browser session cookie. A normal webapp restart does
+not require admins to sign in again as long as `USER_MANAGEMENT_SESSION_SECRET`
+stays the same and the browser still has the session cookie. Use the app logout
+button, clear browser cookies, or rotate `USER_MANAGEMENT_SESSION_SECRET` when
+you intentionally need to invalidate existing admin sessions.
+
 The LAN usage dashboard can also use a password-backed admin session, which is
 helpful from VPN or on-site networks when the browser is not connected to Plus
 with a `PLUS_ADMINS` identity. Generate the LAN app hash and session secret with:
@@ -65,6 +79,10 @@ PYTHONPATH=src .venv/bin/python -c 'from getpass import getpass; from secrets im
 
 Copy the printed `LAN_ADMIN_PASSWORD_HASH` and `LAN_ADMIN_SESSION_SECRET` lines
 into `src/config_local.py`.
+LAN admin login uses the same signed-cookie model: restarting the service does
+not clear authenticated browser sessions while `LAN_ADMIN_SESSION_SECRET`
+remains unchanged.
+
 Check-in procedure:
 
 1. A user can check in on the public self check-in page with phone number plus
@@ -113,17 +131,15 @@ USER_MANAGEMENT_ZIP_COORDINATES = {
 }
 ```
 
-The map aggregates users by ZIP code and does not call an external geocoding or
-map service for ZIPs with configured coordinates. ZIPs without local coordinates
-are looked up in the browser through Zippopotam.us by ZIP code only so the map
-can still render pins.
-For faster, repeatable report generation, import a ZIP centroid CSV from the
-admin map page. The CSV should include `zip`, `latitude`, and `longitude`
-columns; imported coordinates are stored in the local club-user SQLite database.
+The map aggregates checked-in users by ZIP code for the selected check-in date
+range. It does not call an external geocoding or map service for ZIPs with
+configured or saved coordinates. ZIPs without local coordinates are looked up in
+the browser through Zippopotam.us by ZIP code only, then saved transparently in
+the local club-user SQLite database for future map loads.
 
-The club app imports roster CSVs into the `users` table and check-in report
-CSVs into the `checkins` table. Local CSV exports and SQLite user databases are
-ignored by Git so user, member, and visitor data stays off commits.
+The club app can export the current user list to CSV. Local CSV exports and
+SQLite user databases are ignored by Git so user, member, and visitor data stays
+off commits.
 SQLite foreign-key enforcement is enabled by the app on every connection. If
 you inspect the DB manually with `sqlite3`, run `PRAGMA foreign_keys=ON;` first;
 the app also refuses to start if it detects broken club-user foreign keys.

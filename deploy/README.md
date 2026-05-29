@@ -67,7 +67,22 @@ cd /home/daveb/devel/ubiquiti-usage-manager
 
 ## Routine Deploy
 
-Once the units are installed, routine deploys can use:
+Normal deployment is:
+
+```bash
+git push origin main
+ssh daveb@seqserver.local
+cd /home/daveb/devel/ubiquiti-usage-manager
+deploy/scripts/deploy-prod.sh
+```
+
+When VPN DNS is not available, SSH to the server IP instead:
+
+```bash
+ssh daveb@192.168.2.30
+```
+
+Once the systemd units are installed, the server-side deploy command is:
 
 ```bash
 cd /home/daveb/devel/ubiquiti-usage-manager
@@ -81,6 +96,21 @@ by default; set `BACKUP_BEFORE_DEPLOY=1` when you want one:
 ```bash
 BACKUP_BEFORE_DEPLOY=1 deploy/scripts/deploy-prod.sh
 ```
+
+The health checks run immediately after restart. If one fails right after the
+services were restarted, wait a few seconds and verify before treating it as a
+real deploy failure:
+
+```bash
+sleep 3
+curl --max-time 10 -fsS http://127.0.0.1:5051/my-usage >/dev/null
+curl --max-time 10 -fsS http://127.0.0.1:5052/self-checkin >/dev/null
+systemctl is-active ubiquiti-usage-monitor.service ubiquiti-usage-lan.service ubiquiti-usage-club.service
+```
+
+Admin browser sessions are cookie-based and survive service restarts while the
+configured session secrets stay the same. Restarting the services should not by
+itself prompt already-authenticated admins to log in again.
 
 ## Backups
 
