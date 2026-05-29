@@ -1187,6 +1187,19 @@ th {
   cursor: default;
 }
 
+.checkin-show-barcode-button {
+  font-size: 16px;
+  font-weight: 650;
+  justify-self: start;
+  padding: 7px 10px;
+}
+
+.checkin-status-actions {
+  display: grid;
+  gap: 12px;
+  margin-top: auto;
+}
+
 .self-checkin-form input[type="checkbox"] {
   width: auto;
 }
@@ -1217,6 +1230,7 @@ th {
   box-shadow: 0 10px 22px rgb(16 24 40 / 14%);
   display: grid;
   gap: 16px;
+  min-height: min(640px, max(420px, calc(100vh - 210px)));
   padding: 28px;
   text-align: center;
 }

@@ -40,7 +40,12 @@
           {% endif %}
 
           {% if barcode_svg %}
-            <section class="checkin-barcode-card" aria-label="Saved self check-in barcode">
+            <section
+              class="checkin-barcode-card"
+              aria-label="Saved self check-in barcode"
+              data-checkin-barcode-card
+              {% if not barcode_show_default %}hidden{% endif %}
+            >
               <h2>Your Check-in Barcode</h2>
               <p>Save this barcode for next time, if you like.</p>
               <div class="checkin-barcode-frame">
@@ -49,30 +54,32 @@
             </section>
           {% endif %}
 
-          <button
-            class="checkin-continue-button"
-            type="button"
-            data-checkin-reset
-            data-reset-url="{{ url_for('self_checkin') }}"
-          >{% if checkin_success %}Continue{% else %}Try Again{% endif %}</button>
+          <div class="checkin-status-actions">
+            {% if barcode_svg and not barcode_show_default %}
+              <button
+                class="checkin-show-barcode-button secondary-action"
+                type="button"
+                data-show-barcode
+              >Show barcode</button>
+            {% endif %}
+            <button
+              class="checkin-continue-button"
+              type="button"
+              data-checkin-reset
+              data-reset-url="{{ url_for('self_checkin') }}"
+            >{% if checkin_success %}Continue{% else %}Try Again{% endif %}</button>
+          </div>
         </aside>
       {% else %}
         <div class="self-checkin-entry">
           <section class="self-checkin-panel barcode-checkin-panel" aria-labelledby="barcode-checkin-heading">
             <div>
               <h2 id="barcode-checkin-heading">Barcode Scan</h2>
-              <p>Scan your saved barcode. Click on or tab into the Barcode field, then scan your barcode.</p>
+              <p>Scan your saved barcode anytime.</p>
             </div>
-            <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post" autocomplete="off">
-              <label>
-                <span>Barcode</span>
-                <input
-                  type="text"
-                  name="barcode_token"
-                  autocomplete="off"
-                >
-              </label>
-              <button class="visually-hidden" type="submit" tabindex="-1">Submit barcode</button>
+            <form class="barcode-checkin-form visually-hidden" action="{{ url_for('self_checkin') }}" method="post" autocomplete="off">
+              <input type="hidden" name="barcode_token">
+              <button type="submit" tabindex="-1">Submit barcode</button>
             </form>
           </section>
 
@@ -112,10 +119,13 @@
       const manualSubmitButton = document.querySelector("[data-manual-checkin-submit]");
       const forms = Array.from(document.querySelectorAll(".self-checkin-form"));
       const barcodeInput = document.querySelector('input[name="barcode_token"]');
+      const barcodeForm = barcodeInput?.closest("form");
       const phoneInput = document.querySelector('input[name="phone"]');
       const initialsInput = document.querySelector('input[name="initials"]');
       const hasStatus = document.querySelector(".self-checkin-status") !== null;
       const checkinStatus = document.querySelector("[data-checkin-status]");
+      const showBarcodeButton = document.querySelector("[data-show-barcode]");
+      const barcodeCard = document.querySelector("[data-checkin-barcode-card]");
 
       if (!resetButton) {
         return;
@@ -152,6 +162,17 @@
         resetButton.disabled = true;
         updateSubmitState();
       });
+      checkinStatus?.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+        event.preventDefault();
+        resetButton.click();
+      });
+      showBarcodeButton?.addEventListener("click", () => {
+        barcodeCard?.removeAttribute("hidden");
+        showBarcodeButton.hidden = true;
+      });
 
       forms.forEach((form) => form.addEventListener("input", () => {
         updateResetState();
@@ -160,6 +181,61 @@
       updateResetState();
       updateSubmitState();
       checkinStatus?.focus({ preventScroll: true });
+
+      if (!hasStatus && barcodeInput && barcodeForm) {
+        const barcodeTokenPattern = /^v1:[A-Za-z0-9_-]{8,}$/;
+        let scanBuffer = "";
+        let scanBufferTimer = 0;
+
+        const clearScanBuffer = () => {
+          scanBuffer = "";
+          if (scanBufferTimer) {
+            window.clearTimeout(scanBufferTimer);
+            scanBufferTimer = 0;
+          }
+        };
+
+        const submitBarcodeToken = (token) => {
+          barcodeInput.value = token;
+          barcodeForm.requestSubmit();
+        };
+
+        window.addEventListener("keydown", (event) => {
+          if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) {
+            return;
+          }
+          const target = event.target;
+          const isTypingTarget = target instanceof HTMLInputElement
+            || target instanceof HTMLTextAreaElement
+            || target instanceof HTMLSelectElement
+            || target instanceof HTMLButtonElement
+            || target instanceof HTMLAnchorElement;
+          if (isTypingTarget && target !== phoneInput && target !== initialsInput) {
+            return;
+          }
+
+          if (event.key === "Enter") {
+            const token = scanBuffer.trim();
+            clearScanBuffer();
+            if (barcodeTokenPattern.test(token)) {
+              event.preventDefault();
+              event.stopPropagation();
+              submitBarcodeToken(token);
+            }
+            return;
+          }
+
+          if (event.key.length !== 1) {
+            return;
+          }
+
+          scanBuffer = (scanBuffer + event.key).slice(-80);
+          if (scanBufferTimer) {
+            window.clearTimeout(scanBufferTimer);
+          }
+          scanBufferTimer = window.setTimeout(clearScanBuffer, 150);
+        });
+      }
 
       const autoResetDelay = Number(checkinStatus?.dataset.autoResetDelay || 0);
       if (hasStatus && autoResetDelay > 0) {

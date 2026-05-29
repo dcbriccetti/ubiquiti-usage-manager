@@ -2561,6 +2561,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         message = ""
         checkin_success = False
         barcode_svg = ""
+        barcode_show_default = True
         if request.method == "POST":
             barcode_token = request.form.get("barcode_token", "").strip()
             member = None
@@ -2586,16 +2587,16 @@ def create_app(db_path: Path | None = None) -> Flask:
                     )
                 if member is not None:
                     checkin_result = _record_self_checkin(connection, member)
-                    if not barcode_token:
-                        barcode_secret = _barcode_secret_for_connection(
-                            connection,
-                            flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
-                        )
-                        token = _barcode_token_for_card_number(
-                            member.card_number,
-                            barcode_secret,
-                        )
-                        barcode_svg = _code128b_svg(token)
+                    barcode_secret = _barcode_secret_for_connection(
+                        connection,
+                        flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                    )
+                    token = _barcode_token_for_card_number(
+                        member.card_number,
+                        barcode_secret,
+                    )
+                    barcode_svg = _code128b_svg(token)
+                    barcode_show_default = not barcode_token
                     connection.commit()
             checkin_success = member is not None
             message = (
@@ -2614,6 +2615,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                 message=message,
                 checkin_success=checkin_success,
                 barcode_svg=barcode_svg,
+                barcode_show_default=barcode_show_default,
                 auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
                 auto_return_delay_ms=KIOSK_AUTO_RETURN_SECONDS * 1000,
             )

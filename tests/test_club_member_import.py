@@ -24,7 +24,7 @@ from club_admin import guest_registration_repository
 from club_admin import member_repository
 from club_admin import user_note_repository
 from club_admin.repair_driver_license_scans import _prepare_stored_driver_license_image
-from club_admin.app import create_app
+from club_admin.app import create_app, _barcode_token_for_card_number
 from club_admin.models import CheckIn, GuestRegistration, Member
 import config as cfg
 
@@ -338,9 +338,77 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('method="post" autocomplete="off"', body)
         self.assertIn('name="phone" autocomplete="off" required autofocus', body)
         self.assertIn('name="initials" maxlength="40" autocomplete="off" required', body)
+        self.assertIn("Scan your saved barcode anytime.", body)
+        self.assertLess(body.index("Barcode Scan"), body.index("Phone Check-in"))
+        self.assertIn("barcodeTokenPattern", body)
+        self.assertIn('window.addEventListener("keydown"', body)
+        self.assertIn('checkinStatus?.addEventListener("keydown"', body)
         self.assertNotIn('autocomplete="tel"', body)
         self.assertNotIn('autocomplete="given-name"', body)
         self.assertNotIn('name="barcode_token"\n                  autocomplete="off"\n                  autofocus', body)
+
+    def test_phone_self_checkin_shows_saved_barcode_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"] = "test-barcode-secret"
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        phone="510-555-1212",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "5105551212", "initials": "Jane"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("You are checked in", body)
+        self.assertIn("Your Check-in Barcode", body)
+        self.assertIn('data-checkin-barcode-card', body)
+        self.assertNotIn(">Show barcode</button>", body)
+        self.assertNotRegex(body, r"data-checkin-barcode-card\s+hidden")
+
+    def test_barcode_self_checkin_offers_to_show_saved_barcode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"] = "test-barcode-secret"
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        phone="510-555-1212",
+                    ),
+                )
+                connection.commit()
+            token = _barcode_token_for_card_number("123", "test-barcode-secret")
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"barcode_token": token},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("You are checked in", body)
+        self.assertIn("Your Check-in Barcode", body)
+        self.assertIn(">Show barcode</button>", body)
+        self.assertIn('data-show-barcode', body)
+        self.assertRegex(body, r"data-checkin-barcode-card\s+hidden")
 
     def test_guest_registration_page_stays_public_without_admin_login(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
