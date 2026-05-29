@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ app_title }} | Filled Guest Form</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+  <style media="print">
+    @page {
+      margin: 0;
+      size: letter portrait;
+    }
+  </style>
 </head>
 <body class="print-body">
   <main class="print-page">
@@ -164,18 +170,6 @@
         </div>
       </section>
 
-      <section class="visit-lines" aria-label="Visit dates">
-        {% for visit_number in range(1, 5) %}
-          <div class="signature-line">
-            <strong>{% if visit_number == 1 %}{{ registration.visit_date }}{% endif %}</strong>
-            <span>{{ labels.visit_date }} #{{ visit_number }}</span>
-          </div>
-        {% endfor %}
-      </section>
-
-      {% if form_spec.version %}
-        <p class="form-version">{{ form_spec.version }}</p>
-      {% endif %}
     </article>
   </main>
   <script>

@@ -1658,7 +1658,8 @@ th {
 
 .print-page {
   margin: 0 auto;
-  max-width: 8.5in;
+  max-width: calc(8.5in + 32px);
+  overflow-x: auto;
   padding: 16px;
 }
 
@@ -1766,36 +1767,40 @@ th {
 
 .generated-guest-form {
   background: #fff;
+  box-sizing: border-box;
   box-shadow: 0 1px 8px rgb(16 24 40 / 18%);
   color: #111827;
   font-family: Georgia, "Times New Roman", serif;
-  min-height: 11in;
-  padding: 0.32in 0.45in 0.45in 0.32in;
+  height: 10.55in;
+  min-height: 0;
+  padding: 0.3in 0.58in 0.35in 0.86in;
+  position: relative;
+  width: 8.5in;
 }
 
 .generated-form-top {
   align-items: stretch;
   display: grid;
-  gap: 0.22in;
-  grid-template-columns: 3.375in minmax(0, 1fr);
-  margin-bottom: 10px;
+  gap: 0.18in;
+  grid-template-columns: 3.1in minmax(0, 1fr);
+  margin-bottom: 8px;
 }
 
 .driver-license-slot {
   align-items: center;
   border: 1px solid #9ca3af;
   display: flex;
-  height: 1.92in;
+  height: 1.8in;
   justify-content: center;
   overflow: hidden;
-  width: 3.375in;
+  width: 3.1in;
 }
 
 .driver-license-slot img {
   display: block;
-  height: 1.92in;
+  height: 1.8in;
   object-fit: contain;
-  width: 3.375in;
+  width: 3.1in;
 }
 
 .driver-license-slot span {
@@ -1810,23 +1815,23 @@ th {
   flex-direction: column;
   justify-content: center;
   margin-bottom: 0;
-  padding-bottom: 8px;
+  padding-bottom: 6px;
   text-align: right;
 }
 
 .generated-form-header .app-title {
   font-family: Inter, system-ui, sans-serif;
-  font-size: 28px;
+  font-size: 25px;
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1;
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   text-transform: uppercase;
 }
 
 .generated-form-header h1 {
   font-family: Inter, system-ui, sans-serif;
-  font-size: 22px;
+  font-size: 19px;
   font-weight: 700;
   line-height: 1.15;
   margin: 0;
@@ -1835,20 +1840,20 @@ th {
 .generated-form-header p {
   color: #4b5563;
   font-family: Inter, system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 10px;
   margin: 3px 0 0;
 }
 
 .generated-form-grid {
   display: grid;
-  gap: 8px 10px;
+  gap: 7px 8px;
   grid-template-columns: repeat(12, 1fr);
 }
 
 .form-line {
   display: flex;
   flex-direction: column;
-  min-height: 38px;
+  min-height: 34px;
 }
 
 .form-line span,
@@ -1856,17 +1861,17 @@ th {
   color: #374151;
   display: block;
   font-family: Inter, system-ui, sans-serif;
-  font-size: 10.5px;
-  margin-top: 2px;
+  font-size: 9px;
+  margin-top: 1px;
   text-align: center;
 }
 
 .form-line strong,
 .signature-line strong {
   display: block;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
-  min-height: 20px;
+  min-height: 18px;
   overflow-wrap: anywhere;
 }
 
@@ -1877,7 +1882,7 @@ th {
 .form-line strong {
   border-bottom: 1px solid #6b7280;
   order: 1;
-  padding-bottom: 2px;
+  padding-bottom: 1px;
 }
 
 .span-2 { grid-column: span 2; }
@@ -1891,70 +1896,61 @@ th {
 .generated-checkbox {
   align-items: flex-start;
   display: flex;
-  font-size: 16px;
+  font-size: 14px;
   gap: 8px;
-  margin: 8px 0;
+  margin: 7px 0;
 }
 
 .generated-checkbox .box {
-  border: 2px solid #111827;
+  border: 1px solid #111827;
   display: inline-flex;
   flex: 0 0 auto;
   font-family: Inter, system-ui, sans-serif;
-  font-size: 18px;
+  font-size: 13px;
   font-weight: 750;
-  height: 20px;
+  height: 16px;
   justify-content: center;
   line-height: 1;
-  width: 20px;
+  width: 16px;
 }
 
 .generated-agreement {
   border-top: 1px dashed #6b7280;
-  padding-top: 7px;
+  padding-top: 6px;
 }
 
 .generated-agreement h2 {
-  font-size: 16px;
+  font-size: 15px;
   font-style: italic;
-  margin: 0 0 6px;
+  margin: 0 0 5px;
   text-align: center;
   text-decoration: underline;
 }
 
 .generated-agreement p {
-  font-size: 15px;
-  line-height: 1.24;
-  margin: 0 0 7px;
+  font-size: 13px;
+  line-height: 1.2;
+  margin: 0 0 6px;
 }
 
-.signature-grid,
-.visit-lines {
+.signature-grid {
+  bottom: 0.35in;
   display: grid;
-  gap: 16px;
+  gap: 14px;
   grid-template-columns: repeat(3, 1fr);
-  margin-top: 14px;
-}
-
-.visit-lines {
-  grid-template-columns: repeat(4, 1fr);
+  left: 0.86in;
+  position: absolute;
+  right: 0.58in;
 }
 
 .signature-line {
-  min-height: 30px;
+  min-height: 24px;
 }
 
 .signature-line strong {
   border-bottom: 1px solid #6b7280;
-  min-height: 22px;
-  padding-bottom: 2px;
-}
-
-.form-version {
-  color: #374151;
-  font-family: Inter, system-ui, sans-serif;
-  font-size: 11px;
-  margin: 10px 0 0;
+  min-height: 18px;
+  padding-bottom: 1px;
 }
 
 @media (min-width: 820px) and (orientation: landscape) {
@@ -2213,7 +2209,9 @@ th {
 
   .print-page {
     max-width: none;
+    overflow: visible;
     padding: 0;
+    width: 100%;
   }
 
   .print-actions,
@@ -2223,7 +2221,7 @@ th {
 
   .generated-guest-form {
     box-shadow: none;
-    width: 8.5in;
+    width: 100%;
   }
 
   .checkins-report-page {

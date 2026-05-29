@@ -2821,7 +2821,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Referral Source", form_body)
         self.assertIn("House Agreement", form_body)
         self.assertIn("Custom agreement paragraph.", form_body)
-        self.assertIn("FORM-TEST", form_body)
+        self.assertNotIn("FORM-TEST", form_body)
+        self.assertNotIn("Visit Date #", form_body)
         self.assertIn('class="driver-license-slot"', form_body)
         self.assertIn(
             f'/members/{record.member.id}/document?name=Driver+License.jpg',
