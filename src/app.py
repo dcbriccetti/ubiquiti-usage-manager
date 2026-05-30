@@ -9,6 +9,7 @@ This module keeps the web entrypoint intentionally small:
 Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
+from calendar import monthrange
 from datetime import date, datetime, timedelta
 from math import ceil
 import os
@@ -66,6 +67,17 @@ class VoucherTopOffAnalysis(TypedDict):
     'Projected top-off decision context for voucher admins.'
     forecast_days: int
     forecast_usage_mb: float
+    billing_cycle_start: date
+    billing_cycle_end: date
+    billing_cycle_day_count: int
+    expected_basic_usage_mb: float
+    expected_basic_used_to_date_mb: float
+    basic_average_daily_mb: float
+    voucher_cycle_used_mb: float
+    cycle_used_to_date_mb: float
+    cycle_forecast_mb: float
+    cycle_forecast_headroom_mb: float
+    cycle_forecast_overage_mb: float
     break_even_gb: float
     included_usage_gb: float
     included_remaining_mb: float
@@ -203,6 +215,27 @@ def create_app() -> Flask:
         rounded_days = ceil(days)
         return f'{rounded_days} day' if rounded_days == 1 else f'{rounded_days} days'
 
+    def billing_cycle_anchor(year: int, month: int, start_day: int) -> datetime:
+        'Return this month billing-cycle anchor, clamped for short months.'
+        safe_day = min(max(1, start_day), monthrange(year, month)[1])
+        return datetime(year, month, safe_day)
+
+    def adjacent_month(year: int, month: int, offset: int) -> tuple[int, int]:
+        'Return year/month offset by whole months.'
+        month_index = (year * 12) + (month - 1) + offset
+        return month_index // 12, (month_index % 12) + 1
+
+    def resolve_isp_billing_cycle(now: datetime) -> tuple[datetime, datetime]:
+        'Return the current ISP billing cycle start and exclusive end.'
+        start_day = int(getattr(cfg, 'ISP_BILLING_CYCLE_START_DAY', 1) or 1)
+        current_month_anchor = billing_cycle_anchor(now.year, now.month, start_day)
+        if now < current_month_anchor:
+            previous_year, previous_month = adjacent_month(now.year, now.month, -1)
+            return billing_cycle_anchor(previous_year, previous_month, start_day), current_month_anchor
+
+        next_year, next_month = adjacent_month(now.year, now.month, 1)
+        return current_month_anchor, billing_cycle_anchor(next_year, next_month, start_day)
+
     def build_voucher_trend_chart_context(
         trend: db.PlusVoucherConsumptionTrend,
     ) -> VoucherTrendChartContext:
@@ -230,53 +263,88 @@ def create_app() -> Flask:
 
     def build_voucher_topoff_analysis(
         trend: db.PlusVoucherConsumptionTrend,
-        forecast_days: int = 30,
+        billing_cycle_start: datetime,
+        billing_cycle_end: datetime,
+        now: datetime,
     ) -> VoucherTopOffAnalysis:
         'Return forecast context for deciding between configured ISP top-off blocks.'
         included_usage_gb = float(getattr(cfg, 'ISP_INCLUDED_USAGE_GB', 500) or 500)
         included_usage_cost_usd = float(getattr(cfg, 'ISP_INCLUDED_USAGE_COST_USD', 0.0) or 0.0)
         small_topoff_gb = float(getattr(cfg, 'ISP_TOPOFF_USAGE_GB', 50) or 50)
         small_topoff_cost_usd = float(getattr(cfg, 'ISP_TOPOFF_COST_USD', 0.0) or 0.0)
+        expected_basic_usage_gb = float(getattr(cfg, 'EXPECTED_BASIC_USAGE_GB_PER_CYCLE', 0.0) or 0.0)
         small_cost_per_gb = small_topoff_cost_usd / small_topoff_gb if small_topoff_gb else 0.0
         break_even_gb = (
             included_usage_cost_usd / small_cost_per_gb
             if small_cost_per_gb > 0 and included_usage_cost_usd > 0
             else small_topoff_gb
         )
-        forecast_usage_mb = trend.recent_average_daily_mb * forecast_days
-        included_remaining_mb = max(0.0, included_usage_gb * 1000.0 - trend.total_used_mb)
+        billing_cycle_seconds = max(1.0, (billing_cycle_end - billing_cycle_start).total_seconds())
+        elapsed_seconds = min(
+            billing_cycle_seconds,
+            max(0.0, (now - billing_cycle_start).total_seconds()),
+        )
+        remaining_seconds = min(
+            billing_cycle_seconds,
+            max(0.0, (billing_cycle_end - now).total_seconds()),
+        )
+        billing_cycle_day_count = max(1, (billing_cycle_end.date() - billing_cycle_start.date()).days)
+        cycle_days_remaining = remaining_seconds / 86_400.0
+        forecast_days = ceil(cycle_days_remaining)
+        expected_basic_usage_mb = expected_basic_usage_gb * 1000.0
+        expected_basic_used_to_date_mb = expected_basic_usage_mb * (elapsed_seconds / billing_cycle_seconds)
+        basic_average_daily_mb = expected_basic_usage_mb / billing_cycle_day_count
+        voucher_cycle_used_mb = sum(row.used_mb for row in trend.daily_usage)
+        cycle_used_to_date_mb = expected_basic_used_to_date_mb + voucher_cycle_used_mb
+        cycle_remaining_forecast_mb = (basic_average_daily_mb + trend.recent_average_daily_mb) * cycle_days_remaining
+        cycle_forecast_mb = cycle_used_to_date_mb + cycle_remaining_forecast_mb
+        cycle_forecast_headroom_mb = max(0.0, (included_usage_gb * 1000.0) - cycle_forecast_mb)
+        cycle_forecast_overage_mb = max(0.0, cycle_forecast_mb - (included_usage_gb * 1000.0))
+        included_remaining_mb = max(0.0, included_usage_gb * 1000.0 - cycle_used_to_date_mb)
 
-        if trend.recent_average_daily_mb <= 0:
-            included_eta_label = 'No recent burn'
+        combined_average_daily_mb = basic_average_daily_mb + trend.recent_average_daily_mb
+        if combined_average_daily_mb <= 0:
+            included_eta_label = 'No forecast burn'
         elif included_remaining_mb <= 0:
             included_eta_label = 'Reached'
         else:
-            days_to_included = included_remaining_mb / trend.recent_average_daily_mb
-            included_eta_date = trend.period_end + timedelta(days=ceil(days_to_included))
-            included_eta_label = f'{included_eta_date.strftime("%Y-%m-%d")} ({format_days_from_now(days_to_included)})'
+            days_to_included = included_remaining_mb / combined_average_daily_mb
+            included_eta = now + timedelta(days=days_to_included)
+            if included_eta >= billing_cycle_end:
+                included_eta_label = 'After cycle end'
+            else:
+                included_eta_label = f'{included_eta.date().strftime("%Y-%m-%d")} ({format_days_from_now(days_to_included)})'
 
-        if trend.activated_voucher_count == 0:
-            recommendation = 'No active trend'
-            rationale = 'No activated vouchers have WAN usage yet.'
-        elif trend.recent_average_daily_mb <= 0:
+        if cycle_forecast_mb <= included_usage_gb * 1000.0:
             recommendation = 'Wait'
-            rationale = 'No voucher usage in the last 7 days.'
-        elif included_remaining_mb > forecast_usage_mb:
-            recommendation = 'Wait'
-            rationale = f'Projected to stay below {included_usage_gb:,.0f} GB for the next {forecast_days} days.'
-        elif forecast_usage_mb / 1000.0 >= break_even_gb:
+            rationale = f'Projected to stay below {included_usage_gb:,.0f} GB this billing cycle.'
+        elif cycle_forecast_overage_mb / 1000.0 >= break_even_gb:
             recommendation = f'{included_usage_gb:,.0f} GB block'
-            rationale = f'The {forecast_days}-day forecast is above the {break_even_gb:,.0f} GB break-even point.'
+            rationale = f'Forecast overage is above the {break_even_gb:,.0f} GB break-even point.'
         else:
             recommendation = f'{small_topoff_gb:,.0f} GB increments'
-            rationale = f'The {forecast_days}-day forecast is below the {break_even_gb:,.0f} GB break-even point.'
+            rationale = f'Forecast overage is below the {break_even_gb:,.0f} GB break-even point.'
+
+        def clean_mb(value: float) -> float:
+            return round(value, 6)
 
         return {
             'forecast_days': forecast_days,
-            'forecast_usage_mb': forecast_usage_mb,
+            'forecast_usage_mb': clean_mb(cycle_forecast_mb),
+            'billing_cycle_start': billing_cycle_start.date(),
+            'billing_cycle_end': billing_cycle_end.date(),
+            'billing_cycle_day_count': billing_cycle_day_count,
+            'expected_basic_usage_mb': clean_mb(expected_basic_usage_mb),
+            'expected_basic_used_to_date_mb': clean_mb(expected_basic_used_to_date_mb),
+            'basic_average_daily_mb': clean_mb(basic_average_daily_mb),
+            'voucher_cycle_used_mb': clean_mb(voucher_cycle_used_mb),
+            'cycle_used_to_date_mb': clean_mb(cycle_used_to_date_mb),
+            'cycle_forecast_mb': clean_mb(cycle_forecast_mb),
+            'cycle_forecast_headroom_mb': clean_mb(cycle_forecast_headroom_mb),
+            'cycle_forecast_overage_mb': clean_mb(cycle_forecast_overage_mb),
             'break_even_gb': break_even_gb,
             'included_usage_gb': included_usage_gb,
-            'included_remaining_mb': included_remaining_mb,
+            'included_remaining_mb': clean_mb(included_remaining_mb),
             'included_eta_label': included_eta_label,
             'recent_trend_label': build_recent_trend_label(trend),
             'recommendation': recommendation,
@@ -726,7 +794,20 @@ def create_app() -> Flask:
         active_activated_voucher_summaries = [
             summary for summary in active_voucher_summaries if summary.activated_at is not None
         ]
-        voucher_consumption_trend = db.get_plus_voucher_consumption_trend(active_voucher_summaries)
+        now = datetime.now()
+        billing_cycle_start, billing_cycle_end = resolve_isp_billing_cycle(now)
+        billing_cycle_lookback_days = max(1, (now.date() - billing_cycle_start.date()).days + 1)
+        voucher_consumption_trend = db.get_plus_voucher_consumption_trend(
+            active_voucher_summaries,
+            lookback_days=billing_cycle_lookback_days,
+            period_end=now,
+        )
+        voucher_topoff_analysis = build_voucher_topoff_analysis(
+            voucher_consumption_trend,
+            billing_cycle_start,
+            billing_cycle_end,
+            now,
+        )
         return render_template(
             "plus_vouchers.html",
             generated_vouchers=generated_vouchers,
@@ -740,7 +821,7 @@ def create_app() -> Flask:
             inventory_voucher_summaries=summarize_inventory_vouchers(active_voucher_summaries),
             voucher_consumption_trend=voucher_consumption_trend,
             voucher_trend_chart=build_voucher_trend_chart_context(voucher_consumption_trend),
-            voucher_topoff_analysis=build_voucher_topoff_analysis(voucher_consumption_trend),
+            voucher_topoff_analysis=voucher_topoff_analysis,
             recent_voucher_daily_usage=list(reversed(voucher_consumption_trend.daily_usage[-7:])),
             voucher_cost_cents=calculate_voucher_cost_cents,
         )

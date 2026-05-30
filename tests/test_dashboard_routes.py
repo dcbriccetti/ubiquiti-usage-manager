@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from datetime import datetime
+from datetime import date, datetime
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -59,6 +59,61 @@ class DashboardRouteTests(unittest.TestCase):
             "dashboard.html",
             initial_dashboard_payload={"rows": []},
         )
+
+    def test_vouchers_page_uses_isp_billing_cycle_and_basic_usage_baseline(self) -> None:
+        class FrozenDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 5, 30, 12, 0, tzinfo=tz)
+
+        flask_app = app.create_app()
+        trend = app.db.PlusVoucherConsumptionTrend(
+            period_start=date(2026, 5, 20),
+            period_end=date(2026, 5, 30),
+            daily_usage=[
+                app.db.PlusVoucherDailyUsage(day=date(2026, 5, day), used_mb=1000.0)
+                for day in range(20, 31)
+            ],
+            total_used_mb=20_000.0,
+            total_remaining_mb=80_000.0,
+            active_allocation_gb=100,
+            activated_voucher_count=1,
+            lifetime_average_daily_mb=1000.0,
+            recent_average_daily_mb=2000.0,
+            prior_average_daily_mb=1000.0,
+            today_mb=1000.0,
+            yesterday_mb=1000.0,
+            projected_days_remaining=40.0,
+            projected_depletion_date=date(2026, 7, 9),
+        )
+
+        with (
+            patch.object(app, "datetime", FrozenDateTime),
+            patch.object(app.cfg, "ISP_BILLING_CYCLE_START_DAY", 20),
+            patch.object(app.cfg, "EXPECTED_BASIC_USAGE_GB_PER_CYCLE", 400.0),
+            patch.object(app.db, "get_plus_vouchers", return_value=[]),
+            patch.object(app.db, "get_active_plus_voucher_summaries", return_value=[]) as active_summaries,
+            patch.object(app.db, "get_plus_voucher_consumption_trend", return_value=trend) as consumption_trend,
+            patch.object(app.db, "get_unconsumed_plus_voucher_count", return_value=0),
+            patch.object(app, "render_template", return_value="rendered") as render_template,
+        ):
+            response = admin_client(flask_app).get("/vouchers")
+
+        self.assertEqual(response.status_code, 200)
+        active_summaries.assert_called_once_with()
+        consumption_trend.assert_called_once()
+        self.assertEqual(consumption_trend.call_args.kwargs["lookback_days"], 11)
+        self.assertEqual(consumption_trend.call_args.kwargs["period_end"], FrozenDateTime(2026, 5, 30, 12, 0))
+
+        context = render_template.call_args.kwargs
+        topoff = context["voucher_topoff_analysis"]
+        self.assertEqual(topoff["billing_cycle_start"], date(2026, 5, 20))
+        self.assertEqual(topoff["billing_cycle_end"], date(2026, 6, 20))
+        self.assertEqual(topoff["expected_basic_usage_mb"], 400_000.0)
+        self.assertEqual(topoff["voucher_cycle_used_mb"], 11_000.0)
+        self.assertLess(topoff["cycle_forecast_mb"], 500_000.0)
+        self.assertGreater(topoff["cycle_forecast_headroom_mb"], 0.0)
+        self.assertEqual(topoff["recommendation"], "Wait")
 
     def test_client_detail_prompts_before_loading_wan_details(self) -> None:
         flask_app = app.create_app()

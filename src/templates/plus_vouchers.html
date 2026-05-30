@@ -81,43 +81,43 @@
         <div class="panel-body">
             <div class="panel-title-row">
                 <h2>Consumption Trend</h2>
-                <span class="muted">Active vouchers · {{ voucher_consumption_trend.period_start.strftime("%Y-%m-%d") }} to {{ voucher_consumption_trend.period_end.strftime("%Y-%m-%d") }}</span>
+                <span class="muted">ISP cycle {{ voucher_topoff_analysis.billing_cycle_start.strftime("%Y-%m-%d") }} to {{ voucher_topoff_analysis.billing_cycle_end.strftime("%Y-%m-%d") }} · voucher trend through {{ voucher_consumption_trend.period_end.strftime("%Y-%m-%d") }}</span>
             </div>
 
             <div class="insights-kpis voucher-trend-kpis">
                 <div class="insight-kpi">
-                    <span class="label">Active Used</span>
+                    <span class="label">Active Vouchers</span>
                     <span class="value">{{ voucher_consumption_trend.total_used_mb|voucher_data_amount }}</span>
-                    <span class="detail-note">{{ "{:,.0f}".format(voucher_consumption_trend.active_allocation_gb) }} GB allocated</span>
+                    <span class="detail-note">{{ voucher_consumption_trend.total_remaining_mb|voucher_data_amount }} left of {{ "{:,.0f}".format(voucher_consumption_trend.active_allocation_gb) }} GB</span>
                 </div>
                 <div class="insight-kpi">
-                    <span class="label">Active Remaining</span>
-                    <span class="value">{{ voucher_consumption_trend.total_remaining_mb|voucher_data_amount }}</span>
-                    {% if voucher_consumption_trend.projected_depletion_date %}
-                        <span class="detail-note">Empty around {{ voucher_consumption_trend.projected_depletion_date.strftime("%Y-%m-%d") }}</span>
-                    {% else %}
-                        <span class="detail-note">No depletion date yet</span>
-                    {% endif %}
+                    <span class="label">Voucher This Cycle</span>
+                    <span class="value">{{ voucher_topoff_analysis.voucher_cycle_used_mb|voucher_data_amount }}</span>
+                    <span class="detail-note">Since {{ voucher_topoff_analysis.billing_cycle_start.strftime("%b %d") }}</span>
                 </div>
                 <div class="insight-kpi">
-                    <span class="label">7-Day Pace</span>
+                    <span class="label">7-Day Voucher Pace</span>
                     <span class="value">{{ voucher_consumption_trend.recent_average_daily_mb|voucher_data_amount }}<span class="voucher-rate-unit">/day</span></span>
                     <span class="detail-note">{{ voucher_topoff_analysis.recent_trend_label }} vs prior 7 days</span>
                 </div>
                 <div class="insight-kpi">
-                    <span class="label">{{ "{:,.0f}".format(voucher_topoff_analysis.included_usage_gb) }} GB ETA</span>
-                    <span class="value voucher-eta-value">{{ voucher_topoff_analysis.included_eta_label }}</span>
-                    <span class="detail-note">{{ voucher_topoff_analysis.included_remaining_mb|voucher_data_amount }} to threshold</span>
+                    <span class="label">Basic Estimate</span>
+                    <span class="value">{{ voucher_topoff_analysis.expected_basic_usage_mb|voucher_data_amount }}</span>
+                    <span class="detail-note">{{ voucher_topoff_analysis.basic_average_daily_mb|voucher_data_amount }}/day baseline</span>
                 </div>
                 <div class="insight-kpi">
-                    <span class="label">{{ voucher_topoff_analysis.forecast_days }}-Day Forecast</span>
-                    <span class="value">{{ voucher_topoff_analysis.forecast_usage_mb|voucher_data_amount }}</span>
-                    <span class="detail-note">{{ "{:,.0f}".format(voucher_topoff_analysis.break_even_gb) }} GB break-even</span>
+                    <span class="label">ISP Cycle Forecast</span>
+                    <span class="value">{{ voucher_topoff_analysis.cycle_forecast_mb|voucher_data_amount }}</span>
+                    {% if voucher_topoff_analysis.cycle_forecast_overage_mb > 0 %}
+                        <span class="detail-note">{{ voucher_topoff_analysis.cycle_forecast_overage_mb|voucher_data_amount }} over {{ "{:,.0f}".format(voucher_topoff_analysis.included_usage_gb) }} GB</span>
+                    {% else %}
+                        <span class="detail-note">{{ voucher_topoff_analysis.cycle_forecast_headroom_mb|voucher_data_amount }} forecast headroom · {{ voucher_topoff_analysis.included_eta_label }}</span>
+                    {% endif %}
                 </div>
                 <div class="insight-kpi">
                     <span class="label">Top-Off Signal</span>
                     <span class="value voucher-recommendation">{{ voucher_topoff_analysis.recommendation }}</span>
-                    <span class="detail-note">{{ voucher_topoff_analysis.rationale }}</span>
+                    <span class="detail-note">{{ voucher_topoff_analysis.rationale }} {{ "{:,.0f}".format(voucher_topoff_analysis.break_even_gb) }} GB break-even.</span>
                 </div>
             </div>
 
