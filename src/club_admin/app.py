@@ -258,10 +258,23 @@ def _parse_member_form_date(form_data: Any, field_name: str) -> date | None:
     value = form_data.get(field_name, "").strip()
     if not value:
         return None
+    parsed_date = _parse_flexible_date(value)
+    if parsed_date is not None:
+        return parsed_date
+    raise MemberFormError("Enter valid user dates.")
+
+
+def _parse_flexible_date(value: str) -> date | None:
     try:
         return date.fromisoformat(value)
-    except ValueError as error:
-        raise MemberFormError("Enter valid user dates.") from error
+    except ValueError:
+        pass
+    for date_format in ("%m/%d/%Y", "%m/%d/%y"):
+        try:
+            return datetime.strptime(value, date_format).date()
+        except ValueError:
+            pass
+    return None
 
 
 def _member_from_form(member: Member, form_data: Any) -> Member:
@@ -747,10 +760,10 @@ def _parse_visitor_date_of_birth(form_data: Any) -> date | None:
     value = form_data.get("date_of_birth", "").strip()
     if not value:
         return None
-    try:
-        return date.fromisoformat(value)
-    except ValueError:
-        raise GuestRegistrationFormError("Date of birth must use YYYY-MM-DD.")
+    parsed_date = _parse_flexible_date(value)
+    if parsed_date is None:
+        raise GuestRegistrationFormError("Date of birth must use YYYY-MM-DD or MM/DD/YYYY.")
+    return parsed_date
 
 
 def _guest_registration_validation_message(

@@ -618,7 +618,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "visit_date": "2026-05-14",
                     "last_name": "Doe",
                     "first_name": "John",
-                    "date_of_birth": "1990-06-15",
+                    "date_of_birth": "06/15/1990",
                     "nickname": "Johnny",
                     "address": "123 Main St",
                     "city": "Everytown",
@@ -743,7 +743,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertNotIn('name="cell_phone" value="" autocomplete="tel" inputmode="tel" required', body)
         self.assertNotIn('name="other_phone" value="" inputmode="tel" required', body)
         self.assertNotIn('name="email" value="" autocomplete="email" required', body)
-        self.assertIn('name="date_of_birth" value="" autocomplete="off" required', body)
+        self.assertIn('name="date_of_birth" value="" autocomplete="off" inputmode="numeric" placeholder="YYYY-MM-DD or MM/DD/YYYY" required', body)
         self.assertIn('name="address" value="" autocomplete="off" required', body)
         self.assertIn('name="zip" value="" autocomplete="off" inputmode="numeric" required data-zip-lookup', body)
         self.assertIn('name="city" value="" autocomplete="off" required tabindex="-1" data-city-field', body)
@@ -882,7 +882,7 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         body = response.get_data(as_text=True)
-        self.assertIn("Date of birth must use YYYY-MM-DD.", body)
+        self.assertIn("Date of birth must use YYYY-MM-DD or MM/DD/YYYY.", body)
         self.assertIn('value="June 15"', body)
         self.assertIn('value="Doe"', body)
 
@@ -2203,6 +2203,8 @@ class ClubMemberImportTests(unittest.TestCase):
                     "nickname": "Johnny",
                     "card_number": "123",
                     "membership": "Full Member",
+                    "member_since": "2026-05-01",
+                    "date_of_birth": "07/04/1980",
                     "address": "",
                     "address2": "",
                     "city": "",
@@ -2229,6 +2231,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(updated_member.membership, "Full Member")
         self.assertEqual(updated_member.nickname, "Johnny")
         self.assertEqual(updated_member.email, "new@example.test")
+        self.assertEqual(updated_member.member_since.isoformat(), "2026-05-01")
+        self.assertEqual(updated_member.date_of_birth.isoformat(), "1980-07-04")
         changed_fields = {entry.field_name for entry in audit_entries}
         self.assertIn("membership", changed_fields)
         self.assertIn("nickname", changed_fields)
@@ -2247,6 +2251,7 @@ class ClubMemberImportTests(unittest.TestCase):
                         first_name="John",
                         card_number="123",
                         membership="Associate Member",
+                        date_of_birth=datetime(1980, 7, 4).date(),
                     ),
                 )
                 connection.commit()
@@ -2261,6 +2266,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('<option value="Associate Member" selected', body)
         self.assertIn('<option value="Full Member"', body)
         self.assertIn('<option value="Visitor"', body)
+        self.assertIn('name="date_of_birth" value="1980-07-04" autocomplete="off" inputmode="numeric" placeholder="YYYY-MM-DD or MM/DD/YYYY"', body)
         self.assertNotIn('name="membership" value=', body)
         self.assertNotIn('name="new_checkin_at"', body)
         self.assertNotIn("Delete Selected", body)

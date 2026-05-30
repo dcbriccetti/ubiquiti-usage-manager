@@ -49,6 +49,8 @@
                 <option value="{{ option }}" {% if member.membership == option %}selected{% endif %}>{{ option }}</option>
               {% endfor %}
             </select>
+          {% elif field == 'date_of_birth' %}
+            <input type="text" name="{{ field }}" value="{{ member|attr(field) or '' }}" autocomplete="off" inputmode="numeric" placeholder="YYYY-MM-DD or MM/DD/YYYY">
           {% else %}
             <input type="{{ input_type }}" name="{{ field }}" value="{{ member|attr(field) or '' }}">
           {% endif %}

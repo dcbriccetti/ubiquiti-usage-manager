@@ -48,7 +48,7 @@
         </label>
         <label class="required-field">
           <span>Date of Birth</span>
-          <input type="date" name="date_of_birth" value="{{ form_data.get('date_of_birth', '') }}" autocomplete="off" required>
+          <input type="text" name="date_of_birth" value="{{ form_data.get('date_of_birth', '') }}" autocomplete="off" inputmode="numeric" placeholder="YYYY-MM-DD or MM/DD/YYYY" required>
         </label>
       </section>
 
