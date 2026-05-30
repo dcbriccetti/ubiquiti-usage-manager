@@ -75,10 +75,17 @@
           <section class="self-checkin-panel barcode-checkin-panel" aria-labelledby="barcode-checkin-heading">
             <div>
               <h2 id="barcode-checkin-heading">Barcode Scan</h2>
-              <p>Scan your saved barcode anytime.</p>
+              <p>Scan your saved barcode here.</p>
             </div>
-            <form class="barcode-checkin-form visually-hidden" action="{{ url_for('self_checkin') }}" method="post" autocomplete="off">
-              <input type="hidden" name="barcode_token">
+            <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('self_checkin') }}" method="post" autocomplete="off">
+              <label>
+                <span>Barcode</span>
+                <input
+                  type="text"
+                  name="barcode_token"
+                  autocomplete="off"
+                >
+              </label>
               <button type="submit" tabindex="-1">Submit barcode</button>
             </form>
           </section>
