@@ -183,7 +183,7 @@
       checkinStatus?.focus({ preventScroll: true });
 
       if (!hasStatus && barcodeInput && barcodeForm) {
-        const barcodeTokenPattern = /^v1:[A-Za-z0-9_-]{8,}$/;
+        const barcodeTokenPattern = /v1:[A-Za-z0-9_-]{12}/;
         let scanBuffer = "";
         let scanBufferTimer = 0;
 
@@ -197,8 +197,21 @@
 
         const submitBarcodeToken = (token) => {
           barcodeInput.value = token;
+          phoneInput && (phoneInput.value = "");
+          initialsInput && (initialsInput.value = "");
           barcodeForm.requestSubmit();
         };
+
+        const barcodeTokenFrom = (value) => value.match(barcodeTokenPattern)?.[0] || "";
+
+        [phoneInput, initialsInput].forEach((input) => {
+          input?.addEventListener("input", () => {
+            const token = barcodeTokenFrom(input.value);
+            if (token) {
+              submitBarcodeToken(token);
+            }
+          });
+        });
 
         window.addEventListener("keydown", (event) => {
           if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) {
@@ -215,9 +228,9 @@
           }
 
           if (event.key === "Enter") {
-            const token = scanBuffer.trim();
+            const token = barcodeTokenFrom(scanBuffer);
             clearScanBuffer();
-            if (barcodeTokenPattern.test(token)) {
+            if (token) {
               event.preventDefault();
               event.stopPropagation();
               submitBarcodeToken(token);
@@ -230,6 +243,14 @@
           }
 
           scanBuffer = (scanBuffer + event.key).slice(-80);
+          const token = barcodeTokenFrom(scanBuffer);
+          if (token) {
+            event.preventDefault();
+            event.stopPropagation();
+            clearScanBuffer();
+            submitBarcodeToken(token);
+            return;
+          }
           if (scanBufferTimer) {
             window.clearTimeout(scanBufferTimer);
           }
