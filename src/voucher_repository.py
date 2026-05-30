@@ -2,7 +2,9 @@
 
 import secrets
 from bisect import bisect_right
-from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import date, datetime, timedelta
+from math import ceil
 from threading import Lock
 import time as monotonic_time
 
@@ -201,8 +203,30 @@ def _get_plus_voucher_wan_usage_summaries(
     identity_after_tolerance: timedelta = timedelta(minutes=10),
 ) -> dict[int, tuple[datetime | None, float]]:
     'Return WAN-attributed usage summaries for many vouchers in one candidate-IP flow pass.'
+    attributed_rows = _get_plus_voucher_wan_usage_records(vouchers, period_end, identity_after_tolerance)
+    first_usage_at_by_voucher_id: dict[int, datetime] = {}
+    total_bytes_by_voucher_id: dict[int, int] = {}
+    for voucher_id, started_at, byte_count in attributed_rows:
+        first_usage_at_by_voucher_id.setdefault(voucher_id, started_at)
+        total_bytes_by_voucher_id[voucher_id] = total_bytes_by_voucher_id.get(voucher_id, 0) + byte_count
+
+    return {
+        voucher_id: (
+            first_usage_at_by_voucher_id.get(voucher_id),
+            total_bytes / 1_000_000.0,
+        )
+        for voucher_id, total_bytes in total_bytes_by_voucher_id.items()
+    }
+
+
+def _get_plus_voucher_wan_usage_records(
+    vouchers: list[db.PlusVoucherRecord],
+    period_end: datetime | None = None,
+    identity_after_tolerance: timedelta = timedelta(minutes=10),
+) -> list[tuple[int, datetime, int]]:
+    'Return WAN flow bytes attributed to active vouchers.'
     if not vouchers:
-        return {}
+        return []
 
     generated_at_by_user_id = {str(voucher.user_id): voucher.generated_at for voucher in vouchers}
     voucher_id_by_user_id = {str(voucher.user_id): voucher.id for voucher in vouchers}
@@ -227,7 +251,7 @@ def _get_plus_voucher_wan_usage_summaries(
         )
 
     if not candidate_ips:
-        return {}
+        return []
 
     identity_stmt = (
         select(db.ClientIpIdentity)
@@ -273,8 +297,7 @@ def _get_plus_voucher_wan_usage_summaries(
         client_ip: [identity.observed_at for identity in identities]
         for client_ip, identities in identities_by_ip.items()
     }
-    first_usage_at_by_voucher_id: dict[int, datetime] = {}
-    total_bytes_by_voucher_id: dict[int, int] = {}
+    attributed_rows: list[tuple[int, datetime, int]] = []
     for started_at, client_ip, byte_count in flow_rows:
         ip_text = str(client_ip)
         identity = _resolve_flow_identity(
@@ -292,16 +315,90 @@ def _get_plus_voucher_wan_usage_summaries(
         if voucher_id is None or generated_at is None or started_at < generated_at:
             continue
 
-        first_usage_at_by_voucher_id.setdefault(voucher_id, started_at)
-        total_bytes_by_voucher_id[voucher_id] = total_bytes_by_voucher_id.get(voucher_id, 0) + int(byte_count or 0)
+        attributed_rows.append((voucher_id, started_at, int(byte_count or 0)))
 
-    return {
-        voucher_id: (
-            first_usage_at_by_voucher_id.get(voucher_id),
-            total_bytes / 1_000_000.0,
-        )
-        for voucher_id, total_bytes in total_bytes_by_voucher_id.items()
-    }
+    return attributed_rows
+
+
+def _calendar_days(start_day: date, end_day: date) -> list[date]:
+    'Return inclusive calendar days from start_day through end_day.'
+    day_count = (end_day - start_day).days + 1
+    return [start_day + timedelta(days=offset) for offset in range(max(0, day_count))]
+
+
+def _average_daily_mb(daily_mb_by_day: dict[date, float], end_day: date, day_count: int) -> float:
+    'Return average MB/day across an inclusive fixed-width window ending at end_day.'
+    if day_count <= 0:
+        return 0.0
+    start_day = end_day - timedelta(days=day_count - 1)
+    return sum(daily_mb_by_day.get(day, 0.0) for day in _calendar_days(start_day, end_day)) / day_count
+
+
+def get_plus_voucher_consumption_trend(
+    voucher_summaries: list[db.PlusVoucherUsageSummary] | None = None,
+    lookback_days: int = 30,
+    recent_days: int = 7,
+    period_end: datetime | None = None,
+) -> db.PlusVoucherConsumptionTrend:
+    'Return daily active-voucher usage and simple projection metrics.'
+    resolved_period_end = period_end or datetime.now()
+    period_end_day = resolved_period_end.date()
+    safe_lookback_days = max(1, lookback_days)
+    safe_recent_days = max(1, recent_days)
+    period_start_day = period_end_day - timedelta(days=safe_lookback_days - 1)
+
+    summaries = voucher_summaries if voucher_summaries is not None else get_active_plus_voucher_summaries()
+    activated_summaries = [summary for summary in summaries if summary.activated_at is not None]
+    vouchers = [summary.voucher for summary in activated_summaries]
+    total_used_mb = sum(summary.used_mb for summary in activated_summaries)
+    total_remaining_mb = sum(summary.remaining_mb for summary in activated_summaries)
+    active_allocation_gb = sum(summary.voucher.allocation_gb for summary in activated_summaries)
+
+    attributed_rows = _get_plus_voucher_wan_usage_records(vouchers, resolved_period_end)
+    daily_mb_by_day: dict[date, float] = defaultdict(float)
+    for _voucher_id, started_at, byte_count in attributed_rows:
+        daily_mb_by_day[started_at.date()] += byte_count / 1_000_000.0
+
+    daily_usage = [
+        db.PlusVoucherDailyUsage(day=day, used_mb=daily_mb_by_day.get(day, 0.0))
+        for day in _calendar_days(period_start_day, period_end_day)
+    ]
+
+    first_usage_day = min((started_at.date() for _voucher_id, started_at, _byte_count in attributed_rows), default=None)
+    if first_usage_day is None:
+        lifetime_average_daily_mb = 0.0
+    else:
+        lifetime_day_count = max(1, (period_end_day - first_usage_day).days + 1)
+        lifetime_average_daily_mb = sum(daily_mb_by_day.values()) / lifetime_day_count
+
+    recent_average_daily_mb = _average_daily_mb(daily_mb_by_day, period_end_day, safe_recent_days)
+    prior_average_daily_mb = _average_daily_mb(
+        daily_mb_by_day,
+        period_end_day - timedelta(days=safe_recent_days),
+        safe_recent_days,
+    )
+    projected_days_remaining = None
+    projected_depletion_date = None
+    if recent_average_daily_mb > 0 and total_remaining_mb > 0:
+        projected_days_remaining = total_remaining_mb / recent_average_daily_mb
+        projected_depletion_date = period_end_day + timedelta(days=ceil(projected_days_remaining))
+
+    return db.PlusVoucherConsumptionTrend(
+        period_start=period_start_day,
+        period_end=period_end_day,
+        daily_usage=daily_usage,
+        total_used_mb=total_used_mb,
+        total_remaining_mb=total_remaining_mb,
+        active_allocation_gb=active_allocation_gb,
+        activated_voucher_count=len(activated_summaries),
+        lifetime_average_daily_mb=lifetime_average_daily_mb,
+        recent_average_daily_mb=recent_average_daily_mb,
+        prior_average_daily_mb=prior_average_daily_mb,
+        today_mb=daily_mb_by_day.get(period_end_day, 0.0),
+        yesterday_mb=daily_mb_by_day.get(period_end_day - timedelta(days=1), 0.0),
+        projected_days_remaining=projected_days_remaining,
+        projected_depletion_date=projected_depletion_date,
+    )
 
 
 def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:

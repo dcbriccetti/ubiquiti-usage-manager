@@ -77,6 +77,83 @@
         </article>
     </div>
 
+    <article class="panel voucher-trend-panel" style="margin-top: var(--space-5);">
+        <div class="panel-body">
+            <div class="panel-title-row">
+                <h2>Consumption Trend</h2>
+                <span class="muted">Active vouchers · {{ voucher_consumption_trend.period_start.strftime("%Y-%m-%d") }} to {{ voucher_consumption_trend.period_end.strftime("%Y-%m-%d") }}</span>
+            </div>
+
+            <div class="insights-kpis voucher-trend-kpis">
+                <div class="insight-kpi">
+                    <span class="label">Active Used</span>
+                    <span class="value">{{ voucher_consumption_trend.total_used_mb|voucher_data_amount }}</span>
+                    <span class="detail-note">{{ "{:,.0f}".format(voucher_consumption_trend.active_allocation_gb) }} GB allocated</span>
+                </div>
+                <div class="insight-kpi">
+                    <span class="label">Active Remaining</span>
+                    <span class="value">{{ voucher_consumption_trend.total_remaining_mb|voucher_data_amount }}</span>
+                    {% if voucher_consumption_trend.projected_depletion_date %}
+                        <span class="detail-note">Empty around {{ voucher_consumption_trend.projected_depletion_date.strftime("%Y-%m-%d") }}</span>
+                    {% else %}
+                        <span class="detail-note">No depletion date yet</span>
+                    {% endif %}
+                </div>
+                <div class="insight-kpi">
+                    <span class="label">7-Day Pace</span>
+                    <span class="value">{{ voucher_consumption_trend.recent_average_daily_mb|voucher_data_amount }}<span class="voucher-rate-unit">/day</span></span>
+                    <span class="detail-note">{{ voucher_topoff_analysis.recent_trend_label }} vs prior 7 days</span>
+                </div>
+                <div class="insight-kpi">
+                    <span class="label">{{ "{:,.0f}".format(voucher_topoff_analysis.included_usage_gb) }} GB ETA</span>
+                    <span class="value voucher-eta-value">{{ voucher_topoff_analysis.included_eta_label }}</span>
+                    <span class="detail-note">{{ voucher_topoff_analysis.included_remaining_mb|voucher_data_amount }} to threshold</span>
+                </div>
+                <div class="insight-kpi">
+                    <span class="label">{{ voucher_topoff_analysis.forecast_days }}-Day Forecast</span>
+                    <span class="value">{{ voucher_topoff_analysis.forecast_usage_mb|voucher_data_amount }}</span>
+                    <span class="detail-note">{{ "{:,.0f}".format(voucher_topoff_analysis.break_even_gb) }} GB break-even</span>
+                </div>
+                <div class="insight-kpi">
+                    <span class="label">Top-Off Signal</span>
+                    <span class="value voucher-recommendation">{{ voucher_topoff_analysis.recommendation }}</span>
+                    <span class="detail-note">{{ voucher_topoff_analysis.rationale }}</span>
+                </div>
+            </div>
+
+            <div class="voucher-trend-layout">
+                <div class="month-chart-wrap voucher-trend-chart-wrap">
+                    <canvas id="voucher-consumption-chart" class="month-chart-canvas" role="img" aria-label="Daily active voucher consumption"></canvas>
+                </div>
+                <div class="voucher-trend-side">
+                    <h3>Last 7 Days</h3>
+                    <div class="table-wrap">
+                        <table class="fit-content-table voucher-recent-days-table">
+                            <thead>
+                            <tr>
+                                <th>Day</th>
+                                <th class="num">Used</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for row in recent_voucher_daily_usage %}
+                                <tr>
+                                    <td>{{ row.day.strftime("%Y-%m-%d") }}</td>
+                                    <td class="num">{{ row.used_mb|voucher_data_amount }}</td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="2" class="muted">No daily usage yet.</td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </article>
+
     <article class="panel" style="margin-top: var(--space-5);">
         <div class="panel-body">
             <h2>Activated Voucher Summary</h2>
@@ -220,4 +297,22 @@
             </div>
         </div>
     </article>
+
+    <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+    <script id="voucher-consumption-chart-config" type="application/json" data-usage-chart-config>
+        {{ {
+            "type": "month-mb",
+            "canvasId": "voucher-consumption-chart",
+            "labels": voucher_trend_chart.labels,
+            "fullLabels": voucher_trend_chart.full_labels,
+            "mbSeries": voucher_trend_chart.gb_series,
+            "fallbackLabel": "GB/day",
+            "totalLabel": "Total GB/day",
+            "xAxisTitle": "Date",
+            "yAxisTitle": "GB/day",
+            "showAllTickLimit": 16,
+            "yAxisWidth": 72
+        }|tojson }}
+    </script>
+    <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>
 {% endblock %}

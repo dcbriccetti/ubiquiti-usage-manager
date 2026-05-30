@@ -939,6 +939,47 @@
             outline: none;
         }
 
+        .voucher-trend-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 2fr) minmax(240px, 0.8fr);
+            gap: var(--space-4);
+            align-items: start;
+            margin-top: var(--space-2);
+        }
+
+        .voucher-trend-chart-wrap {
+            height: 260px;
+            margin: 0;
+        }
+
+        .voucher-trend-chart-wrap .month-chart-canvas {
+            min-width: 620px;
+        }
+
+        .voucher-trend-side h3 {
+            margin-top: 0;
+        }
+
+        .voucher-recent-days-table {
+            width: 100%;
+            min-width: 0;
+        }
+
+        .voucher-rate-unit {
+            margin-left: 2px;
+            color: var(--muted);
+            font-size: 0.78rem;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .voucher-eta-value,
+        .voucher-recommendation {
+            font-size: 1.05rem;
+            line-height: 1.2;
+            overflow-wrap: anywhere;
+        }
+
         .admin-login-form {
             display: grid;
             gap: var(--space-3);
@@ -1202,6 +1243,10 @@
 
         @media (max-width: 900px) {
             .columns {
+                grid-template-columns: 1fr;
+            }
+
+            .voucher-trend-layout {
                 grid-template-columns: 1fr;
             }
 

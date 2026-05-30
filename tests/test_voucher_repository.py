@@ -162,6 +162,97 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
         assert unchanged_voucher is not None
         self.assertEqual(unchanged_voucher.consumed_at, consumed_at)
 
+    def test_consumption_trend_groups_active_voucher_wan_usage_by_day(self) -> None:
+        generated_at = datetime(2026, 5, 1, 10, 0)
+        period_end = datetime(2026, 5, 7, 12, 0)
+        with db.SessionLocal() as session:
+            session.add(
+                db.PlusVoucher(
+                    batch_id="trend",
+                    user_id=201,
+                    password="trend201",
+                    allocation_gb=20,
+                    generated_at=generated_at,
+                )
+            )
+            session.add(
+                db.ClientIpIdentity(
+                    observed_at=generated_at + timedelta(minutes=10),
+                    ip_address="192.168.1.30",
+                    mac="aa:bb:cc:dd:ee:03",
+                    name="Trend voucher",
+                    user_id="201",
+                    vlan="Plus",
+                )
+            )
+            session.add_all(
+                [
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605011200",
+                        started_at=datetime(2026, 5, 1, 12, 0),
+                        ended_at=datetime(2026, 5, 1, 12, 1),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="192.168.1.30",
+                        src_port=12345,
+                        dst_ip="8.8.8.8",
+                        dst_port=443,
+                        packets=10,
+                        bytes=1_000_000_000,
+                        direction="upload",
+                        client_ip="192.168.1.30",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605021200",
+                        started_at=datetime(2026, 5, 2, 12, 0),
+                        ended_at=datetime(2026, 5, 2, 12, 1),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="192.168.1.30",
+                        src_port=12345,
+                        dst_ip="8.8.4.4",
+                        dst_port=443,
+                        packets=20,
+                        bytes=2_000_000_000,
+                        direction="download",
+                        client_ip="192.168.1.30",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605041200",
+                        started_at=datetime(2026, 5, 4, 12, 0),
+                        ended_at=datetime(2026, 5, 4, 12, 1),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="192.168.1.30",
+                        src_port=12345,
+                        dst_ip="1.1.1.1",
+                        dst_port=443,
+                        packets=40,
+                        bytes=4_000_000_000,
+                        direction="download",
+                        client_ip="192.168.1.30",
+                    ),
+                ]
+            )
+            session.commit()
+
+        summaries = voucher_repository.get_active_plus_voucher_summaries()
+        trend = voucher_repository.get_plus_voucher_consumption_trend(
+            summaries,
+            lookback_days=7,
+            recent_days=7,
+            period_end=period_end,
+        )
+
+        self.assertEqual(trend.period_start, datetime(2026, 5, 1).date())
+        self.assertEqual(trend.period_end, datetime(2026, 5, 7).date())
+        self.assertEqual([row.used_mb for row in trend.daily_usage], [1000.0, 2000.0, 0.0, 4000.0, 0.0, 0.0, 0.0])
+        self.assertEqual(trend.total_used_mb, 7000.0)
+        self.assertEqual(trend.total_remaining_mb, 13_000.0)
+        self.assertEqual(trend.recent_average_daily_mb, 1000.0)
+        self.assertEqual(trend.projected_days_remaining, 13.0)
+        self.assertEqual(trend.projected_depletion_date, datetime(2026, 5, 20).date())
+
 
 if __name__ == "__main__":
     unittest.main()

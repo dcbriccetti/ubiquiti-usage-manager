@@ -9,7 +9,8 @@ This module keeps the web entrypoint intentionally small:
 Keeping route glue here and business/view-model logic in helper modules reduces
 merge conflicts and makes testing easier because each module has a tighter scope.
 '''
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from math import ceil
 import os
 import re
 from secrets import token_hex
@@ -59,6 +60,28 @@ class InventoryVoucherSummary(TypedDict):
     total_allocation_gb: int
     oldest_generated_at: datetime
     newest_generated_at: datetime
+
+
+class VoucherTopOffAnalysis(TypedDict):
+    'Projected top-off decision context for voucher admins.'
+    forecast_days: int
+    forecast_usage_mb: float
+    break_even_gb: float
+    included_usage_gb: float
+    included_remaining_mb: float
+    included_eta_label: str
+    recent_trend_label: str
+    recommendation: str
+    rationale: str
+    small_topoff_gb: float
+    large_topoff_gb: float
+
+
+class VoucherTrendChartContext(TypedDict):
+    'Chart.js-ready active voucher trend data.'
+    labels: list[str]
+    full_labels: list[str]
+    gb_series: list[float]
 
 
 def create_app() -> Flask:
@@ -170,6 +193,97 @@ def create_app() -> Flask:
             key=lambda row: (row['allocation_gb'], row['count']),
             reverse=True,
         )
+
+    def format_day_label(day: date) -> str:
+        'Return a compact date label for chart axes.'
+        return f'{day.month}/{day.day}'
+
+    def format_days_from_now(days: float) -> str:
+        'Return a compact whole-day projection label.'
+        rounded_days = ceil(days)
+        return f'{rounded_days} day' if rounded_days == 1 else f'{rounded_days} days'
+
+    def build_voucher_trend_chart_context(
+        trend: db.PlusVoucherConsumptionTrend,
+    ) -> VoucherTrendChartContext:
+        'Return compact chart data for active voucher daily consumption.'
+        return {
+            'labels': [format_day_label(row.day) for row in trend.daily_usage],
+            'full_labels': [row.day.strftime('%Y-%m-%d') for row in trend.daily_usage],
+            'gb_series': [round(row.used_mb / 1000.0, 3) for row in trend.daily_usage],
+        }
+
+    def build_recent_trend_label(trend: db.PlusVoucherConsumptionTrend) -> str:
+        'Return a readable recent-vs-prior trend label.'
+        recent_mb = trend.recent_average_daily_mb
+        prior_mb = trend.prior_average_daily_mb
+        if recent_mb == 0 and prior_mb == 0:
+            return 'Flat'
+        if prior_mb == 0:
+            return 'New usage'
+
+        change_pct = ((recent_mb - prior_mb) / prior_mb) * 100.0
+        if abs(change_pct) < 10:
+            return 'Steady'
+        direction = 'higher' if change_pct > 0 else 'lower'
+        return f'{abs(change_pct):.0f}% {direction}'
+
+    def build_voucher_topoff_analysis(
+        trend: db.PlusVoucherConsumptionTrend,
+        forecast_days: int = 30,
+    ) -> VoucherTopOffAnalysis:
+        'Return forecast context for deciding between configured ISP top-off blocks.'
+        included_usage_gb = float(getattr(cfg, 'ISP_INCLUDED_USAGE_GB', 500) or 500)
+        included_usage_cost_usd = float(getattr(cfg, 'ISP_INCLUDED_USAGE_COST_USD', 0.0) or 0.0)
+        small_topoff_gb = float(getattr(cfg, 'ISP_TOPOFF_USAGE_GB', 50) or 50)
+        small_topoff_cost_usd = float(getattr(cfg, 'ISP_TOPOFF_COST_USD', 0.0) or 0.0)
+        small_cost_per_gb = small_topoff_cost_usd / small_topoff_gb if small_topoff_gb else 0.0
+        break_even_gb = (
+            included_usage_cost_usd / small_cost_per_gb
+            if small_cost_per_gb > 0 and included_usage_cost_usd > 0
+            else small_topoff_gb
+        )
+        forecast_usage_mb = trend.recent_average_daily_mb * forecast_days
+        included_remaining_mb = max(0.0, included_usage_gb * 1000.0 - trend.total_used_mb)
+
+        if trend.recent_average_daily_mb <= 0:
+            included_eta_label = 'No recent burn'
+        elif included_remaining_mb <= 0:
+            included_eta_label = 'Reached'
+        else:
+            days_to_included = included_remaining_mb / trend.recent_average_daily_mb
+            included_eta_date = trend.period_end + timedelta(days=ceil(days_to_included))
+            included_eta_label = f'{included_eta_date.strftime("%Y-%m-%d")} ({format_days_from_now(days_to_included)})'
+
+        if trend.activated_voucher_count == 0:
+            recommendation = 'No active trend'
+            rationale = 'No activated vouchers have WAN usage yet.'
+        elif trend.recent_average_daily_mb <= 0:
+            recommendation = 'Wait'
+            rationale = 'No voucher usage in the last 7 days.'
+        elif included_remaining_mb > forecast_usage_mb:
+            recommendation = 'Wait'
+            rationale = f'Projected to stay below {included_usage_gb:,.0f} GB for the next {forecast_days} days.'
+        elif forecast_usage_mb / 1000.0 >= break_even_gb:
+            recommendation = f'{included_usage_gb:,.0f} GB block'
+            rationale = f'The {forecast_days}-day forecast is above the {break_even_gb:,.0f} GB break-even point.'
+        else:
+            recommendation = f'{small_topoff_gb:,.0f} GB increments'
+            rationale = f'The {forecast_days}-day forecast is below the {break_even_gb:,.0f} GB break-even point.'
+
+        return {
+            'forecast_days': forecast_days,
+            'forecast_usage_mb': forecast_usage_mb,
+            'break_even_gb': break_even_gb,
+            'included_usage_gb': included_usage_gb,
+            'included_remaining_mb': included_remaining_mb,
+            'included_eta_label': included_eta_label,
+            'recent_trend_label': build_recent_trend_label(trend),
+            'recommendation': recommendation,
+            'rationale': rationale,
+            'small_topoff_gb': small_topoff_gb,
+            'large_topoff_gb': included_usage_gb,
+        }
 
     def pluralize(count: int, singular: str, plural: str | None = None) -> str:
         'Return a count plus singular/plural label.'
@@ -609,6 +723,10 @@ def create_app() -> Flask:
 
         voucher_rows = db.get_plus_vouchers()
         active_voucher_summaries = db.get_active_plus_voucher_summaries()
+        active_activated_voucher_summaries = [
+            summary for summary in active_voucher_summaries if summary.activated_at is not None
+        ]
+        voucher_consumption_trend = db.get_plus_voucher_consumption_trend(active_voucher_summaries)
         return render_template(
             "plus_vouchers.html",
             generated_vouchers=generated_vouchers,
@@ -618,10 +736,12 @@ def create_app() -> Flask:
             selected_value_dollars=selected_value_dollars,
             voucher_value_options=voucher_value_options(),
             unconsumed_voucher_count=db.get_unconsumed_plus_voucher_count(),
-            active_voucher_summaries=[
-                summary for summary in active_voucher_summaries if summary.activated_at is not None
-            ],
+            active_voucher_summaries=active_activated_voucher_summaries,
             inventory_voucher_summaries=summarize_inventory_vouchers(active_voucher_summaries),
+            voucher_consumption_trend=voucher_consumption_trend,
+            voucher_trend_chart=build_voucher_trend_chart_context(voucher_consumption_trend),
+            voucher_topoff_analysis=build_voucher_topoff_analysis(voucher_consumption_trend),
+            recent_voucher_daily_usage=list(reversed(voucher_consumption_trend.daily_usage[-7:])),
             voucher_cost_cents=calculate_voucher_cost_cents,
         )
 

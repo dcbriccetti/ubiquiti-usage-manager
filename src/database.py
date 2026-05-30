@@ -272,6 +272,32 @@ class PlusVoucherUsageSummary:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PlusVoucherDailyUsage:
+    'Daily WAN usage attributed to active Plus vouchers.'
+    day: date
+    used_mb: float
+
+
+@dataclass(frozen=True, kw_only=True)
+class PlusVoucherConsumptionTrend:
+    'Admin-facing consumption trend and projection for active Plus vouchers.'
+    period_start: date
+    period_end: date
+    daily_usage: list[PlusVoucherDailyUsage]
+    total_used_mb: float
+    total_remaining_mb: float
+    active_allocation_gb: int
+    activated_voucher_count: int
+    lifetime_average_daily_mb: float
+    recent_average_daily_mb: float
+    prior_average_daily_mb: float
+    today_mb: float
+    yesterday_mb: float
+    projected_days_remaining: float | None
+    projected_depletion_date: date | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class WanFlowUsageRecord:
     'One WAN-classified flow row imported from nfdump.'
     started_at: datetime
@@ -1523,6 +1549,18 @@ def get_active_plus_voucher_summaries() -> list[PlusVoucherUsageSummary]:
     from voucher_repository import get_active_plus_voucher_summaries as _get_active_plus_voucher_summaries
 
     return _get_active_plus_voucher_summaries()
+
+
+def get_plus_voucher_consumption_trend(
+    voucher_summaries: list[PlusVoucherUsageSummary] | None = None,
+    lookback_days: int = 30,
+    recent_days: int = 7,
+    period_end: datetime | None = None,
+) -> PlusVoucherConsumptionTrend:
+    'Return daily active-voucher usage and simple projection metrics.'
+    from voucher_repository import get_plus_voucher_consumption_trend as _get_plus_voucher_consumption_trend
+
+    return _get_plus_voucher_consumption_trend(voucher_summaries, lookback_days, recent_days, period_end)
 
 
 def log_usage(c: ClientInfo, interval_mb: float) -> None:
