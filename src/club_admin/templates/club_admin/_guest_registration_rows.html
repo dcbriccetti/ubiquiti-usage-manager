@@ -7,11 +7,21 @@
       </a>
     </td>
     <td class="nowrap">{{ record.registration.visit_date }}</td>
+    <td class="nowrap">
+      {% if record.member.screening_status %}
+        <span class="screening-status screening-{{ record.member.screening_status }}">{{ screening_status_label(record.member.screening_status) }}</span>
+      {% endif %}
+    </td>
     <td class="nowrap">{{ record.member.email or '' }}</td>
     <td class="nowrap">{{ record.member.cell_phone or '' }}</td>
     <td class="guest-actions-cell">
       <div class="guest-actions">
         <button type="button" data-upload-dialog-open="id-upload-dialog-{{ record.registration.id }}">Attach ID</button>
+        {% if record.member.screening_status != 'safe' and record.member.screening_status != 'banned' %}
+          <form action="{{ url_for('mark_guest_registration_safe', registration_id=record.registration.id) }}" method="post">
+            <button type="submit" class="button-link secondary">Mark Safe</button>
+          </form>
+        {% endif %}
         <a class="button-link secondary" href="{{ url_for('filled_guest_registration_form', registration_id=record.registration.id) }}">Print Form</a>
         <dialog
           class="upload-dialog"
@@ -52,6 +62,6 @@
   </tr>
 {% else %}
   <tr>
-    <td colspan="6" class="empty">No guest registrations submitted yet.</td>
+    <td colspan="7" class="empty">No guest registrations submitted yet.</td>
   </tr>
 {% endfor %}

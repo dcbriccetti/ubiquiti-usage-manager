@@ -24,7 +24,7 @@
     <div class="self-checkin-layout{% if message or barcode_svg %} has-status{% endif %}">
       {% if message or barcode_svg %}
         <aside
-          class="self-checkin-status{% if checkin_success %} is-success{% else %} is-error{% endif %}"
+          class="self-checkin-status{% if checkin_success %} is-success{% elif checkin_blocked %} is-blocked{% else %} is-error{% endif %}"
           aria-label="Check-in result"
           role="{% if checkin_success %}status{% else %}alert{% endif %}"
           tabindex="-1"
@@ -33,9 +33,9 @@
         >
           {% if message %}
             <div class="checkin-result-label" aria-hidden="true">
-              {% if checkin_success %}OK{% else %}Try Again{% endif %}
+              {% if checkin_success %}OK{% elif checkin_blocked %}Front Desk{% else %}Try Again{% endif %}
             </div>
-            <h2>{% if checkin_success %}You are checked in{% else %}Check-in not found{% endif %}</h2>
+            <h2>{% if checkin_success %}You are checked in{% elif checkin_blocked %}Please see the front desk{% else %}Check-in not found{% endif %}</h2>
             <p class="notice">{{ message }}</p>
           {% endif %}
 
@@ -67,7 +67,7 @@
               type="button"
               data-checkin-reset
               data-reset-url="{{ url_for('self_checkin') }}"
-            >{% if checkin_success %}Continue{% else %}Try Again{% endif %}</button>
+            >{% if checkin_success or checkin_blocked %}Continue{% else %}Try Again{% endif %}</button>
           </div>
         </aside>
       {% else %}

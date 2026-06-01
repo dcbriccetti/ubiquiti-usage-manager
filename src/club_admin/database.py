@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT,
     work_phone TEXT,
     cell_phone TEXT,
+    screening_status TEXT CHECK (
+        screening_status IS NULL
+        OR screening_status IN ('pending', 'safe', 'banned')
+    ),
     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -203,6 +207,29 @@ def _ensure_user_date_columns(connection: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_user_screening_status_column(connection: sqlite3.Connection) -> None:
+    columns = _column_names(connection, "users")
+    if "screening_status" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE users
+            ADD COLUMN screening_status TEXT
+            CHECK (
+                screening_status IS NULL
+                OR screening_status IN ('pending', 'safe', 'banned')
+            )
+            """
+        )
+    if "safe" in columns:
+        connection.execute(
+            """
+            UPDATE users
+            SET screening_status = 'safe'
+            WHERE screening_status IS NULL AND safe = 1
+            """
+        )
+
+
 def _drop_guest_registration_middle_name_column(connection: sqlite3.Connection) -> None:
     if not _table_exists(connection, "guest_registrations"):
         return
@@ -218,6 +245,7 @@ def init_db(db_path: Path | None = None) -> None:
         _validate_existing_schema(connection)
         connection.executescript(SCHEMA_SQL)
         _ensure_user_date_columns(connection)
+        _ensure_user_screening_status_column(connection)
         _drop_guest_registration_middle_name_column(connection)
         _validate_foreign_keys(connection)
         connection.commit()

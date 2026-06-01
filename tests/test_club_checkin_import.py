@@ -17,6 +17,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from club_admin import audit_repository
 from club_admin import checkin_repository
 from club_admin import database
 from club_admin import member_repository
@@ -807,6 +808,53 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("checkin-barcode", body)
         self.assertIsNotNone(barcode_secret_row)
         self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_blocks_banned_user_and_logs_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                        screening_status="banned",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "+1 (510) 510-5100", "initials": "JD"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('class="self-checkin-status is-blocked"', body)
+        self.assertIn("Please see the front desk", body)
+        self.assertIn("Continue</button>", body)
+        self.assertNotIn("You are checked in", body)
+        self.assertNotIn("Your Check-in Barcode", body)
+        self.assertEqual(checkins, [])
+        blocked_attempts = [
+            entry for entry in audit_entries if entry.field_name == "blocked check-in attempted"
+        ]
+        self.assertEqual(len(blocked_attempts), 1)
+        self.assertIsNone(blocked_attempts[0].old_value)
+        self.assertIsNotNone(blocked_attempts[0].new_value)
 
     def test_self_checkin_accepts_signed_barcode(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -272,6 +272,30 @@ button:disabled {
   margin: 6px 0 0;
 }
 
+.screening-status {
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 3px 8px;
+}
+
+.screening-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.screening-safe {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.screening-banned {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .print-report-range {
   display: none;
 }
@@ -560,12 +584,17 @@ th {
 
 .guest-registrations-table th:nth-child(4),
 .guest-registrations-table td:nth-child(4) {
+  width: 7.5rem;
+}
+
+.guest-registrations-table th:nth-child(5),
+.guest-registrations-table td:nth-child(5) {
   width: 12rem;
 }
 
 .guest-actions-cell {
-  min-width: 14rem;
-  width: 14rem;
+  min-width: 19rem;
+  width: 19rem;
 }
 
 @media (max-width: 900px) {
@@ -1269,6 +1298,11 @@ th {
   border-color: #b45309;
 }
 
+.self-checkin-status.is-blocked {
+  background: #fee2e2;
+  border-color: #b42318;
+}
+
 .checkin-result-label {
   background: #16834a;
   border-radius: 8px;
@@ -1281,6 +1315,11 @@ th {
 
 .self-checkin-status.is-error .checkin-result-label {
   background: #b45309;
+  font-size: 38px;
+}
+
+.self-checkin-status.is-blocked .checkin-result-label {
+  background: #b42318;
   font-size: 38px;
 }
 
@@ -1710,6 +1749,15 @@ th {
   gap: 8px;
   justify-content: flex-end;
   min-width: 0;
+}
+
+.guest-actions form {
+  margin: 0;
+}
+
+.guest-actions button,
+.guest-actions .button-link {
+  white-space: nowrap;
 }
 
 .file-picker {

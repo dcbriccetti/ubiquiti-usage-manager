@@ -39,6 +39,12 @@ def _text_to_date(value: str | None) -> date | None:
     return date.fromisoformat(value) if value else None
 
 
+def _screening_status_to_text(value: str | None) -> str | None:
+    if value in {"pending", "safe", "banned"}:
+        return value
+    return None
+
+
 def _years_before(value: date, years: int) -> date:
     try:
         return value.replace(year=value.year - years)
@@ -122,6 +128,7 @@ def member_from_row(row: sqlite3.Row) -> Member:
         email=row["email"],
         work_phone=format_phone_number(row["work_phone"]),
         cell_phone=format_phone_number(row["cell_phone"]),
+        screening_status=_screening_status_to_text(row["screening_status"]),
     )
 
 
@@ -160,9 +167,10 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             phone,
             email,
             work_phone,
-            cell_phone
+            cell_phone,
+            screening_status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(card_number) DO UPDATE SET
             last_name = excluded.last_name,
             first_name = excluded.first_name,
@@ -197,6 +205,7 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             _empty_to_none(member.email),
             _phone_to_none(member.work_phone),
             _phone_to_none(member.cell_phone),
+            _screening_status_to_text(member.screening_status),
         ),
     )
 
@@ -221,9 +230,10 @@ def insert_member(connection: sqlite3.Connection, member: Member) -> int:
             phone,
             email,
             work_phone,
-            cell_phone
+            cell_phone,
+            screening_status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             member.last_name.strip(),
@@ -242,6 +252,7 @@ def insert_member(connection: sqlite3.Connection, member: Member) -> int:
             _empty_to_none(member.email),
             _phone_to_none(member.work_phone),
             _phone_to_none(member.cell_phone),
+            _screening_status_to_text(member.screening_status),
         ),
     )
     return int(cursor.lastrowid)
@@ -268,7 +279,8 @@ def list_members(connection: sqlite3.Connection) -> list[Member]:
             phone,
             email,
             work_phone,
-            cell_phone
+            cell_phone,
+            screening_status
         FROM users
         ORDER BY last_name, first_name, card_number
         """
@@ -308,7 +320,8 @@ def list_members_checked_in_for_date_range(
             u.phone,
             u.email,
             u.work_phone,
-            u.cell_phone
+            u.cell_phone,
+            u.screening_status
         FROM users u
         INNER JOIN checkins c ON c.user_id = u.id
         WHERE c.check_in_at >= ? AND c.check_in_at < ?
@@ -354,6 +367,7 @@ def list_member_report_rows(
             u.email,
             u.work_phone,
             u.cell_phone,
+            u.screening_status,
             COUNT(
                 CASE
                     WHEN u.membership = 'AANR Member' AND c.check_in_at >= ? THEN 1
@@ -380,7 +394,8 @@ def list_member_report_rows(
             u.phone,
             u.email,
             u.work_phone,
-            u.cell_phone
+            u.cell_phone,
+            u.screening_status
         ORDER BY u.last_name, u.first_name, u.card_number
         """,
         (one_year_start, two_year_start),
@@ -429,7 +444,8 @@ def get_member(connection: sqlite3.Connection, member_id: int) -> Member | None:
             phone,
             email,
             work_phone,
-            cell_phone
+            cell_phone,
+            screening_status
         FROM users
         WHERE id = ?
         """,
@@ -459,7 +475,8 @@ def get_member_by_card_number(connection: sqlite3.Connection, card_number: str) 
             phone,
             email,
             work_phone,
-            cell_phone
+            cell_phone,
+            screening_status
         FROM users
         WHERE card_number = ?
         """,
@@ -556,7 +573,8 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
             phone = ?,
             email = ?,
             work_phone = ?,
-            cell_phone = ?
+            cell_phone = ?,
+            screening_status = ?
         WHERE id = ?
         """,
         (
@@ -576,6 +594,23 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
             _empty_to_none(member.email),
             _phone_to_none(member.work_phone),
             _phone_to_none(member.cell_phone),
+            _screening_status_to_text(member.screening_status),
             member.id,
         ),
+    )
+
+
+def update_member_screening_status(
+    connection: sqlite3.Connection,
+    member_id: int,
+    screening_status: str | None,
+) -> None:
+    '''Update only a user's screening status.'''
+    connection.execute(
+        """
+        UPDATE users
+        SET screening_status = ?
+        WHERE id = ?
+        """,
+        (_screening_status_to_text(screening_status), member_id),
     )

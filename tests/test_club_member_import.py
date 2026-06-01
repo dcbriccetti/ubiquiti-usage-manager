@@ -158,6 +158,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("nickname", columns)
         self.assertIn("member_since", columns)
         self.assertIn("date_of_birth", columns)
+        self.assertIn("screening_status", columns)
 
     def test_database_adds_user_date_columns_to_existing_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -196,6 +197,72 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertIn("member_since", columns)
         self.assertIn("date_of_birth", columns)
+        self.assertIn("screening_status", columns)
+
+    def test_database_migrates_legacy_safe_column_to_screening_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            with closing(database.connect(db_path)) as connection:
+                connection.execute(
+                    """
+                    CREATE TABLE users (
+                        id INTEGER PRIMARY KEY,
+                        last_name TEXT NOT NULL,
+                        first_name TEXT NOT NULL,
+                        nickname TEXT,
+                        card_number TEXT NOT NULL UNIQUE,
+                        membership TEXT NOT NULL,
+                        address TEXT,
+                        address2 TEXT,
+                        city TEXT,
+                        state TEXT,
+                        zip TEXT,
+                        phone TEXT,
+                        email TEXT,
+                        work_phone TEXT,
+                        cell_phone TEXT,
+                        safe INTEGER,
+                        imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        last_name,
+                        first_name,
+                        card_number,
+                        membership,
+                        safe
+                    )
+                    VALUES ('Doe', 'John', '123', 'Visitor', 1)
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO users (
+                        last_name,
+                        first_name,
+                        card_number,
+                        membership,
+                        safe
+                    )
+                    VALUES ('Public', 'Jane', '456', 'Visitor', 0)
+                    """
+                )
+                connection.commit()
+
+            database.init_db(db_path)
+            with closing(database.connect(db_path)) as connection:
+                statuses = {
+                    row["card_number"]: row["screening_status"]
+                    for row in connection.execute(
+                        "SELECT card_number, screening_status FROM users"
+                    ).fetchall()
+                }
+
+        self.assertEqual(statuses["123"], "safe")
+        self.assertIsNone(statuses["456"])
 
     def test_database_removes_guest_registration_middle_name_column(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -592,6 +659,50 @@ class ClubMemberImportTests(unittest.TestCase):
         ]
         self.assertEqual(len(checkin_audit_entries), 1)
 
+    def test_admin_checkin_blocks_banned_user(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                        screening_status="banned",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.post(
+                "/members/check-ins",
+                data={"member_ids": [str(member.id)]},
+                follow_redirects=True,
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins_for_user(connection, member.id)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            "1 selected user is banned and was not checked in.",
+            response.get_data(as_text=True),
+        )
+        self.assertEqual(checkins, [])
+        blocked_attempts = [
+            entry for entry in audit_entries if entry.field_name == "blocked check-in attempted"
+        ]
+        self.assertEqual(len(blocked_attempts), 1)
+
     def test_guest_registration_creates_visitor_user_without_admin_login(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -659,6 +770,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(len(users), 3)
         self.assertEqual(new_user.membership, "Visitor")
         self.assertEqual(new_user.card_number, "1000")
+        self.assertEqual(new_user.screening_status, "pending")
         self.assertEqual(new_user.nickname, "Johnny")
         self.assertEqual(new_user.date_of_birth.isoformat(), "1990-06-15")
         self.assertEqual(new_user.phone, "(123) 123-1234")
@@ -1167,6 +1279,7 @@ class ClubMemberImportTests(unittest.TestCase):
                         email="john@example.test",
                         work_phone="510-222-3333",
                         cell_phone="510-333-4444",
+                        screening_status="safe",
                     ),
                 )
                 checkin_repository.upsert_checkin(
@@ -1198,6 +1311,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(row["First Name"], "John")
         self.assertEqual(row["Nickname"], "Johnny")
         self.assertEqual(row["Membership"], "Visitor")
+        self.assertEqual(row["Screening Status"], "Safe")
         self.assertEqual(row["First Visit"], "2020-05-01")
         self.assertEqual(row["Last Visit"], "2026-05-03")
         self.assertEqual(row["Date of Birth"], "1980-07-04")
@@ -2229,6 +2343,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "email": "new@example.test",
                     "work_phone": "",
                     "cell_phone": "",
+                    "screening_status": "banned",
                 },
             )
 
@@ -2246,12 +2361,14 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(updated_member.membership, "Full Member")
         self.assertEqual(updated_member.nickname, "Johnny")
         self.assertEqual(updated_member.email, "new@example.test")
+        self.assertEqual(updated_member.screening_status, "banned")
         self.assertEqual(updated_member.member_since.isoformat(), "2026-05-01")
         self.assertEqual(updated_member.date_of_birth.isoformat(), "1980-07-04")
         changed_fields = {entry.field_name for entry in audit_entries}
         self.assertIn("membership", changed_fields)
         self.assertIn("nickname", changed_fields)
         self.assertIn("email", changed_fields)
+        self.assertIn("screening_status", changed_fields)
 
     def test_edit_member_renders_membership_dropdown(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2281,6 +2398,11 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('<option value="Associate Member" selected', body)
         self.assertIn('<option value="Full Member"', body)
         self.assertIn('<option value="Visitor"', body)
+        self.assertIn('<select name="screening_status">', body)
+        self.assertIn('<option value="" selected', body)
+        self.assertIn('<option value="pending"', body)
+        self.assertIn('<option value="safe"', body)
+        self.assertIn('<option value="banned"', body)
         self.assertIn('name="date_of_birth" value="1980-07-04" autocomplete="off" inputmode="numeric" placeholder="YYYY-MM-DD or MM/DD/YYYY"', body)
         self.assertNotIn('name="membership" value=', body)
         self.assertNotIn('name="new_checkin_at"', body)
@@ -2332,6 +2454,54 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIsNotNone(unchanged_member)
         assert unchanged_member is not None
         self.assertEqual(unchanged_member.membership, "Visitor")
+
+    def test_edit_member_rejects_unknown_screening_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="123",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.list_members(connection)[0]
+
+            response = client.post(
+                f"/members/{member.id}/edit",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "nickname": "",
+                    "card_number": "123",
+                    "membership": "Visitor",
+                    "address": "",
+                    "address2": "",
+                    "city": "",
+                    "state": "",
+                    "zip": "",
+                    "phone": "",
+                    "email": "",
+                    "work_phone": "",
+                    "cell_phone": "",
+                    "screening_status": "maybe",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                unchanged_member = member_repository.get_member(connection, member.id)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Choose a valid screening status.", response.get_data(as_text=True))
+        self.assertIsNotNone(unchanged_member)
+        assert unchanged_member is not None
+        self.assertIsNone(unchanged_member.screening_status)
 
     def test_edit_member_checkins_renders_editor(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2944,6 +3114,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Guest Registrations", queue_body)
         self.assertIn("2026-05-30 18:30:00", queue_body)
         self.assertNotIn("2026-05-31 01:30:00", queue_body)
+        self.assertIn("Needs review", queue_body)
+        self.assertIn("Mark Safe", queue_body)
         self.assertIn("Print Form", queue_body)
         self.assertIn("Attach ID", queue_body)
         self.assertNotIn(str(definition_path), queue_body)
@@ -3007,8 +3179,107 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(payload["latest_guest_name"], "John Doe")
         self.assertEqual(len(payload["registration_ids"]), 1)
         self.assertIn("John", payload["rows_html"])
+        self.assertIn("Needs review", payload["rows_html"])
+        self.assertIn("Mark Safe", payload["rows_html"])
         self.assertIn("Print Form", payload["rows_html"])
         self.assertIn("Attach ID", payload["rows_html"])
+
+    def test_admin_can_mark_guest_registration_safe(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            visitor_client = flask_app.test_client()
+            visitor_client.post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "date_of_birth": "1990-06-15",
+                    "cell_phone": "510-510-5100",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                    "marital_status": "single",
+                },
+            )
+            with closing(database.connect(db_path)) as connection:
+                record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+                self.assertEqual(record.member.screening_status, "pending")
+
+            client = admin_client(flask_app)
+            response = client.post(
+                f"/guest-registrations/{record.registration.id}/mark-safe",
+            )
+            queue_response = client.get("/guest-registrations")
+
+            with closing(database.connect(db_path)) as connection:
+                updated_record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=record.member.id,
+                )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/guest-registrations", response.headers["Location"])
+        self.assertEqual(updated_record.member.screening_status, "safe")
+        body = queue_response.get_data(as_text=True)
+        self.assertIn("Safe", body)
+        self.assertNotIn("Mark Safe", body)
+        screening_audit = [
+            entry for entry in audit_entries if entry.field_name == "screening_status"
+        ]
+        self.assertEqual(len(screening_audit), 1)
+        self.assertEqual(screening_audit[0].old_value, "pending")
+        self.assertEqual(screening_audit[0].new_value, "safe")
+
+    def test_mark_safe_does_not_clear_banned_guest(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            visitor_client = flask_app.test_client()
+            visitor_client.post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "date_of_birth": "1990-06-15",
+                    "cell_phone": "510-510-5100",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                    "marital_status": "single",
+                },
+            )
+            with closing(database.connect(db_path)) as connection:
+                record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+                assert record.member.id is not None
+                member_repository.update_member_screening_status(
+                    connection,
+                    record.member.id,
+                    "banned",
+                )
+                connection.commit()
+
+            response = admin_client(flask_app).post(
+                f"/guest-registrations/{record.registration.id}/mark-safe",
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                updated_record = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )[0]
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(updated_record.member.screening_status, "banned")
 
     def test_driver_license_upload_preserves_off_center_image_content(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

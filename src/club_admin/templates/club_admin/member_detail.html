@@ -45,6 +45,12 @@
         <span>Membership</span>
         <strong>{{ member.membership }}</strong>
       </div>
+      {% if member.screening_status %}
+        <div>
+          <span>Screening</span>
+          <strong class="screening-status screening-{{ member.screening_status }}">{{ screening_status_label(member.screening_status) }}</strong>
+        </div>
+      {% endif %}
       <div>
         <span>1st Visit</span>
         <strong class="nowrap">{{ member.member_since or '' }}</strong>

@@ -94,6 +94,19 @@ Check-in procedure:
    send Enter/Return to submit the check-in.
 4. Plain card numbers are not accepted as barcode check-ins.
 
+Guest screening procedure:
+
+1. New guest registrations are created with screening status `Needs review`.
+2. A manager attaches the guest's ID image, checks the outside screening site,
+   and clicks `Mark Safe` before printing the guest form.
+3. Existing users have no screening flag by default and continue to check in
+   normally unless a manager explicitly changes the status.
+4. If a user must be banned, a manager edits the user, changes
+   `Screening Status` to `Banned`, and adds a user note with the ban details.
+5. Banned users cannot self check in or be checked in from the admin users page.
+   The kiosk shows `Please see the front desk.`, and each blocked attempt is
+   logged on that user.
+
 To show scanned guest forms on user detail pages, set
 `USER_MANAGEMENT_DOCUMENTS_DIR` in `src/config_local.py`. The app looks inside a
 folder named with the user's card number for the first `.jpg` or `.jpeg` file

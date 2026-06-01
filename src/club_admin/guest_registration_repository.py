@@ -118,7 +118,8 @@ def _guest_registration_select_sql() -> str:
             u.phone,
             u.email,
             u.work_phone,
-            u.cell_phone
+            u.cell_phone,
+            u.screening_status
         FROM guest_registrations g
         JOIN users u ON u.id = g.user_id
     """

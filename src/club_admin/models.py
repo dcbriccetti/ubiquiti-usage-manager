@@ -24,6 +24,7 @@ class Member:
     email: str | None = None
     work_phone: str | None = None
     cell_phone: str | None = None
+    screening_status: str | None = None
     id: int | None = None
 
 

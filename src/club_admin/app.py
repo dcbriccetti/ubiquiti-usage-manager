@@ -64,6 +64,7 @@ EDITABLE_MEMBER_FIELDS = (
     "email",
     "work_phone",
     "cell_phone",
+    "screening_status",
 )
 MEMBERSHIP_OPTIONS = (
     "AANR Member",
@@ -71,6 +72,13 @@ MEMBERSHIP_OPTIONS = (
     "Full Member",
     "Visitor",
 )
+SCREENING_STATUS_OPTIONS = (
+    ("", "No flag"),
+    ("pending", "Needs review"),
+    ("safe", "Safe"),
+    ("banned", "Banned"),
+)
+SCREENING_STATUS_LABELS = dict(SCREENING_STATUS_OPTIONS)
 CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN = (
     ("Full Member", "Full Member", "membership-full"),
     ("Assoc.", "Associate Member", "membership-assoc"),
@@ -253,6 +261,7 @@ class CheckinTimeChart:
 class LiveCheckInResult:
     check_in_at: datetime
     recorded: bool
+    blocked: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -293,6 +302,19 @@ def _parse_member_form_date(form_data: Any, field_name: str) -> date | None:
     raise MemberFormError("Enter valid user dates.")
 
 
+def _screening_status_from_form(form_data: Any) -> str | None:
+    value = form_data.get("screening_status", "").strip()
+    if value == "":
+        return None
+    if value not in SCREENING_STATUS_LABELS:
+        raise MemberFormError("Choose a valid screening status.")
+    return value
+
+
+def _screening_status_label(status: str | None) -> str:
+    return SCREENING_STATUS_LABELS.get(status or "", "")
+
+
 def _parse_flexible_date(value: str) -> date | None:
     try:
         return date.fromisoformat(value)
@@ -325,6 +347,7 @@ def _member_from_form(member: Member, form_data: Any) -> Member:
         email=form_data.get("email", "").strip() or None,
         work_phone=member_repository.format_phone_number(form_data.get("work_phone")),
         cell_phone=member_repository.format_phone_number(form_data.get("cell_phone")),
+        screening_status=_screening_status_from_form(form_data),
     )
 
 
@@ -741,6 +764,7 @@ def _members_csv(roster: list[member_repository.MemberReportRow]) -> str:
             "First Name",
             "Nickname",
             "Membership",
+            "Screening Status",
             "First Visit",
             "Last Visit",
             "Date of Birth",
@@ -768,6 +792,7 @@ def _members_csv(roster: list[member_repository.MemberReportRow]) -> str:
                 member.first_name,
                 member.nickname or "",
                 member.membership,
+                _screening_status_label(member.screening_status),
                 member.member_since or "",
                 last_visit or "",
                 member.date_of_birth or "",
@@ -1675,6 +1700,23 @@ def _record_self_checkin(
     member: Member,
 ) -> LiveCheckInResult:
     check_in_at = datetime.now().replace(microsecond=0)
+    if member.screening_status == "banned":
+        if member.id is not None:
+            audit_repository.record_field_change(
+                connection,
+                entity_type="user",
+                entity_id=member.id,
+                action="edit",
+                field_name="blocked check-in attempted",
+                old_value=None,
+                new_value=check_in_at,
+            )
+        return LiveCheckInResult(
+            check_in_at=check_in_at,
+            recorded=False,
+            blocked=True,
+        )
+
     if member.id is not None:
         recent_checkin = checkin_repository.latest_checkin_for_user_between(
             connection,
@@ -1781,12 +1823,14 @@ def create_app(db_path: Path | None = None) -> Flask:
         return response
 
     @flask_app.context_processor
-    def inject_app_title() -> dict[str, str]:
+    def inject_app_title() -> dict[str, object]:
         organization_name = str(cfg.USER_MANAGEMENT_ORGANIZATION_NAME).strip()
         return {
             "organization_name": organization_name,
             "app_title": f"{organization_name} User Management",
             "is_document_image": _is_document_image_name,
+            "screening_status_label": _screening_status_label,
+            "screening_status_options": SCREENING_STATUS_OPTIONS,
         }
 
     @contextmanager
@@ -1829,7 +1873,11 @@ def create_app(db_path: Path | None = None) -> Flask:
             with open_connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
                 card_number = _generate_guest_card_number(connection)
-                member = replace(member, card_number=card_number)
+                member = replace(
+                    member,
+                    card_number=card_number,
+                    screening_status="pending",
+                )
 
                 member_id = member_repository.insert_member(connection, member)
                 member = replace(member, id=member_id)
@@ -1960,13 +2008,16 @@ def create_app(db_path: Path | None = None) -> Flask:
 
         checked_in_members: list[Member] = []
         recent_repeat_members: list[Member] = []
+        blocked_members: list[Member] = []
         with open_connection() as connection:
             for member_id in selected_member_ids:
                 member = member_repository.get_member(connection, member_id)
                 if member is None:
                     abort(404)
                 checkin_result = _record_self_checkin(connection, member)
-                if checkin_result.recorded:
+                if checkin_result.blocked:
+                    blocked_members.append(member)
+                elif checkin_result.recorded:
                     _record_checkin_change(
                         connection,
                         member_id=member_id,
@@ -1979,23 +2030,34 @@ def create_app(db_path: Path | None = None) -> Flask:
                     recent_repeat_members.append(member)
             connection.commit()
 
-        if len(checked_in_members) == 1 and not recent_repeat_members:
+        if len(checked_in_members) == 1 and not recent_repeat_members and not blocked_members:
             member = checked_in_members[0]
             checked_in_message = f"Checked in {member.first_name} {member.last_name}."
-        elif checked_in_members:
-            checked_in_message = f"Checked in {len(checked_in_members)} users."
-            if recent_repeat_members:
-                checked_in_message += (
-                    f" Ignored {len(recent_repeat_members)} recent repeat "
+        else:
+            message_parts = []
+            if checked_in_members:
+                message_parts.append(f"Checked in {len(checked_in_members)} users.")
+            if (checked_in_members or blocked_members) and recent_repeat_members:
+                message_parts.append(
+                    f"Ignored {len(recent_repeat_members)} recent repeat "
                     f"{'check-in' if len(recent_repeat_members) == 1 else 'check-ins'}."
                 )
-        elif len(recent_repeat_members) == 1:
-            checked_in_message = "Already checked in within the past hour."
-        else:
-            checked_in_message = (
-                f"{len(recent_repeat_members)} users were already checked in "
-                "within the past hour."
-            )
+            if blocked_members:
+                blocked_count = len(blocked_members)
+                message_parts.append(
+                    "1 selected user is banned and was not checked in."
+                    if blocked_count == 1
+                    else f"{blocked_count} selected users are banned and were not checked in."
+                )
+            if not message_parts and len(recent_repeat_members) == 1:
+                checked_in_message = "Already checked in within the past hour."
+            elif not message_parts:
+                checked_in_message = (
+                    f"{len(recent_repeat_members)} users were already checked in "
+                    "within the past hour."
+                )
+            else:
+                checked_in_message = " ".join(part.strip() for part in message_parts)
         return redirect(url_for("members", checked_in=checked_in_message))
 
     @flask_app.route("/members/map")
@@ -2591,6 +2653,40 @@ def create_app(db_path: Path | None = None) -> Flask:
             }
         )
 
+    @flask_app.post("/guest-registrations/<int:registration_id>/mark-safe")
+    @require_admin
+    def mark_guest_registration_safe(registration_id: int):
+        with open_connection() as connection:
+            record = guest_registration_repository.get_guest_registration_record(
+                connection,
+                registration_id,
+            )
+            if record is None:
+                abort(404)
+            member_id = record.member.id
+            if member_id is None:
+                abort(404)
+            old_status = record.member.screening_status
+            if old_status == "banned":
+                abort(400, "Banned users must be changed from the user edit page.")
+            if old_status != "safe":
+                member_repository.update_member_screening_status(
+                    connection,
+                    member_id,
+                    "safe",
+                )
+                audit_repository.record_field_change(
+                    connection,
+                    entity_type="user",
+                    entity_id=member_id,
+                    action="edit",
+                    field_name="screening_status",
+                    old_value=old_status,
+                    new_value="safe",
+                )
+            connection.commit()
+        return redirect(url_for("guest_registrations"))
+
     @flask_app.route("/guest-registrations/<int:registration_id>/form")
     @require_admin
     def filled_guest_registration_form(registration_id: int):
@@ -2650,6 +2746,7 @@ def create_app(db_path: Path | None = None) -> Flask:
     def self_checkin():
         message = ""
         checkin_success = False
+        checkin_blocked = False
         barcode_svg = ""
         barcode_show_default = True
         if request.method == "POST":
@@ -2677,33 +2774,39 @@ def create_app(db_path: Path | None = None) -> Flask:
                     )
                 if member is not None:
                     checkin_result = _record_self_checkin(connection, member)
-                    barcode_secret = _barcode_secret_for_connection(
-                        connection,
-                        flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
-                    )
-                    token = _barcode_token_for_card_number(
-                        member.card_number,
-                        barcode_secret,
-                    )
-                    barcode_svg = _code128b_svg(token)
-                    barcode_show_default = not barcode_token
+                    checkin_blocked = checkin_result.blocked
+                    if not checkin_blocked:
+                        barcode_secret = _barcode_secret_for_connection(
+                            connection,
+                            flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                        )
+                        token = _barcode_token_for_card_number(
+                            member.card_number,
+                            barcode_secret,
+                        )
+                        barcode_svg = _code128b_svg(token)
+                        barcode_show_default = not barcode_token
                     connection.commit()
-            checkin_success = member is not None
-            message = (
-                (
-                    "Check-in recorded."
-                    if checkin_result is not None and checkin_result.recorded
-                    else "Already checked in within the past hour."
+            checkin_success = member is not None and not checkin_blocked
+            if checkin_blocked:
+                message = "Please see the front desk."
+            else:
+                message = (
+                    (
+                        "Check-in recorded."
+                        if checkin_result is not None and checkin_result.recorded
+                        else "Already checked in within the past hour."
+                    )
+                    if checkin_success
+                    else "No matching user was found. Please check your barcode, phone number, and initials or first name."
                 )
-                if checkin_success
-                else "No matching user was found. Please check your barcode, phone number, and initials or first name."
-            )
 
         response = make_response(
             render_template(
                 "club_admin/self_checkin.html",
                 message=message,
                 checkin_success=checkin_success,
+                checkin_blocked=checkin_blocked,
                 barcode_svg=barcode_svg,
                 barcode_show_default=barcode_show_default,
                 auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
