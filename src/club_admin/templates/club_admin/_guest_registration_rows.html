@@ -1,6 +1,6 @@
 {% for record in records %}
   <tr data-guest-registration-row data-registration-id="{{ record.registration.id }}">
-    <td class="nowrap">{{ record.registration.created_at or '' }}</td>
+    <td class="nowrap">{{ record.registration.created_at|local_sqlite_datetime }}</td>
     <td>
       <a href="{{ url_for('member_detail', member_id=record.member.id) }}">
         {{ record.member.last_name }}, {{ record.member.first_name }}

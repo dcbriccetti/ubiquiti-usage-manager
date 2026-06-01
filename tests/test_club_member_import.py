@@ -1624,6 +1624,11 @@ class ClubMemberImportTests(unittest.TestCase):
 
             with closing(database.connect(db_path)) as connection:
                 notes = user_note_repository.list_user_notes(connection, member.id)
+                connection.execute(
+                    "UPDATE user_notes SET created_at = ? WHERE id = ?",
+                    ("2026-05-31 01:30:00", notes[0].id),
+                )
+                connection.commit()
                 audit_entries = audit_repository.list_audit_log_for_entity(
                     connection,
                     entity_type="user",
@@ -1642,6 +1647,7 @@ class ClubMemberImportTests(unittest.TestCase):
         body = detail_response.get_data(as_text=True)
         self.assertIn("Next visit free", body)
         self.assertIn("Comped because the printer failed.", body)
+        self.assertIn("2026-05-30", body)
         self.assertIn("Edit", body)
         self.assertIn("Delete", body)
 
@@ -2671,6 +2677,10 @@ class ClubMemberImportTests(unittest.TestCase):
                     old_value="Visitor",
                     new_value="Full Member",
                 )
+                connection.execute(
+                    "UPDATE audit_log SET changed_at = ?",
+                    ("2026-05-31 01:30:00",),
+                )
                 connection.commit()
 
             response = client.get(f"/members/{member.id}")
@@ -2678,6 +2688,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertIn("Change Log", body)
+        self.assertIn("2026-05-30 18:30:00", body)
+        self.assertNotIn("2026-05-31 01:30:00", body)
         self.assertIn("Full Member", body)
 
     def test_member_detail_hides_checkin_audit_log_entries(self) -> None:
@@ -2779,6 +2791,14 @@ class ClubMemberImportTests(unittest.TestCase):
                     old_value=datetime(2026, 5, 1, 9, 0, 0),
                     new_value=datetime(2026, 5, 2, 10, 30, 0),
                 )
+                connection.execute(
+                    "UPDATE audit_log SET changed_at = ? WHERE field_name = ?",
+                    ("2026-05-31 01:30:00", "check-in edited"),
+                )
+                connection.execute(
+                    "UPDATE audit_log SET changed_at = ? WHERE field_name = ?",
+                    ("2026-05-30 23:30:00", "membership"),
+                )
                 connection.commit()
 
             response = client.get("/changes")
@@ -2794,6 +2814,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Visitor", body)
         self.assertIn("Full Member", body)
         self.assertIn("check-in edited", body)
+        self.assertIn("2026-05-30 18:30:00", body)
+        self.assertNotIn("2026-05-31 01:30:00", body)
         self.assertIn("2026-05-01 09:00:00", body)
         self.assertIn("2026-05-02 10:30:00", body)
         self.assertNotIn("card_number", body)
@@ -2849,6 +2871,17 @@ class ClubMemberImportTests(unittest.TestCase):
                     "heard_about": "Friend",
                 },
             )
+            with closing(database.connect(db_path)) as connection:
+                registration = (
+                    guest_registration_repository.list_guest_registration_records(
+                        connection
+                    )[0].registration
+                )
+                connection.execute(
+                    "UPDATE guest_registrations SET created_at = ? WHERE id = ?",
+                    ("2026-05-31 01:30:00", registration.id),
+                )
+                connection.commit()
             client = admin_client(flask_app)
 
             queue_response = client.get("/guest-registrations")
@@ -2889,6 +2922,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(audit_entries[0].new_value, "Driver License.jpg")
         self.assertEqual(queue_response.status_code, 200)
         self.assertIn("Guest Registrations", queue_body)
+        self.assertIn("2026-05-30 18:30:00", queue_body)
+        self.assertNotIn("2026-05-31 01:30:00", queue_body)
         self.assertIn("Print Form", queue_body)
         self.assertIn("Attach ID", queue_body)
         self.assertNotIn(str(definition_path), queue_body)

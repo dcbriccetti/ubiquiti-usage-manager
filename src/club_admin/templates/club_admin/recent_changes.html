@@ -36,7 +36,7 @@
       <tbody>
         {% for change in changes %}
           <tr>
-            <td class="nowrap">{{ change.entry.changed_at }}</td>
+            <td class="nowrap">{{ change.entry.changed_at|local_sqlite_datetime }}</td>
             <td>
               {% if change.entry.entity_type == 'user' and change.has_member %}
                 <a href="{{ url_for('member_detail', member_id=change.entry.entity_id) }}">{{ change.member_display_name }}</a>

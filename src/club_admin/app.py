@@ -13,11 +13,12 @@ from collections.abc import Iterator
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from secrets import token_hex, token_urlsafe
 from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 from flask import (
     Flask,
@@ -91,6 +92,7 @@ ID_DOCUMENT_NAME_PATTERN = re.compile(
     re.IGNORECASE,
 )
 BARCODE_TOKEN_VERSION = "UM1"
+CLUB_DISPLAY_TIMEZONE = ZoneInfo("America/Los_Angeles")
 PUBLIC_KIOSK_ENDPOINTS = frozenset(
     {
         "guest_registration",
@@ -121,6 +123,33 @@ def _normalize_url_prefix(prefix: object) -> str:
     if not normalized or normalized == "/":
         return ""
     return "/" + normalized.strip("/")
+
+
+def _sqlite_utc_to_local(value: datetime | str | None) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        if not value.strip():
+            return None
+        try:
+            parsed_value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    else:
+        parsed_value = value
+    if parsed_value.tzinfo is None:
+        parsed_value = parsed_value.replace(tzinfo=timezone.utc)
+    return parsed_value.astimezone(CLUB_DISPLAY_TIMEZONE)
+
+
+def _format_sqlite_utc_datetime(value: datetime | str | None) -> str:
+    local_value = _sqlite_utc_to_local(value)
+    return local_value.strftime("%Y-%m-%d %H:%M:%S") if local_value is not None else ""
+
+
+def _format_sqlite_utc_date(value: datetime | str | None) -> str:
+    local_value = _sqlite_utc_to_local(value)
+    return local_value.strftime("%Y-%m-%d") if local_value is not None else ""
 
 
 class UrlPrefixMiddleware:
@@ -1698,6 +1727,9 @@ def create_app(db_path: Path | None = None) -> Flask:
     flask_app.config["USER_MANAGEMENT_URL_PREFIX"] = url_prefix
     if url_prefix:
         flask_app.wsgi_app = UrlPrefixMiddleware(flask_app.wsgi_app, url_prefix)
+
+    flask_app.add_template_filter(_format_sqlite_utc_datetime, "local_sqlite_datetime")
+    flask_app.add_template_filter(_format_sqlite_utc_date, "local_sqlite_date")
 
     def require_admin(view):
         @wraps(view)

@@ -115,7 +115,7 @@
         {% for note in notes %}
           <article class="member-note">
             <div class="member-note-header">
-              <time datetime="{{ note.created_at.isoformat() if note.created_at else '' }}">{{ note.created_at.strftime('%Y-%m-%d') if note.created_at else '' }}</time>
+              <time datetime="{{ note.created_at.isoformat() if note.created_at else '' }}">{{ note.created_at|local_sqlite_date }}</time>
             </div>
             <h3>{{ note.summary }}</h3>
             {% if note.details %}
@@ -223,7 +223,7 @@
       <tbody>
         {% for entry in audit_entries if entry.field_name != 'card_number' %}
           <tr>
-            <td class="nowrap">{{ entry.changed_at }}</td>
+            <td class="nowrap">{{ entry.changed_at|local_sqlite_datetime }}</td>
             <td>{{ entry.field_name }}</td>
             <td>{{ entry.old_value or '' }}</td>
             <td>{{ entry.new_value or '' }}</td>
