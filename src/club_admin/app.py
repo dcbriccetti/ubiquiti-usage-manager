@@ -353,6 +353,7 @@ def _checkin_for_member(
     *,
     check_in_at: datetime,
     member_id: str,
+    membership: str | None = None,
     existing_checkin: CheckIn | None = None,
 ) -> CheckIn:
     return CheckIn(
@@ -366,7 +367,7 @@ def _checkin_for_member(
         check_out_at=existing_checkin.check_out_at if existing_checkin else None,
         total_checkins=existing_checkin.total_checkins if existing_checkin else None,
         duration=existing_checkin.duration if existing_checkin else None,
-        membership=member.membership,
+        membership=membership or member.membership,
     )
 
 
@@ -375,8 +376,8 @@ def _record_checkin_change(
     *,
     member_id: int,
     field_name: str,
-    old_value: datetime | None,
-    new_value: datetime | None,
+    old_value: object,
+    new_value: object,
 ) -> None:
     audit_repository.record_field_change(
         connection,
@@ -2405,11 +2406,18 @@ def create_app(db_path: Path | None = None) -> Flask:
                             required=True,
                         )
                         assert check_in_at is not None
+                        membership = request.form.get(
+                            f"checkin_{checkin.id}_membership",
+                            "",
+                        ).strip()
+                        if membership not in MEMBERSHIP_OPTIONS:
+                            raise CheckInFormError("Choose a valid membership.")
                         edited_checkins.append(
                             _checkin_for_member(
                                 member,
                                 check_in_at=check_in_at,
                                 member_id=checkin.member_id or member.card_number,
+                                membership=membership,
                                 existing_checkin=checkin,
                             )
                         )
@@ -2441,6 +2449,14 @@ def create_app(db_path: Path | None = None) -> Flask:
                                 old_value=original_checkin.check_in_at,
                                 new_value=edited_checkin.check_in_at,
                             )
+                        if original_checkin.membership != edited_checkin.membership:
+                            _record_checkin_change(
+                                connection,
+                                member_id=member_id,
+                                field_name="check-in membership edited",
+                                old_value=original_checkin.membership,
+                                new_value=edited_checkin.membership,
+                            )
                     if new_checkin is not None:
                         checkin_repository.upsert_checkin(connection, new_checkin)
                         _record_checkin_change(
@@ -2464,6 +2480,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             "club_admin/member_checkins_edit.html",
             member=member,
             checkins=checkins,
+            membership_options=MEMBERSHIP_OPTIONS,
         )
 
     @flask_app.route("/checkins/report")

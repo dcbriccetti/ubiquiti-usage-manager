@@ -46,6 +46,7 @@
               <tr>
                 <th scope="col" class="checkin-select-col">Select</th>
                 <th scope="col">Date and Time</th>
+                <th scope="col">Membership</th>
               </tr>
             </thead>
             <tbody>
@@ -77,10 +78,24 @@
                       >
                     </label>
                   </td>
+                  <td>
+                    <label>
+                      <span class="visually-hidden">Check-in membership</span>
+                      <select
+                        name="checkin_{{ checkin.id }}_membership"
+                        required
+                        data-checkin-dirty-field
+                      >
+                        {% for option in membership_options %}
+                          <option value="{{ option }}"{% if option == checkin.membership %} selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                      </select>
+                    </label>
+                  </td>
                 </tr>
               {% else %}
                 <tr>
-                  <td colspan="2" class="empty">No check-ins recorded for this user.</td>
+                  <td colspan="3" class="empty">No check-ins recorded for this user.</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -121,7 +136,7 @@
       });
 
       const fieldChanged = (field) => {
-        if (!(field instanceof HTMLInputElement)) {
+        if (!(field instanceof HTMLInputElement) && !(field instanceof HTMLSelectElement)) {
           return false;
         }
         if (field.type === "checkbox") {

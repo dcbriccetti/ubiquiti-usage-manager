@@ -2360,6 +2360,9 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('type="datetime-local"', body)
         self.assertIn('value="2026-05-03T15:59:20"', body)
         self.assertIn('step="1"', body)
+        self.assertIn(f'name="checkin_{checkin.id}_membership"', body)
+        self.assertIn('<option value="Visitor" selected>Visitor</option>', body)
+        self.assertIn('<option value="Full Member">Full Member</option>', body)
         self.assertIn(f'name="delete_checkin_{checkin.id}"', body)
         self.assertIn('name="new_checkin_at"', body)
         self.assertIn('data-checkins-edit-form', body)
@@ -2422,7 +2425,9 @@ class ClubMemberImportTests(unittest.TestCase):
                     "work_phone": "",
                     "cell_phone": "",
                     f"checkin_{deleted_checkin.id}_check_in_at": "2026-05-03 15:59:20",
+                    f"checkin_{deleted_checkin.id}_membership": "Visitor",
                     f"checkin_{edited_checkin.id}_check_in_at": "2026-05-02 10:30:00",
+                    f"checkin_{edited_checkin.id}_membership": "Full Member",
                     "new_checkin_at": "2026-05-04 18:45:00",
                 },
             )
@@ -2450,7 +2455,17 @@ class ClubMemberImportTests(unittest.TestCase):
                 datetime(2026, 5, 4, 18, 45, 0),
             },
         )
-        self.assertEqual({checkin.membership for checkin in saved_checkins}, {"Visitor"})
+        saved_memberships_by_time = {
+            checkin.check_in_at: checkin.membership for checkin in saved_checkins
+        }
+        self.assertEqual(
+            saved_memberships_by_time[datetime(2026, 5, 2, 10, 30, 0)],
+            "Full Member",
+        )
+        self.assertEqual(
+            saved_memberships_by_time[datetime(2026, 5, 4, 18, 45, 0)],
+            "Visitor",
+        )
         self.assertEqual({checkin.member_id for checkin in saved_checkins}, {"880"})
         checkin_audit = {
             entry.field_name: (entry.old_value, entry.new_value)
@@ -2461,6 +2476,7 @@ class ClubMemberImportTests(unittest.TestCase):
             checkin_audit,
             {
                 "check-in edited": ("2026-05-01 09:00:00", "2026-05-02 10:30:00"),
+                "check-in membership edited": ("Visitor", "Full Member"),
                 "check-in added": (None, "2026-05-04 18:45:00"),
             },
         )
