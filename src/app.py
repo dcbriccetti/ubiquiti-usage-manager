@@ -15,7 +15,6 @@ from math import ceil
 import os
 import re
 from secrets import token_hex
-import time
 from typing import Any, TypedDict, cast
 
 from flask import Flask, Response, abort, jsonify, redirect, render_template, request, session, stream_with_context, url_for
@@ -114,8 +113,6 @@ def create_app() -> Flask:
     flask_app.jinja_env.filters['voucher_percent'] = format_voucher_percent
     live_update_seconds = 60
     live_update_boundary_offset_seconds = 3
-    admin_auth_cache_seconds = 30.0
-    admin_auth_cache_by_ip: dict[str, float] = {}
     admin_session_key = "lan_admin_authenticated"
 
     def build_report_context(available_months: list[date] | None = None) -> dict[str, object]:
@@ -391,49 +388,6 @@ def create_app() -> Flask:
             plus_network_names.add(plus_report_title.lower())
         return vlan_name.strip().lower() in plus_network_names
 
-    def is_plus_admin_user(user_id: str | None, vlan_name: str | None) -> bool:
-        'Return True when requester is a Plus user whose RADIUS username is in admin allowlist.'
-        if not is_plus_network(vlan_name) or not user_id:
-            return False
-        plus_admins = {
-            str(admin_user_id).strip().lower()
-            for admin_user_id in getattr(cfg, 'PLUS_ADMINS', set())
-            if str(admin_user_id).strip()
-        }
-        return user_id.strip().lower() in plus_admins
-
-    def get_live_client_admin_status(
-        detected_mac: str,
-        live_clients: list[dict[str, Any]] | None = None,
-    ) -> bool | None:
-        'Return live admin status for a connected client, or None when identity is incomplete.'
-        live_client = get_live_client_record_by_mac(detected_mac, live_clients)
-        if live_client is None:
-            return None
-
-        live_vlan_name = live_client.get('network')
-        if not isinstance(live_vlan_name, str):
-            return None
-
-        if not is_plus_network(live_vlan_name):
-            return False
-
-        live_user_id = (
-            live_client.get('1x_identity')
-            or live_client.get('identity')
-            or live_client.get('last_1x_identity')
-        )
-        if not live_user_id:
-            last_identities = live_client.get('last_1x_identities')
-            if isinstance(last_identities, list) and last_identities:
-                first_identity = last_identities[0]
-                live_user_id = first_identity if isinstance(first_identity, str) else None
-
-        if not isinstance(live_user_id, str) or not live_user_id.strip():
-            return None
-
-        return is_plus_admin_user(live_user_id, live_vlan_name)
-
     def resolve_request_ip() -> str | None:
         'Return request IP, allowing DEV_REQUEST_IP override for local/remote testing.'
         if dev_request_ip := os.getenv("DEV_REQUEST_IP", "").strip():
@@ -477,39 +431,8 @@ def create_app() -> Flask:
             )
 
     def requester_is_plus_admin() -> bool:
-        'Resolve current requester and return whether they are a Plus admin.'
-        if requester_has_admin_session():
-            return True
-
-        request_ip = resolve_request_ip()
-        if not request_ip:
-            return False
-        request_ip_text: str = request_ip
-
-        now_monotonic = time.monotonic()
-        if admin_auth_cache_by_ip.get(request_ip_text, 0.0) > now_monotonic:
-            return True
-
-        def remember_admin(result: bool) -> bool:
-            if result:
-                admin_auth_cache_by_ip[request_ip_text] = time.monotonic() + admin_auth_cache_seconds
-            return result
-
-        live_clients = api.get_api_data("stat/sta")
-        detected_mac = get_client_mac_from_records(request_ip_text, live_clients) or find_client_mac_for_ip(request_ip_text)
-        if not detected_mac:
-            return False
-
-        if (live_admin_status := get_live_client_admin_status(detected_mac, live_clients)) is not None:
-            return remember_admin(live_admin_status)
-
-        usage_history = db.get_usage_history(detected_mac, limit=1)
-        if usage_history:
-            latest_record = usage_history[0]
-            warn_missing_radius_identity(latest_record, request_ip_text, detected_mac)
-            return remember_admin(is_plus_admin_user(latest_record.user_id, latest_record.vlan))
-
-        return False
+        'Return whether the browser has completed LAN admin password login.'
+        return requester_has_admin_session()
 
     def admin_denied_response(*, self_service_fallback: bool = False) -> Any | None:
         'Return a response for denied admin access, or None when access is allowed.'
