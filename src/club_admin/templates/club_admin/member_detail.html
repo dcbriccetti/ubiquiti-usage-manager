@@ -113,7 +113,7 @@
       </div>
       <div class="member-notes-list">
         {% for note in notes %}
-          <article class="member-note">
+          <article class="member-note" id="note-{{ note.id }}">
             <div class="member-note-header">
               <time datetime="{{ note.created_at.isoformat() if note.created_at else '' }}">{{ note.created_at|local_sqlite_date }}</time>
             </div>

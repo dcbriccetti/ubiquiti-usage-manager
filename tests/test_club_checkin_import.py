@@ -20,6 +20,7 @@ if str(SRC_DIR) not in sys.path:
 from club_admin import checkin_repository
 from club_admin import database
 from club_admin import member_repository
+from club_admin import user_note_repository
 from club_admin.app import (
     _barcode_secret_for_connection,
     _barcode_token_for_card_number,
@@ -341,6 +342,23 @@ class ClubCheckInImportTests(unittest.TestCase):
                 for checkin in checkins_to_import:
                     checkin_repository.upsert_checkin(connection, checkin)
                 john = member_repository.get_member_by_card_number(connection, "1861")
+                assert john is not None
+                user_note_repository.add_user_note(
+                    connection,
+                    user_note_repository.note_from_values(
+                        user_id=john.id,
+                        summary="Next visit free",
+                        details="Printer failed during registration.",
+                    ),
+                )
+                user_note_repository.add_user_note(
+                    connection,
+                    user_note_repository.note_from_values(
+                        user_id=john.id,
+                        summary="Good board candidate",
+                        details="",
+                    ),
+                )
                 connection.commit()
 
             response = client.get(
@@ -381,13 +399,19 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('tr data-sortable-row', body)
         self.assertIn("Check-in #", body)
         self.assertIn("First/Nickname", body)
+        self.assertIn("Notes", body)
         self.assertNotIn(">Card #<", body)
         self.assertIn('role="button" tabindex="0" data-sort-column="0"', body)
         self.assertIn('data-sort-column="0" data-sort-type="date"', body)
         self.assertIn('data-sort-column="1" data-sort-type="number"', body)
         self.assertIn('data-sort-column="4" data-sort-type="text"', body)
+        self.assertIn('data-sort-column="5" data-sort-type="text"', body)
         self.assertNotIn('button type="button" class="sortable-heading"', body)
         self.assertIn(f'href="/members/{john.id}"', body)
+        self.assertIn(f'href="/members/{john.id}#note-', body)
+        self.assertIn("Next visit free", body)
+        self.assertIn('title="Printer failed during registration."', body)
+        self.assertIn("Good board candidate", body)
         self.assertIn("John", body)
         self.assertIn("2026-05-01 09:00:00", body)
         self.assertIn("2026-05-03 15:59:20", body)

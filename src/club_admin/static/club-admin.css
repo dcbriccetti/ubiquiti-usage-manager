@@ -277,6 +277,20 @@ button:disabled {
   margin: 6px 0 0;
 }
 
+.checkin-note-summaries {
+  display: grid;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.checkin-note-summaries a {
+  color: #245c9f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 table {
   background: #fff;
   border-collapse: collapse;

@@ -84,6 +84,37 @@ def list_user_notes(connection: sqlite3.Connection, user_id: int) -> list[UserNo
     return [_note_from_row(row) for row in rows]
 
 
+def list_user_notes_by_user_ids(
+    connection: sqlite3.Connection,
+    user_ids: set[int],
+) -> dict[int, list[UserNote]]:
+    '''Return notes for several users, grouped by user id.'''
+    if not user_ids:
+        return {}
+    ordered_user_ids = sorted(user_ids)
+    placeholders = ",".join("?" for _ in ordered_user_ids)
+    rows = connection.execute(
+        f"""
+        SELECT
+            id,
+            user_id,
+            summary,
+            details,
+            created_at,
+            updated_at
+        FROM user_notes
+        WHERE user_id IN ({placeholders})
+        ORDER BY user_id, created_at DESC, id DESC
+        """,
+        tuple(ordered_user_ids),
+    ).fetchall()
+    notes_by_user_id: dict[int, list[UserNote]] = {}
+    for row in rows:
+        note = _note_from_row(row)
+        notes_by_user_id.setdefault(note.user_id, []).append(note)
+    return notes_by_user_id
+
+
 def get_user_note(
     connection: sqlite3.Connection,
     *,

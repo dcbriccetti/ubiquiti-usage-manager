@@ -2484,6 +2484,10 @@ def create_app(db_path: Path | None = None) -> Flask:
                 start_date,
                 end_date,
             )
+            notes_by_user_id = user_note_repository.list_user_notes_by_user_ids(
+                connection,
+                {checkin.user_id for checkin in checkins if checkin.user_id is not None},
+            )
 
         return render_template(
             "club_admin/checkins_report.html",
@@ -2491,6 +2495,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             membership_breakdown=_checkin_membership_breakdown(checkins),
             time_chart=_checkin_time_chart(checkins, start_date, end_date),
             visit_number_chart=_checkin_visit_number_chart(visit_number_counts),
+            notes_by_user_id=notes_by_user_id,
             date_presets=date_presets,
             active_date_preset_label=_active_date_range_preset_label(
                 date_presets,
