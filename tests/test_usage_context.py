@@ -735,7 +735,7 @@ class ClientUsageContextTests(unittest.TestCase):
                         ip_address="192.168.6.143",
                         mac=mac,
                         name="iPad",
-                        user_id="",
+                        user_id="office",
                         vlan="Plus",
                     ),
                     db.ClientIpIdentity(
@@ -819,9 +819,133 @@ class ClientUsageContextTests(unittest.TestCase):
         self.assertEqual(context["voucher_usage"]["activated_at"], datetime(2026, 5, 10, 10, 40))
         access_modes = {row["key"]: row for row in context["access_mode_usage_rows"]}
         self.assertAlmostEqual(access_modes["basic"]["month_mb"], 300.0)
-        self.assertAlmostEqual(access_modes["plus_paid"]["month_mb"], 1700.0)
+        self.assertAlmostEqual(access_modes["club_business"]["month_mb"], 1700.0)
         self.assertAlmostEqual(access_modes["plus_voucher"]["month_mb"], 17.0)
-        self.assertAlmostEqual(access_modes["plus_paid"]["month_cost_cents"], 85.0)
+        self.assertNotIn("plus_paid", access_modes)
+        self.assertEqual(context["month_cost_cents"], 0.0)
+
+    def test_access_mode_classifies_non_numeric_plus_as_club_business(self) -> None:
+        period_start = datetime(2026, 5, 1)
+        flows = [
+            db.WanMacIdentityFlowUsage(
+                source_file="nfcapd.202605011000",
+                started_at=datetime(2026, 5, 1, 10, 0),
+                ended_at=datetime(2026, 5, 1, 10, 1),
+                proto="TCP",
+                src_ip="192.168.6.10",
+                src_port=52344,
+                dst_ip="8.8.8.8",
+                dst_port=443,
+                packets=10,
+                bytes=1_000_000,
+                direction="upload",
+                client_ip="192.168.6.10",
+                mac="aa:bb:cc:dd:ee:10",
+                name="Office laptop",
+                user_id="club411",
+                vlan="Plus",
+            ),
+            db.WanMacIdentityFlowUsage(
+                source_file="nfcapd.202605011005",
+                started_at=datetime(2026, 5, 1, 10, 5),
+                ended_at=datetime(2026, 5, 1, 10, 6),
+                proto="TCP",
+                src_ip="192.168.6.11",
+                src_port=52345,
+                dst_ip="8.8.4.4",
+                dst_port=443,
+                packets=10,
+                bytes=2_000_000,
+                direction="upload",
+                client_ip="192.168.6.11",
+                mac="aa:bb:cc:dd:ee:11",
+                name="Unknown numeric Plus",
+                user_id="9904",
+                vlan="Plus",
+            ),
+        ]
+
+        rows = usage_context.build_access_mode_usage_context(
+            flows,
+            {},
+            today_start=period_start,
+            seven_days_ago=period_start,
+        )
+
+        access_modes = {row["key"]: row for row in rows}
+        self.assertAlmostEqual(access_modes["club_business"]["month_mb"], 1.0)
+        self.assertAlmostEqual(access_modes["unclassified"]["month_mb"], 2.0)
+        self.assertNotIn("plus_voucher", access_modes)
+        self.assertNotIn("plus_paid", access_modes)
+
+    def test_access_mode_keeps_consumed_voucher_usage_as_voucher(self) -> None:
+        mac = "42:3e:c1:5d:fc:60"
+        generated_at = datetime(2026, 5, 6, 13, 32)
+        with db.SessionLocal() as session:
+            session.add(
+                db.PlusVoucher(
+                    batch_id="consumed-voucher",
+                    user_id=2119,
+                    password="paper123",
+                    allocation_gb=40,
+                    generated_at=generated_at,
+                    consumed_at=datetime(2026, 5, 10, 10, 41),
+                )
+            )
+            session.add(
+                db.UsageRecord(
+                    timestamp=datetime(2026, 5, 10, 10, 40),
+                    mac=mac,
+                    user_id="2119",
+                    name="Laptop",
+                    vlan="Plus",
+                    mb_used=0.0,
+                    profile="default",
+                    ap_name="Office AP",
+                    signal=-50,
+                )
+            )
+            session.add(
+                db.ClientIpIdentity(
+                    observed_at=datetime(2026, 5, 10, 10, 20),
+                    ip_address="192.168.6.144",
+                    mac=mac,
+                    name="Laptop",
+                    user_id="2119",
+                    vlan="Plus",
+                )
+            )
+            session.add(
+                db.WanFlowUsage(
+                    source_file="nfcapd.202605101030",
+                    started_at=datetime(2026, 5, 10, 10, 30),
+                    ended_at=datetime(2026, 5, 10, 10, 31),
+                    duration_seconds=60.0,
+                    proto="TCP",
+                    src_ip="192.168.6.144",
+                    src_port=52344,
+                    dst_ip="8.8.8.8",
+                    dst_port=443,
+                    packets=10,
+                    bytes=12_000_000,
+                    direction="upload",
+                    client_ip="192.168.6.144",
+                )
+            )
+            session.commit()
+
+        with (
+            patch.object(usage_context, "datetime", FixedDateTimeMay10),
+            patch.object(db, "datetime", FixedDateTimeMay10),
+            patch.object(usage_context, "get_speed_limits_by_name", return_value={}),
+            patch.object(usage_context, "resolve_host_labels", return_value={}),
+        ):
+            context = usage_context.get_client_usage_context(mac)
+
+        access_modes = {row["key"]: row for row in context["access_mode_usage_rows"]}
+        self.assertAlmostEqual(access_modes["plus_voucher"]["month_mb"], 12.0)
+        self.assertNotIn("plus_paid", access_modes)
+        self.assertEqual(context["month_cost_cents"], 0.0)
 
 
 if __name__ == "__main__":

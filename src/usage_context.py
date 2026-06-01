@@ -7,7 +7,6 @@ from typing import Literal, TypedDict, cast
 
 import database as db
 import unifi_api as api
-from billing import calculate_month_cost_cents
 from database import UsageRecord
 from monitor import get_connected_clients
 from reverse_dns import resolve_host_labels
@@ -31,17 +30,17 @@ ALLOWED_FLOW_ACTIVITY_RANGES: frozenset[FlowActivityRange] = frozenset(
 )
 ACCESS_MODE_LABELS = {
     'basic': 'Basic',
-    'plus_paid': 'Plus without voucher',
-    'plus_voucher': 'Plus with voucher',
+    'club_business': 'Club business Plus',
+    'plus_voucher': 'Voucher Plus',
     'unclassified': 'Unknown',
 }
 ACCESS_MODE_NOTES = {
     'basic': 'Included access',
-    'plus_paid': 'Charged at configured Plus rate',
-    'plus_voucher': 'Counts against prepaid voucher allocation',
-    'unclassified': 'Could not match this Internet activity to a device at the time it happened',
+    'club_business': 'Club-managed Plus account',
+    'plus_voucher': "This device's traffic counts against prepaid voucher allocation",
+    'unclassified': 'Plus traffic that did not match a voucher or club-business ID',
 }
-ACCESS_MODE_ORDER = ('basic', 'plus_paid', 'plus_voucher', 'unclassified')
+ACCESS_MODE_ORDER = ('basic', 'club_business', 'plus_voucher', 'unclassified')
 TINY_IMPORT_ROW_DISPLAY_MB = 0.05
 SERVICE_LABEL_BY_PROTO_PORT = {
     ('TCP', 80): 'Web browsing',
@@ -747,19 +746,26 @@ def build_wan_flow_direction_series(
 
 def access_mode_key_for_flow(
     flow: db.WanMacIdentityFlowUsage,
-    vouchers_by_user_id: dict[str, db.PlusVoucherRecord],
+    vouchers_by_user_id: dict[str, list[db.PlusVoucherRecord]],
 ) -> str:
     'Classify one attributed WAN flow by its access/payment mode.'
     user_id = flow.user_id.strip()
-    voucher = vouchers_by_user_id.get(user_id)
-    if voucher is not None and flow.started_at >= voucher.generated_at:
+    user_id_key = user_id.lower()
+    vouchers = vouchers_by_user_id.get(user_id, [])
+    if any(
+        flow.started_at >= voucher.generated_at
+        and (voucher.consumed_at is None or flow.started_at <= voucher.consumed_at)
+        for voucher in vouchers
+    ):
         return 'plus_voucher'
 
     vlan_key = flow.vlan.strip().lower()
     if vlan_key == 'basic':
         return 'basic'
+    if vlan_key == 'plus' and user_id_key and not user_id_key.isdecimal():
+        return 'club_business'
     if vlan_key == 'plus':
-        return 'plus_paid'
+        return 'unclassified'
     return 'unclassified'
 
 
@@ -941,11 +947,11 @@ def build_flow_activity_context(
 
 def build_access_mode_usage_context(
     flows: list[db.WanMacIdentityFlowUsage],
-    vouchers_by_user_id: dict[str, db.PlusVoucherRecord],
+    vouchers_by_user_id: dict[str, list[db.PlusVoucherRecord]],
     today_start: datetime,
     seven_days_ago: datetime,
 ) -> list[AccessModeUsageContext]:
-    'Return client WAN usage split by Basic, paid Plus, and voucher Plus.'
+    'Return client WAN usage split by Basic, club-business Plus, and voucher Plus.'
     totals_by_mode = {
         key: {'today_mb': 0.0, 'last_7_days_mb': 0.0, 'month_mb': 0.0}
         for key in ACCESS_MODE_ORDER
@@ -970,11 +976,6 @@ def build_access_mode_usage_context(
             and not totals['month_mb']
         ):
             continue
-        month_cost_cents = (
-            calculate_month_cost_cents(totals['month_mb'])
-            if mode_key == 'plus_paid'
-            else 0.0
-        )
         rows.append(
             {
                 'key': mode_key,
@@ -983,7 +984,7 @@ def build_access_mode_usage_context(
                 'today_mb': totals['today_mb'],
                 'last_7_days_mb': totals['last_7_days_mb'],
                 'month_mb': totals['month_mb'],
-                'month_cost_cents': month_cost_cents,
+                'month_cost_cents': 0.0,
             }
         )
     return rows
@@ -1262,7 +1263,7 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
         )
         for flow in mac_identity_wan_flows
     ]
-    vouchers_by_user_id = db.get_active_plus_vouchers_by_user_id(
+    vouchers_by_user_id = db.get_plus_vouchers_by_user_id(
         {flow.user_id for flow in mac_identity_wan_flows}
     )
     access_mode_usage_rows = build_access_mode_usage_context(
@@ -1272,10 +1273,6 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
         seven_days_ago,
     )
     flow_activity_rows: list[FlowActivityContext] = []
-    paid_plus_month_mb = next(
-        (row['month_mb'] for row in access_mode_usage_rows if row['key'] == 'plus_paid'),
-        0.0,
-    )
     wan_import_usage_rows = build_wan_import_usage_context(
         mac,
         mac_identity_wan_flows,
@@ -1399,7 +1396,7 @@ def get_client_usage_context(mac: str, include_wan_details: bool = True) -> Clie
         'daily_total_mb': daily_total_mb,
         'last_7_days_total_mb': last_7_days_total_mb,
         'calendar_month_total_mb': calendar_month_total_mb,
-        'month_cost_cents': calculate_month_cost_cents(paid_plus_month_mb),
+        'month_cost_cents': 0.0,
         'wan_client_ip': wan_client_ip,
         'wan_usage_available': wan_usage_available,
         'wan_identity_observed_at': latest_ip_identity.observed_at if latest_ip_identity else None,

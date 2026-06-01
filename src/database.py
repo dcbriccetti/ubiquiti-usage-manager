@@ -1156,6 +1156,40 @@ def get_active_plus_vouchers_by_user_id(user_ids: set[str]) -> dict[str, PlusVou
     return vouchers_by_user_id
 
 
+def get_plus_vouchers_by_user_id(user_ids: set[str]) -> dict[str, list[PlusVoucherRecord]]:
+    'Return generated Plus vouchers for each requested RADIUS user ID.'
+    voucher_user_ids: set[int] = set()
+    for user_id in user_ids:
+        try:
+            voucher_user_ids.add(int(str(user_id).strip()))
+        except ValueError:
+            continue
+    if not voucher_user_ids:
+        return {}
+
+    stmt = (
+        select(PlusVoucher)
+        .where(PlusVoucher.user_id.in_(sorted(voucher_user_ids)))
+        .order_by(PlusVoucher.user_id.asc(), PlusVoucher.generated_at.desc(), PlusVoucher.id.desc())
+    )
+
+    vouchers_by_user_id: dict[str, list[PlusVoucherRecord]] = {}
+    with SessionLocal() as session:
+        for row in session.execute(stmt).scalars():
+            vouchers_by_user_id.setdefault(str(row.user_id), []).append(
+                PlusVoucherRecord(
+                    id=row.id,
+                    batch_id=row.batch_id,
+                    user_id=row.user_id,
+                    password=row.password,
+                    allocation_gb=row.allocation_gb,
+                    generated_at=row.generated_at,
+                    consumed_at=row.consumed_at,
+                )
+            )
+    return vouchers_by_user_id
+
+
 def get_wan_flow_rows_for_mac(
     mac: str,
     period_start: datetime,
