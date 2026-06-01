@@ -133,6 +133,104 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
         self.assertEqual(summaries_by_user_id[102].activated_at, generated_at + timedelta(hours=4))
         self.assertEqual(summaries_by_user_id[102].used_mb, 2.0)
 
+    def test_active_summary_sums_multiple_devices_for_one_voucher(self) -> None:
+        generated_at = datetime(2026, 5, 1, 10, 0)
+        with db.SessionLocal() as session:
+            session.add(
+                db.PlusVoucher(
+                    batch_id="multi-device",
+                    user_id=301,
+                    password="multi301",
+                    allocation_gb=10,
+                    generated_at=generated_at,
+                )
+            )
+            session.add_all(
+                [
+                    db.ClientIpIdentity(
+                        observed_at=generated_at + timedelta(minutes=1),
+                        ip_address="192.168.6.10",
+                        mac="aa:bb:cc:dd:ee:10",
+                        name="Voucher laptop",
+                        user_id="301",
+                        vlan="Plus",
+                    ),
+                    db.ClientIpIdentity(
+                        observed_at=generated_at + timedelta(minutes=2),
+                        ip_address="192.168.6.11",
+                        mac="aa:bb:cc:dd:ee:11",
+                        name="Voucher phone",
+                        user_id="301",
+                        vlan="Plus",
+                    ),
+                    db.ClientIpIdentity(
+                        observed_at=generated_at + timedelta(minutes=8),
+                        ip_address="192.168.6.11",
+                        mac="aa:bb:cc:dd:ee:99",
+                        name="Basic replacement",
+                        user_id="",
+                        vlan="Basic",
+                    ),
+                ]
+            )
+            session.add_all(
+                [
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605011005",
+                        started_at=generated_at + timedelta(minutes=5),
+                        ended_at=generated_at + timedelta(minutes=5, seconds=30),
+                        duration_seconds=30.0,
+                        proto="TCP",
+                        src_ip="192.168.6.10",
+                        src_port=12345,
+                        dst_ip="8.8.8.8",
+                        dst_port=443,
+                        packets=10,
+                        bytes=1_000_000_000,
+                        direction="download",
+                        client_ip="192.168.6.10",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605011006",
+                        started_at=generated_at + timedelta(minutes=6),
+                        ended_at=generated_at + timedelta(minutes=6, seconds=30),
+                        duration_seconds=30.0,
+                        proto="TCP",
+                        src_ip="192.168.6.11",
+                        src_port=23456,
+                        dst_ip="8.8.4.4",
+                        dst_port=443,
+                        packets=10,
+                        bytes=2_000_000_000,
+                        direction="download",
+                        client_ip="192.168.6.11",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605011009",
+                        started_at=generated_at + timedelta(minutes=9),
+                        ended_at=generated_at + timedelta(minutes=9, seconds=30),
+                        duration_seconds=30.0,
+                        proto="TCP",
+                        src_ip="192.168.6.11",
+                        src_port=34567,
+                        dst_ip="1.1.1.1",
+                        dst_port=443,
+                        packets=10,
+                        bytes=5_000_000_000,
+                        direction="download",
+                        client_ip="192.168.6.11",
+                    ),
+                ]
+            )
+            session.commit()
+
+        summaries = voucher_repository.get_active_plus_voucher_summaries()
+
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(summaries[0].voucher.user_id, 301)
+        self.assertEqual(summaries[0].activated_at, generated_at + timedelta(minutes=5))
+        self.assertEqual(summaries[0].used_mb, 3000.0)
+
     def test_mark_plus_voucher_consumed_sets_consumed_at_once(self) -> None:
         generated_at = datetime(2026, 5, 1, 10, 0)
         consumed_at = datetime(2026, 5, 8, 9, 30)
