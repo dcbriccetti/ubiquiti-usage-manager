@@ -63,7 +63,7 @@
 
     <form id="members-checkin-form" method="post" action="{{ url_for('check_in_members') }}" autocomplete="off">
       <div class="table-scroll users-table-scroll">
-        <table class="users-table" data-sortable-table>
+        <table class="users-table" data-sortable-table data-persist-sort-key="clubAdmin.users.sort">
           <thead>
             <tr>
               <th scope="col" aria-sort="none"><button type="button" class="sortable-heading" data-sort-column="0" data-sort-type="text">Last Name <span class="sort-indicator" aria-hidden="true"></span></button></th>

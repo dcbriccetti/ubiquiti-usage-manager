@@ -55,6 +55,43 @@
       ) ?? [],
     );
 
+  const storedSortKey = (table) => table.dataset.persistSortKey || "";
+
+  const readStoredSort = (table) => {
+    const key = storedSortKey(table);
+    if (!key) {
+      return null;
+    }
+    try {
+      const value = JSON.parse(window.localStorage.getItem(key) || "null");
+      if (
+        value &&
+        Number.isInteger(value.column) &&
+        (value.direction === "asc" || value.direction === "desc")
+      ) {
+        return value;
+      }
+    } catch {
+      window.localStorage.removeItem(key);
+    }
+    return null;
+  };
+
+  const writeStoredSort = (table, columnIndex, direction) => {
+    const key = storedSortKey(table);
+    if (!key) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        key,
+        JSON.stringify({ column: columnIndex, direction }),
+      );
+    } catch {
+      // Sorting still works if browser storage is unavailable.
+    }
+  };
+
   const searchableRows = (table) =>
     Array.from(table.tBodies[0]?.querySelectorAll("tr[data-user-row]") ?? []);
 
@@ -189,7 +226,7 @@
     );
   };
 
-  const sortTable = (table, button) => {
+  const sortTable = (table, button, options = {}) => {
     const tbody = table.tBodies[0];
     if (!tbody) {
       return;
@@ -206,7 +243,8 @@
     }
 
     const currentDirection = button.dataset.sortDirection;
-    const nextDirection = currentDirection === "asc" ? "desc" : "asc";
+    const nextDirection =
+      options.direction || (currentDirection === "asc" ? "desc" : "asc");
     const sortType = button.dataset.sortType || "text";
     const sortedRows = rows
       .map((row, index) => ({ row, index }))
@@ -220,11 +258,15 @@
       tbody.append(placeholder);
     }
     updateSortState(table, button, nextDirection);
+    if (options.persist !== false) {
+      writeStoredSort(table, columnIndex, nextDirection);
+    }
   };
 
   const initializeSortableTables = () => {
     document.querySelectorAll("[data-sortable-table]").forEach((table) => {
-      table.querySelectorAll(".sortable-heading").forEach((heading) => {
+      const headings = Array.from(table.querySelectorAll(".sortable-heading"));
+      headings.forEach((heading) => {
         heading.addEventListener("click", () => sortTable(table, heading));
         if (heading.tagName !== "BUTTON") {
           heading.addEventListener("keydown", (event) => {
@@ -236,6 +278,20 @@
           });
         }
       });
+      const storedSort = readStoredSort(table);
+      if (storedSort) {
+        const heading = headings.find(
+          (candidate) =>
+            Number.parseInt(candidate.dataset.sortColumn ?? "", 10) ===
+            storedSort.column,
+        );
+        if (heading) {
+          sortTable(table, heading, {
+            direction: storedSort.direction,
+            persist: false,
+          });
+        }
+      }
 
       const container = table.closest(".users-page") ?? document;
       const searchInput = container.querySelector("[data-table-search]");

@@ -396,6 +396,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn('name="view"', body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
         self.assertIn('class="checkins-table" data-sortable-table', body)
+        self.assertIn('data-persist-sort-key="clubAdmin.checkinsReport.sort"', body)
         self.assertIn('tr data-sortable-row', body)
         self.assertIn("Check-in #", body)
         self.assertIn("First/Nickname", body)

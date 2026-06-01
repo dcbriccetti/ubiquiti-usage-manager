@@ -1097,6 +1097,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertNotIn('placeholder="Dave"', body)
         self.assertIn('data-table-search-count', body)
         self.assertIn('class="users-table" data-sortable-table', body)
+        self.assertIn('data-persist-sort-key="clubAdmin.users.sort"', body)
         self.assertIn('data-sort-column="0" data-sort-type="text"', body)
         self.assertNotIn(">Card #<", body)
         self.assertIn('data-sort-column="5" data-sort-type="date"', body)
