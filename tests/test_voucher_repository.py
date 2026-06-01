@@ -253,6 +253,60 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
         self.assertEqual(trend.projected_days_remaining, 13.0)
         self.assertEqual(trend.projected_depletion_date, datetime(2026, 5, 20).date())
 
+    def test_consumption_trend_keeps_production_local_wan_flow_day(self) -> None:
+        generated_at = datetime(2026, 5, 31, 20, 0)
+        flow_started_at = datetime(2026, 6, 1, 0, 30)
+        with db.SessionLocal() as session:
+            session.add(
+                db.PlusVoucher(
+                    batch_id="local-time",
+                    user_id=3510,
+                    password="local3510",
+                    allocation_gb=40,
+                    generated_at=generated_at,
+                )
+            )
+            session.add(
+                db.ClientIpIdentity(
+                    observed_at=datetime(2026, 6, 1, 0, 15),
+                    ip_address="192.168.4.227",
+                    mac="aa:bb:cc:dd:ee:35",
+                    name="Local-time voucher",
+                    user_id="3510",
+                    vlan="Plus",
+                )
+            )
+            session.add(
+                db.WanFlowUsage(
+                    source_file="nfcapd.202606010030",
+                    started_at=flow_started_at,
+                    ended_at=flow_started_at + timedelta(minutes=1),
+                    duration_seconds=60.0,
+                    proto="TCP",
+                    src_ip="192.168.4.227",
+                    src_port=12345,
+                    dst_ip="8.8.8.8",
+                    dst_port=443,
+                    packets=10,
+                    bytes=1_200_000_000,
+                    direction="download",
+                    client_ip="192.168.4.227",
+                )
+            )
+            session.commit()
+
+        summaries = voucher_repository.get_active_plus_voucher_summaries()
+        self.assertEqual(summaries[0].activated_at, flow_started_at)
+
+        trend = voucher_repository.get_plus_voucher_consumption_trend(
+            summaries,
+            lookback_days=2,
+            period_end=datetime(2026, 6, 1, 1, 0),
+        )
+
+        self.assertEqual([row.day for row in trend.daily_usage], [datetime(2026, 5, 31).date(), datetime(2026, 6, 1).date()])
+        self.assertEqual([row.used_mb for row in trend.daily_usage], [0.0, 1200.0])
+
 
 if __name__ == "__main__":
     unittest.main()
