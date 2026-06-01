@@ -445,6 +445,17 @@ def _date_range_presets(today: date) -> tuple[DateRangePreset, ...]:
     )
 
 
+def _active_date_range_preset_label(
+    presets: tuple[DateRangePreset, ...],
+    start_date: date,
+    end_date: date,
+) -> str | None:
+    for preset in presets:
+        if preset.start_date == start_date and preset.end_date == end_date:
+            return preset.label
+    return None
+
+
 def _date_range_from_request(today: date) -> tuple[date, date]:
     start_date_raw = request.args.get("start_date", today.isoformat())
     end_date_raw = request.args.get("end_date", today.isoformat())
@@ -1991,6 +2002,7 @@ def create_app(db_path: Path | None = None) -> Flask:
     def members_map():
         today = date.today()
         start_date, end_date = _date_range_from_request(today)
+        date_presets = _date_range_presets(today)
         with open_connection() as connection:
             roster = member_repository.list_members_checked_in_for_date_range(
                 connection,
@@ -2029,7 +2041,12 @@ def create_app(db_path: Path | None = None) -> Flask:
             report=report,
             map_points=map_points,
             lookup_zips=lookup_zips,
-            date_presets=_date_range_presets(today),
+            date_presets=date_presets,
+            active_date_preset_label=_active_date_range_preset_label(
+                date_presets,
+                start_date,
+                end_date,
+            ),
             start_date=start_date,
             end_date=end_date,
         )
@@ -2454,6 +2471,7 @@ def create_app(db_path: Path | None = None) -> Flask:
     def checkins_report():
         today = date.today()
         start_date, end_date = _date_range_from_request(today)
+        date_presets = _date_range_presets(today)
 
         with open_connection() as connection:
             checkins = checkin_repository.list_checkins_for_date_range(
@@ -2473,7 +2491,12 @@ def create_app(db_path: Path | None = None) -> Flask:
             membership_breakdown=_checkin_membership_breakdown(checkins),
             time_chart=_checkin_time_chart(checkins, start_date, end_date),
             visit_number_chart=_checkin_visit_number_chart(visit_number_counts),
-            date_presets=_date_range_presets(today),
+            date_presets=date_presets,
+            active_date_preset_label=_active_date_range_preset_label(
+                date_presets,
+                start_date,
+                end_date,
+            ),
             start_date=start_date,
             end_date=end_date,
         )

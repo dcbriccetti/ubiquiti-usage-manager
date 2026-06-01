@@ -46,7 +46,7 @@
         {% for preset in date_presets %}
           <a
             href="{{ url_for('checkins_report', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat()) }}"
-            {% if preset.start_date == start_date and preset.end_date == end_date %}class="active" aria-current="page"{% endif %}
+            {% if preset.label == active_date_preset_label %}class="active" aria-current="page"{% endif %}
           >{{ preset.label }}</a>
         {% endfor %}
         <a href="{{ url_for('members_map', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}">Map</a>
