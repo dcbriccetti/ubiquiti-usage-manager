@@ -23,7 +23,7 @@
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
         <a href="{{ url_for('checkins_report') }}">Check-ins</a>
-        <a href="{{ url_for('guest_registrations') }}">Guests</a>
+        <a class="active" href="{{ url_for('guest_registrations') }}" aria-current="page">Guests</a>
         <a href="{{ url_for('documents_report') }}">Documents</a>
         <a href="{{ url_for('recent_changes') }}">Changes</a>
       </nav>

@@ -431,7 +431,12 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
         self.assertEqual(body.count('aria-current="page"'), 1)
-        self.assertIn('class="active" aria-current="page"', body)
+        self.assertIn(
+            'class="active" href="/checkins/report" aria-current="page"',
+            body,
+        )
+        self.assertEqual(body.count('aria-current="date"'), 1)
+        self.assertIn('class="active" aria-current="date"', body)
         self.assertIn(">Today</a>", body)
 
     def test_checkin_report_shows_membership_breakdown_by_distinct_user(self) -> None:

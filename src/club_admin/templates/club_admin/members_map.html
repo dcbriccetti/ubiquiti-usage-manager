@@ -18,7 +18,7 @@
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
-        <a href="{{ url_for('checkins_report') }}">Check-ins</a>
+        <a class="active" href="{{ url_for('checkins_report') }}" aria-current="page">Check-ins</a>
         <a href="{{ url_for('guest_registrations') }}">Guests</a>
         <a href="{{ url_for('documents_report') }}">Documents</a>
         <a href="{{ url_for('recent_changes') }}">Changes</a>
@@ -41,7 +41,7 @@
         {% for preset in date_presets %}
           <a
             href="{{ url_for('members_map', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat()) }}"
-            {% if preset.label == active_date_preset_label %}class="active" aria-current="page"{% endif %}
+            {% if preset.label == active_date_preset_label %}class="active" aria-current="date"{% endif %}
           >{{ preset.label }}</a>
         {% endfor %}
       </div>
