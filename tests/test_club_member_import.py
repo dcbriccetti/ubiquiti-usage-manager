@@ -342,6 +342,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertLess(body.index("Barcode Scan"), body.index("Phone Check-in"))
         self.assertIn('name="barcode_token"', body)
         self.assertIn('autocomplete="off"\n                >', body)
+        self.assertIn('button class="visually-hidden" type="submit" tabindex="-1">Submit barcode</button>', body)
         self.assertIn("barcodeTokenPattern", body)
         self.assertIn('window.addEventListener("keydown"', body)
         self.assertIn('input?.addEventListener("input"', body)
