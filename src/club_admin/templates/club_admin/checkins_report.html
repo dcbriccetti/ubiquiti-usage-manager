@@ -162,6 +162,7 @@
           <th scope="col" aria-sort="none">
             <span class="sortable-heading" role="button" tabindex="0" data-sort-column="5" data-sort-type="text">Notes <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
+          <th scope="col" class="checkins-print-column">Barcode</th>
         </tr>
       </thead>
       <tbody>
@@ -191,10 +192,13 @@
                 </ul>
               {% endif %}
             </td>
+            <td class="checkins-print-column">
+              <a href="{{ url_for('member_checkin_barcode_print', member_id=checkin.user_id) }}" target="_blank" rel="noopener">Print</a>
+            </td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="6" class="empty">No check-ins in this date range.</td>
+            <td colspan="7" class="empty">No check-ins in this date range.</td>
           </tr>
         {% endfor %}
       </tbody>

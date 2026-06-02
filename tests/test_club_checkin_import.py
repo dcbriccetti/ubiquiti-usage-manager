@@ -410,6 +410,11 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('data-sort-column="5" data-sort-type="text"', body)
         self.assertNotIn('button type="button" class="sortable-heading"', body)
         self.assertIn(f'href="/members/{john.id}"', body)
+        self.assertIn("Barcode", body)
+        self.assertIn(
+            f'href="/members/{john.id}/checkin-barcode/print" target="_blank" rel="noopener"',
+            body,
+        )
         self.assertIn(f'href="/members/{john.id}#note-', body)
         self.assertIn("Next visit free", body)
         self.assertIn('title="Printer failed during registration."', body)
@@ -420,6 +425,74 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('<td class="numeric" data-sort-value="1">1</td>', body)
         self.assertIn('<td class="numeric" data-sort-value="2">2</td>', body)
         self.assertNotIn("Jane", body)
+
+    def test_checkin_barcode_print_requires_admin_login(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Baroni",
+                        first_name="Jimbo",
+                        card_number="1861",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.get_member_by_card_number(connection, "1861")
+                assert member is not None
+
+            response = flask_app.test_client().get(
+                f"/members/{member.id}/checkin-barcode/print"
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/login", response.headers["Location"])
+
+    def test_checkin_barcode_print_returns_404_for_missing_member(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+
+            response = client.get("/members/999/checkin-barcode/print")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_checkin_barcode_print_renders_short_name_and_barcode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Baroni",
+                        first_name="Jimbo",
+                        nickname="Sammy",
+                        card_number="1861",
+                        membership="Visitor",
+                    ),
+                )
+                connection.commit()
+                member = member_repository.get_member_by_card_number(connection, "1861")
+                assert member is not None
+
+            response = client.get(f"/members/{member.id}/checkin-barcode/print")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Check-in Barcode", body)
+        self.assertIn("Sammy B.", body)
+        self.assertIn('class="checkin-barcode"', body)
+        self.assertIn("Print Barcode", body)
+        self.assertIn("@page", body)
+        self.assertIn("size: 62mm 40mm", body)
+        self.assertNotIn("1861", body)
+        self.assertNotIn("Baroni", body)
 
     def test_checkin_report_marks_active_date_preset(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

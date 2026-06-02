@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Check-in Barcode</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #f3f4f6;
+      color: #111827;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+    }
+
+    .toolbar {
+      align-items: center;
+      background: #fff;
+      border-bottom: 1px solid #d1d5db;
+      display: flex;
+      gap: 16px;
+      justify-content: space-between;
+      padding: 14px 18px;
+    }
+
+    .toolbar h1 {
+      font-size: 1.1rem;
+      margin: 0;
+    }
+
+    .toolbar button {
+      background: #245ea8;
+      border: 0;
+      border-radius: 6px;
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-weight: 700;
+      min-height: 38px;
+      padding: 8px 14px;
+    }
+
+    .barcode-sheet {
+      display: grid;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .barcode-print {
+      align-items: center;
+      background: #fff;
+      border: 1px solid #111827;
+      display: grid;
+      gap: 2mm;
+      height: 40mm;
+      justify-items: center;
+      padding: 4mm;
+      width: 62mm;
+    }
+
+    .barcode-name {
+      font-size: 16pt;
+      font-weight: 800;
+      line-height: 1;
+      margin: 0;
+      text-align: center;
+      width: 100%;
+    }
+
+    .barcode-frame {
+      width: 100%;
+    }
+
+    .checkin-barcode {
+      display: block;
+      height: auto;
+      width: 100%;
+    }
+
+    @page {
+      size: 62mm 40mm;
+      margin: 0;
+    }
+
+    @media print {
+      body {
+        background: white;
+      }
+
+      .toolbar {
+        display: none;
+      }
+
+      .barcode-sheet {
+        display: block;
+        padding: 0;
+      }
+
+      .barcode-print {
+        border: 0;
+        height: 40mm;
+        width: 62mm;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <h1>Check-in Barcode</h1>
+    <button type="button" onclick="window.print()">Print Barcode</button>
+  </header>
+
+  <main class="barcode-sheet">
+    <article class="barcode-print">
+      <h2 class="barcode-name">{{ display_name }}</h2>
+      <div class="barcode-frame">
+        {{ barcode_svg|safe }}
+      </div>
+    </article>
+  </main>
+</body>
+</html>

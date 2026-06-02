@@ -1608,6 +1608,15 @@ def _barcode_token_for_card_number(card_number: str, secret_key: object) -> str:
     return f"{BARCODE_TOKEN_VERSION}:{signature}"
 
 
+def _barcode_print_display_name(member: Member) -> str:
+    'Return the short name shown on a printed check-in barcode.'
+    first_or_nickname = (member.nickname or member.first_name).strip()
+    last_initial = member.last_name.strip()[:1]
+    if first_or_nickname and last_initial:
+        return f"{first_or_nickname} {last_initial.upper()}."
+    return first_or_nickname or last_initial.upper()
+
+
 def _configured_barcode_secret() -> str:
     return (
         os.getenv("USER_MANAGEMENT_BARCODE_SECRET", "").strip()
@@ -2181,6 +2190,27 @@ def create_app(db_path: Path | None = None) -> Flask:
             audit_entries=_visible_member_audit_entries(audit_entries),
             document_preview=document_preview,
             other_documents=other_documents,
+        )
+
+    @flask_app.route("/members/<int:member_id>/checkin-barcode/print")
+    @require_admin
+    def member_checkin_barcode_print(member_id: int):
+        with open_connection() as connection:
+            member = member_repository.get_member(connection, member_id)
+            if member is None:
+                abort(404)
+            barcode_secret = _barcode_secret_for_connection(
+                connection,
+                flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+            )
+            token = _barcode_token_for_card_number(member.card_number, barcode_secret)
+            barcode_svg = _code128b_svg(token)
+            connection.commit()
+
+        return render_template(
+            "club_admin/checkin_barcode_print.html",
+            display_name=_barcode_print_display_name(member),
+            barcode_svg=barcode_svg,
         )
 
     @flask_app.post("/members/<int:member_id>/notes")

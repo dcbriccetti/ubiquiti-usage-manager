@@ -2399,6 +2399,10 @@ th {
     width: 100%;
   }
 
+  .checkins-print-column {
+    display: none;
+  }
+
   .checkins-table thead {
     display: table-header-group;
   }
