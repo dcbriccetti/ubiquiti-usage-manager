@@ -14,6 +14,7 @@ import database as db
 
 
 ACTIVE_VOUCHER_SUMMARIES_CACHE_SECONDS = 30.0
+PLUS_VOUCHER_FORECAST_MODEL_NAME = 'voucher_daily_calibrated_v1'
 _active_voucher_summaries_cache_lock = Lock()
 _active_voucher_summaries_cache: tuple[object, float, list[db.PlusVoucherUsageSummary]] | None = None
 
@@ -334,6 +335,161 @@ def _average_daily_mb(daily_mb_by_day: dict[date, float], end_day: date, day_cou
     return sum(daily_mb_by_day.get(day, 0.0) for day in _calendar_days(start_day, end_day)) / day_count
 
 
+def _clamp_float(value: float, minimum: float, maximum: float) -> float:
+    'Return value constrained to an inclusive numeric range.'
+    return min(maximum, max(minimum, value))
+
+
+def _score_plus_voucher_forecasts(
+    daily_mb_by_day: dict[date, float],
+    forecast_day: date,
+    allow_new_scores: bool,
+) -> list[tuple[date, float, float, float, float, float]]:
+    'Fill actual usage and errors for completed daily forecast rows once.'
+    stmt = (
+        select(db.PlusVoucherDailyForecast)
+        .where(
+            db.PlusVoucherDailyForecast.model_name == PLUS_VOUCHER_FORECAST_MODEL_NAME,
+            db.PlusVoucherDailyForecast.target_day < forecast_day,
+        )
+        .order_by(db.PlusVoucherDailyForecast.target_day.asc(), db.PlusVoucherDailyForecast.id.asc())
+    )
+    with db.SessionLocal() as session:
+        rows = session.execute(stmt).scalars().all()
+        scored_rows: list[tuple[date, float, float, float, float, float]] = []
+        now = datetime.now()
+        for row in rows:
+            if row.actual_mb is None:
+                if not allow_new_scores:
+                    continue
+                actual_mb = daily_mb_by_day.get(row.target_day, 0.0)
+                absolute_error_mb = abs(actual_mb - row.predicted_mb)
+                baseline_absolute_error_mb = abs(actual_mb - row.baseline_predicted_mb)
+                row.actual_mb = actual_mb
+                row.absolute_error_mb = absolute_error_mb
+                row.baseline_absolute_error_mb = baseline_absolute_error_mb
+                row.updated_at = now
+            else:
+                actual_mb = row.actual_mb
+                absolute_error_mb = (
+                    row.absolute_error_mb
+                    if row.absolute_error_mb is not None
+                    else abs(actual_mb - row.predicted_mb)
+                )
+                baseline_absolute_error_mb = (
+                    row.baseline_absolute_error_mb
+                    if row.baseline_absolute_error_mb is not None
+                    else abs(actual_mb - row.baseline_predicted_mb)
+                )
+            scored_rows.append(
+                (
+                    row.target_day,
+                    actual_mb,
+                    row.predicted_mb,
+                    row.baseline_predicted_mb,
+                    absolute_error_mb,
+                    baseline_absolute_error_mb,
+                )
+            )
+        if scored_rows:
+            session.commit()
+        return scored_rows
+
+
+def _plus_voucher_forecast_performance(
+    daily_mb_by_day: dict[date, float],
+    forecast_day: date,
+    baseline_daily_forecast_mb: float,
+    allow_new_scores: bool,
+) -> db.PlusVoucherForecastPerformance:
+    'Return learned forecast calibration and historical error metrics.'
+    scored_rows = _score_plus_voucher_forecasts(daily_mb_by_day, forecast_day, allow_new_scores)
+    scored_count = len(scored_rows)
+
+    mean_absolute_error_mb = None
+    baseline_mean_absolute_error_mb = None
+    improvement_pct = None
+    latest_scored_day = None
+    calibration_factor = 1.0
+    if scored_rows:
+        mean_absolute_error_mb = sum(row[4] for row in scored_rows) / scored_count
+        baseline_mean_absolute_error_mb = (
+            sum(row[5] for row in scored_rows) / scored_count
+        )
+        if baseline_mean_absolute_error_mb > 0:
+            improvement_pct = (
+                (baseline_mean_absolute_error_mb - mean_absolute_error_mb)
+                / baseline_mean_absolute_error_mb
+                * 100.0
+            )
+
+        baseline_total_mb = sum(max(0.0, row[3]) for row in scored_rows)
+        actual_total_mb = sum(max(0.0, row[1]) for row in scored_rows)
+        if baseline_total_mb > 0:
+            raw_calibration = actual_total_mb / baseline_total_mb
+            confidence_weight = min(1.0, scored_count / 7.0)
+            calibration_factor = _clamp_float(
+                1.0 + ((raw_calibration - 1.0) * confidence_weight),
+                0.5,
+                1.75,
+            )
+        latest_scored_day = max(row[0] for row in scored_rows)
+
+    return db.PlusVoucherForecastPerformance(
+        scored_forecast_count=scored_count,
+        mean_absolute_error_mb=mean_absolute_error_mb,
+        baseline_mean_absolute_error_mb=baseline_mean_absolute_error_mb,
+        improvement_pct=improvement_pct,
+        calibration_factor=calibration_factor,
+        baseline_daily_forecast_mb=baseline_daily_forecast_mb,
+        learned_daily_forecast_mb=baseline_daily_forecast_mb * calibration_factor,
+        latest_scored_day=latest_scored_day,
+    )
+
+
+def _record_plus_voucher_forecast_snapshot(
+    forecast_day: date,
+    target_day: date,
+    forecast_performance: db.PlusVoucherForecastPerformance,
+    active_voucher_count: int,
+    active_allocation_gb: int,
+) -> None:
+    'Persist or refresh the latest daily forecast for one forecast day.'
+    if active_voucher_count <= 0:
+        return
+
+    stmt = select(db.PlusVoucherDailyForecast).where(
+        db.PlusVoucherDailyForecast.forecast_day == forecast_day,
+        db.PlusVoucherDailyForecast.target_day == target_day,
+        db.PlusVoucherDailyForecast.model_name == PLUS_VOUCHER_FORECAST_MODEL_NAME,
+    )
+    now = datetime.now()
+    with db.SessionLocal() as session:
+        row = session.execute(stmt).scalar_one_or_none()
+        if row is None:
+            row = db.PlusVoucherDailyForecast(
+                forecast_day=forecast_day,
+                target_day=target_day,
+                model_name=PLUS_VOUCHER_FORECAST_MODEL_NAME,
+                baseline_predicted_mb=forecast_performance.baseline_daily_forecast_mb,
+                predicted_mb=forecast_performance.learned_daily_forecast_mb,
+                calibration_factor=forecast_performance.calibration_factor,
+                active_voucher_count=active_voucher_count,
+                active_allocation_gb=active_allocation_gb,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(row)
+        else:
+            row.baseline_predicted_mb = forecast_performance.baseline_daily_forecast_mb
+            row.predicted_mb = forecast_performance.learned_daily_forecast_mb
+            row.calibration_factor = forecast_performance.calibration_factor
+            row.active_voucher_count = active_voucher_count
+            row.active_allocation_gb = active_allocation_gb
+            row.updated_at = now
+        session.commit()
+
+
 def get_plus_voucher_consumption_trend(
     voucher_summaries: list[db.PlusVoucherUsageSummary] | None = None,
     lookback_days: int = 30,
@@ -377,10 +533,23 @@ def get_plus_voucher_consumption_trend(
         period_end_day - timedelta(days=safe_recent_days),
         safe_recent_days,
     )
+    forecast_performance = _plus_voucher_forecast_performance(
+        daily_mb_by_day,
+        period_end_day,
+        recent_average_daily_mb,
+        bool(activated_summaries),
+    )
+    _record_plus_voucher_forecast_snapshot(
+        period_end_day,
+        period_end_day + timedelta(days=1),
+        forecast_performance,
+        len(activated_summaries),
+        active_allocation_gb,
+    )
     projected_days_remaining = None
     projected_depletion_date = None
-    if recent_average_daily_mb > 0 and total_remaining_mb > 0:
-        projected_days_remaining = total_remaining_mb / recent_average_daily_mb
+    if forecast_performance.learned_daily_forecast_mb > 0 and total_remaining_mb > 0:
+        projected_days_remaining = total_remaining_mb / forecast_performance.learned_daily_forecast_mb
         projected_depletion_date = period_end_day + timedelta(days=ceil(projected_days_remaining))
 
     return db.PlusVoucherConsumptionTrend(
@@ -398,6 +567,7 @@ def get_plus_voucher_consumption_trend(
         yesterday_mb=daily_mb_by_day.get(period_end_day - timedelta(days=1), 0.0),
         projected_days_remaining=projected_days_remaining,
         projected_depletion_date=projected_depletion_date,
+        forecast_performance=forecast_performance,
     )
 
 

@@ -73,6 +73,7 @@ class VoucherTopOffAnalysis(TypedDict):
     expected_basic_used_to_date_mb: float
     basic_average_daily_mb: float
     voucher_cycle_used_mb: float
+    voucher_forecast_daily_mb: float
     cycle_used_to_date_mb: float
     cycle_forecast_mb: float
     cycle_forecast_headroom_mb: float
@@ -291,15 +292,16 @@ def create_app() -> Flask:
         expected_basic_usage_mb = expected_basic_usage_gb * 1000.0
         expected_basic_used_to_date_mb = expected_basic_usage_mb * (elapsed_seconds / billing_cycle_seconds)
         basic_average_daily_mb = expected_basic_usage_mb / billing_cycle_day_count
+        voucher_forecast_daily_mb = trend.forecast_performance.learned_daily_forecast_mb
         voucher_cycle_used_mb = sum(row.used_mb for row in trend.daily_usage)
         cycle_used_to_date_mb = expected_basic_used_to_date_mb + voucher_cycle_used_mb
-        cycle_remaining_forecast_mb = (basic_average_daily_mb + trend.recent_average_daily_mb) * cycle_days_remaining
+        cycle_remaining_forecast_mb = (basic_average_daily_mb + voucher_forecast_daily_mb) * cycle_days_remaining
         cycle_forecast_mb = cycle_used_to_date_mb + cycle_remaining_forecast_mb
         cycle_forecast_headroom_mb = max(0.0, (included_usage_gb * 1000.0) - cycle_forecast_mb)
         cycle_forecast_overage_mb = max(0.0, cycle_forecast_mb - (included_usage_gb * 1000.0))
         included_remaining_mb = max(0.0, included_usage_gb * 1000.0 - cycle_used_to_date_mb)
 
-        combined_average_daily_mb = basic_average_daily_mb + trend.recent_average_daily_mb
+        combined_average_daily_mb = basic_average_daily_mb + voucher_forecast_daily_mb
         if combined_average_daily_mb <= 0:
             included_eta_label = 'No forecast burn'
         elif included_remaining_mb <= 0:
@@ -335,6 +337,7 @@ def create_app() -> Flask:
             'expected_basic_used_to_date_mb': clean_mb(expected_basic_used_to_date_mb),
             'basic_average_daily_mb': clean_mb(basic_average_daily_mb),
             'voucher_cycle_used_mb': clean_mb(voucher_cycle_used_mb),
+            'voucher_forecast_daily_mb': clean_mb(voucher_forecast_daily_mb),
             'cycle_used_to_date_mb': clean_mb(cycle_used_to_date_mb),
             'cycle_forecast_mb': clean_mb(cycle_forecast_mb),
             'cycle_forecast_headroom_mb': clean_mb(cycle_forecast_headroom_mb),

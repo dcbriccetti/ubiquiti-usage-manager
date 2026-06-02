@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta
 from pathlib import Path
 from typing import Any, Optional, cast
-from sqlalchemy import case, create_engine, String, func, select, event
+from sqlalchemy import Date, case, create_engine, String, func, select, event
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from clientinfo import ClientInfo
@@ -279,6 +279,19 @@ class PlusVoucherDailyUsage:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PlusVoucherForecastPerformance:
+    'Learned daily voucher forecast performance and next forecast.'
+    scored_forecast_count: int
+    mean_absolute_error_mb: float | None
+    baseline_mean_absolute_error_mb: float | None
+    improvement_pct: float | None
+    calibration_factor: float
+    baseline_daily_forecast_mb: float
+    learned_daily_forecast_mb: float
+    latest_scored_day: date | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class PlusVoucherConsumptionTrend:
     'Admin-facing consumption trend and projection for active Plus vouchers.'
     period_start: date
@@ -295,6 +308,7 @@ class PlusVoucherConsumptionTrend:
     yesterday_mb: float
     projected_days_remaining: float | None
     projected_depletion_date: date | None
+    forecast_performance: PlusVoucherForecastPerformance
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -415,6 +429,26 @@ class PlusVoucher(Base):
     allocation_gb: Mapped[int]                = mapped_column()
     generated_at:  Mapped[datetime]           = mapped_column(default=datetime.now, index=True)
     consumed_at:   Mapped[Optional[datetime]] = mapped_column(index=True)
+
+
+class PlusVoucherDailyForecast(Base):
+    'Stored daily active-voucher usage forecast and eventual score.'
+    __tablename__ = "plus_voucher_daily_forecasts"
+
+    id:                         Mapped[int]            = mapped_column(primary_key=True, autoincrement=True)
+    forecast_day:               Mapped[date]           = mapped_column(Date, index=True)
+    target_day:                 Mapped[date]           = mapped_column(Date, index=True)
+    model_name:                 Mapped[str]            = mapped_column(String(64), index=True)
+    baseline_predicted_mb:      Mapped[float]          = mapped_column()
+    predicted_mb:               Mapped[float]          = mapped_column()
+    calibration_factor:         Mapped[float]          = mapped_column(default=1.0)
+    active_voucher_count:       Mapped[int]            = mapped_column(default=0)
+    active_allocation_gb:       Mapped[int]            = mapped_column(default=0)
+    actual_mb:                  Mapped[Optional[float]] = mapped_column()
+    absolute_error_mb:          Mapped[Optional[float]] = mapped_column()
+    baseline_absolute_error_mb: Mapped[Optional[float]] = mapped_column()
+    created_at:                 Mapped[datetime]       = mapped_column(default=datetime.now, index=True)
+    updated_at:                 Mapped[datetime]       = mapped_column(default=datetime.now, index=True)
 
 
 class FlowImport(Base):

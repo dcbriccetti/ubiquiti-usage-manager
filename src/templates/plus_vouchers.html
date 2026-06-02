@@ -100,6 +100,32 @@
                     <span class="value">{{ voucher_consumption_trend.recent_average_daily_mb|voucher_data_amount }}<span class="voucher-rate-unit">/day</span></span>
                     <span class="detail-note">{{ voucher_topoff_analysis.recent_trend_label }} vs prior 7 days</span>
                 </div>
+                {% set forecast = voucher_consumption_trend.forecast_performance %}
+                <div class="insight-kpi">
+                    <span class="label">Learned Voucher Pace</span>
+                    <span class="value">{{ forecast.learned_daily_forecast_mb|voucher_data_amount }}<span class="voucher-rate-unit">/day</span></span>
+                    {% if forecast.scored_forecast_count %}
+                        <span class="detail-note">Calibration {{ "%.2f"|format(forecast.calibration_factor) }} from {{ forecast.scored_forecast_count }} scored days</span>
+                    {% else %}
+                        <span class="detail-note">Learning starts after the next completed day</span>
+                    {% endif %}
+                </div>
+                <div class="insight-kpi">
+                    <span class="label">Forecast Accuracy</span>
+                    {% if forecast.mean_absolute_error_mb is not none %}
+                        <span class="value">{{ forecast.mean_absolute_error_mb|voucher_data_amount }}</span>
+                        {% if forecast.improvement_pct is not none and forecast.improvement_pct >= 0 %}
+                            <span class="detail-note">{{ "%.0f"|format(forecast.improvement_pct) }}% better than raw 7-day pace</span>
+                        {% elif forecast.improvement_pct is not none %}
+                            <span class="detail-note">{{ "%.0f"|format(0 - forecast.improvement_pct) }}% worse than raw 7-day pace</span>
+                        {% else %}
+                            <span class="detail-note">Mean absolute daily error</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="value">Learning</span>
+                        <span class="detail-note">No completed forecast score yet</span>
+                    {% endif %}
+                </div>
                 <div class="insight-kpi">
                     <span class="label">Basic Estimate</span>
                     <span class="value">{{ voucher_topoff_analysis.expected_basic_usage_mb|voucher_data_amount }}</span>

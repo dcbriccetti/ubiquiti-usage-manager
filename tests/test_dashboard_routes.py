@@ -85,6 +85,16 @@ class DashboardRouteTests(unittest.TestCase):
             yesterday_mb=1000.0,
             projected_days_remaining=40.0,
             projected_depletion_date=date(2026, 7, 9),
+            forecast_performance=app.db.PlusVoucherForecastPerformance(
+                scored_forecast_count=0,
+                mean_absolute_error_mb=None,
+                baseline_mean_absolute_error_mb=None,
+                improvement_pct=None,
+                calibration_factor=1.0,
+                baseline_daily_forecast_mb=2000.0,
+                learned_daily_forecast_mb=2000.0,
+                latest_scored_day=None,
+            ),
         )
 
         with (

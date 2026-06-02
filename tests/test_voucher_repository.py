@@ -1,11 +1,11 @@
 import sys
 import tempfile
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
 
@@ -350,6 +350,123 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
         self.assertEqual(trend.recent_average_daily_mb, 1000.0)
         self.assertEqual(trend.projected_days_remaining, 13.0)
         self.assertEqual(trend.projected_depletion_date, datetime(2026, 5, 20).date())
+
+    def test_consumption_trend_scores_and_records_learned_forecasts(self) -> None:
+        generated_at = datetime(2026, 5, 1, 10, 0)
+        period_end = datetime(2026, 5, 4, 12, 0)
+        with db.SessionLocal() as session:
+            session.add(
+                db.PlusVoucher(
+                    batch_id="learned",
+                    user_id=901,
+                    password="learn901",
+                    allocation_gb=40,
+                    generated_at=generated_at,
+                )
+            )
+            session.add(
+                db.ClientIpIdentity(
+                    observed_at=generated_at + timedelta(minutes=5),
+                    ip_address="192.168.1.91",
+                    mac="aa:bb:cc:dd:ee:91",
+                    name="Learning voucher",
+                    user_id="901",
+                    vlan="Plus",
+                )
+            )
+            session.add_all(
+                [
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605021200",
+                        started_at=datetime(2026, 5, 2, 12, 0),
+                        ended_at=datetime(2026, 5, 2, 12, 1),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="192.168.1.91",
+                        src_port=12345,
+                        dst_ip="8.8.8.8",
+                        dst_port=443,
+                        packets=10,
+                        bytes=1_500_000_000,
+                        direction="download",
+                        client_ip="192.168.1.91",
+                    ),
+                    db.WanFlowUsage(
+                        source_file="nfcapd.202605031200",
+                        started_at=datetime(2026, 5, 3, 12, 0),
+                        ended_at=datetime(2026, 5, 3, 12, 1),
+                        duration_seconds=60.0,
+                        proto="TCP",
+                        src_ip="192.168.1.91",
+                        src_port=12345,
+                        dst_ip="1.1.1.1",
+                        dst_port=443,
+                        packets=10,
+                        bytes=1_400_000_000,
+                        direction="download",
+                        client_ip="192.168.1.91",
+                    ),
+                ]
+            )
+            session.add_all(
+                [
+                    db.PlusVoucherDailyForecast(
+                        forecast_day=date(2026, 5, 1),
+                        target_day=date(2026, 5, 2),
+                        model_name=voucher_repository.PLUS_VOUCHER_FORECAST_MODEL_NAME,
+                        baseline_predicted_mb=1000.0,
+                        predicted_mb=1400.0,
+                        calibration_factor=1.4,
+                        active_voucher_count=1,
+                        active_allocation_gb=40,
+                    ),
+                    db.PlusVoucherDailyForecast(
+                        forecast_day=date(2026, 5, 2),
+                        target_day=date(2026, 5, 3),
+                        model_name=voucher_repository.PLUS_VOUCHER_FORECAST_MODEL_NAME,
+                        baseline_predicted_mb=1000.0,
+                        predicted_mb=1400.0,
+                        calibration_factor=1.4,
+                        active_voucher_count=1,
+                        active_allocation_gb=40,
+                    ),
+                ]
+            )
+            session.commit()
+
+        summaries = voucher_repository.get_active_plus_voucher_summaries()
+        trend = voucher_repository.get_plus_voucher_consumption_trend(
+            summaries,
+            lookback_days=4,
+            recent_days=2,
+            period_end=period_end,
+        )
+
+        performance = trend.forecast_performance
+        self.assertEqual(performance.scored_forecast_count, 2)
+        self.assertEqual(performance.mean_absolute_error_mb, 50.0)
+        self.assertEqual(performance.baseline_mean_absolute_error_mb, 450.0)
+        self.assertAlmostEqual(performance.improvement_pct or 0.0, 88.8888888889)
+        self.assertEqual(performance.baseline_daily_forecast_mb, 700.0)
+        self.assertAlmostEqual(performance.calibration_factor, 1.1285714286)
+        self.assertAlmostEqual(performance.learned_daily_forecast_mb, 790.0)
+        self.assertAlmostEqual(trend.projected_days_remaining or 0.0, 37_100.0 / 790.0)
+
+        with db.SessionLocal() as session:
+            scored_rows = session.execute(
+                select(db.PlusVoucherDailyForecast)
+                .where(db.PlusVoucherDailyForecast.target_day.in_([date(2026, 5, 2), date(2026, 5, 3)]))
+                .order_by(db.PlusVoucherDailyForecast.target_day.asc())
+            ).scalars().all()
+            self.assertEqual([row.actual_mb for row in scored_rows], [1500.0, 1400.0])
+            next_forecast = session.execute(
+                select(db.PlusVoucherDailyForecast).where(
+                    db.PlusVoucherDailyForecast.forecast_day == date(2026, 5, 4),
+                    db.PlusVoucherDailyForecast.target_day == date(2026, 5, 5),
+                )
+            ).scalar_one()
+            self.assertEqual(next_forecast.baseline_predicted_mb, 700.0)
+            self.assertAlmostEqual(next_forecast.predicted_mb, 790.0)
 
     def test_consumption_trend_keeps_production_local_wan_flow_day(self) -> None:
         generated_at = datetime(2026, 5, 31, 20, 0)
