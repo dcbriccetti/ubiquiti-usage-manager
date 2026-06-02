@@ -9,20 +9,23 @@ UniFi usage dashboard + monitor for tracking client usage and applying policy-ba
 
 ## App Structure
 
-This repo is being migrated gradually from one flat LAN-management app into
-separate app packages:
+This repo contains two Flask apps plus the UniFi monitor. The LAN dashboard
+uses top-level `src/*.py` modules; `src/lan_admin/` is a small package
+entrypoint that imports the LAN app. The club user-management app lives in its
+own package.
 
 ```text
 src/
-  app.py                 # existing LAN management Flask app, kept for compatibility
-  lan_admin/             # new LAN package boundary; currently wraps src/app.py
-  club_admin/            # new club user management app
-  shared/                # future shared code used by both apps
+  app.py                 # LAN dashboard Flask app
+  monitor.py             # UniFi polling/monitor process
+  lan_admin/             # package entrypoint wrapping src/app.py
+  club_admin/            # club user-management app
+  shared/                # placeholder for future shared code
 ```
 
-The LAN app still runs the same way as before, so existing scripts and imports
-do not need to change yet. New club user-management code should go under
-`src/club_admin/`.
+LAN dashboard modules such as `dashboard_service.py`, `usage_context.py`, and
+`voucher_repository.py` remain top-level under `src/`. Club user-management code
+should go under `src/club_admin/`.
 
 Run the LAN app:
 
