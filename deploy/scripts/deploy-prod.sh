@@ -10,6 +10,22 @@ services=(
     ubiquiti-usage-club.service
 )
 
+wait_for_http() {
+    local name=$1
+    local url=$2
+    local deadline=$((SECONDS + 30))
+
+    echo "Waiting for ${name} at ${url}"
+    until curl --max-time 2 -fsS "${url}" >/dev/null; do
+        if (( SECONDS >= deadline )); then
+            echo "${name} health check failed after 30 seconds: ${url}" >&2
+            return 1
+        fi
+        sleep 1
+    done
+    echo "${name} health check passed."
+}
+
 cd "${APP_DIR}"
 
 if [[ ! -d .git ]]; then
@@ -33,7 +49,7 @@ for service in "${services[@]}"; do
     systemctl --no-pager status "${service}"
 done
 
-curl --max-time 10 -fsS http://127.0.0.1:5051/my-usage >/dev/null
-curl --max-time 10 -fsS http://127.0.0.1:5052/self-checkin >/dev/null
+wait_for_http "LAN dashboard" "http://127.0.0.1:5051/my-usage"
+wait_for_http "club user app" "http://127.0.0.1:5052/self-checkin"
 
 echo "Production deploy completed."

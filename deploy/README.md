@@ -90,23 +90,15 @@ deploy/scripts/deploy-prod.sh
 ```
 
 The script pulls with `--ff-only`, updates Python dependencies, restarts the
-three services, and checks the local health endpoints. It skips database backups
-by default; set `BACKUP_BEFORE_DEPLOY=1` when you want one:
+three services, waits for the local LAN and club health endpoints, and skips
+database backups by default. Set `BACKUP_BEFORE_DEPLOY=1` when you want one:
 
 ```bash
 BACKUP_BEFORE_DEPLOY=1 deploy/scripts/deploy-prod.sh
 ```
 
-The health checks run immediately after restart. If one fails right after the
-services were restarted, wait a few seconds and verify before treating it as a
-real deploy failure:
-
-```bash
-sleep 3
-curl --max-time 10 -fsS http://127.0.0.1:5051/my-usage >/dev/null
-curl --max-time 10 -fsS http://127.0.0.1:5052/self-checkin >/dev/null
-systemctl is-active ubiquiti-usage-monitor.service ubiquiti-usage-lan.service ubiquiti-usage-club.service
-```
+The deploy health checks retry for up to 30 seconds after service restart so a
+normal Flask startup delay does not fail the deploy.
 
 Admin browser sessions are cookie-based and survive service restarts while the
 configured session secrets stay the same. Restarting the services should not by
