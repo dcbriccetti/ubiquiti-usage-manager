@@ -327,6 +327,29 @@
     });
   };
 
+  window.ClubAdminTables = {
+    applyStoredSort(table) {
+      if (!table) {
+        return;
+      }
+      const storedSort = readStoredSort(table);
+      if (!storedSort) {
+        return;
+      }
+      const heading = Array.from(table.querySelectorAll(".sortable-heading")).find(
+        (candidate) =>
+          Number.parseInt(candidate.dataset.sortColumn ?? "", 10) ===
+          storedSort.column,
+      );
+      if (heading) {
+        sortTable(table, heading, {
+          direction: storedSort.direction,
+          persist: false,
+        });
+      }
+    },
+  };
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initializeSortableTables);
   } else {

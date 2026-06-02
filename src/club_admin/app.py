@@ -5,11 +5,13 @@ import csv
 import hashlib
 import hmac
 import io
+import json
 import os
 import re
 import sqlite3
+import time
 import unicodedata
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
@@ -22,6 +24,7 @@ from zoneinfo import ZoneInfo
 
 from flask import (
     Flask,
+    Response,
     abort,
     jsonify,
     make_response,
@@ -30,6 +33,7 @@ from flask import (
     request,
     send_file,
     session,
+    stream_with_context,
     url_for,
 )
 from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
@@ -37,6 +41,7 @@ from werkzeug.security import check_password_hash
 
 import config as cfg
 from club_admin import audit_repository
+from club_admin import checkin_events
 from club_admin import checkin_repository
 from club_admin import database
 from club_admin import guest_form
@@ -701,6 +706,99 @@ def _checkin_visit_number_chart(
         ),
         buckets=tuple(buckets) if max_total else (),
     )
+
+
+def _checkins_count_text(checkins: list[CheckIn]) -> str:
+    count = len(checkins)
+    return f"{count} {'check-in' if count == 1 else 'check-ins'}"
+
+
+def _checkins_report_context(
+    connection: sqlite3.Connection,
+    start_date: date,
+    end_date: date,
+) -> dict[str, object]:
+    checkins = checkin_repository.list_checkins_for_date_range(
+        connection,
+        start_date,
+        end_date,
+    )
+    visit_number_counts = checkin_repository.count_visit_numbers_for_date_range(
+        connection,
+        start_date,
+        end_date,
+    )
+    notes_by_user_id = user_note_repository.list_user_notes_by_user_ids(
+        connection,
+        {checkin.user_id for checkin in checkins if checkin.user_id is not None},
+    )
+    return {
+        "checkins": checkins,
+        "count_text": _checkins_count_text(checkins),
+        "membership_breakdown": _checkin_membership_breakdown(checkins),
+        "time_chart": _checkin_time_chart(checkins, start_date, end_date),
+        "visit_number_chart": _checkin_visit_number_chart(visit_number_counts),
+        "notes_by_user_id": notes_by_user_id,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+
+def _checkins_report_stream_payload(
+    connection: sqlite3.Connection,
+    start_date: date,
+    end_date: date,
+) -> dict[str, str]:
+    context = _checkins_report_context(connection, start_date, end_date)
+    return {
+        "count_text": str(context["count_text"]),
+        "membership_breakdown_html": render_template(
+            "club_admin/_checkins_membership_breakdown.html",
+            **context,
+        ),
+        "time_chart_html": render_template(
+            "club_admin/_checkins_chart.html",
+            chart=context["time_chart"],
+            chart_extra_class="",
+            legend_label="Membership type legend",
+        ),
+        "visit_number_chart_html": render_template(
+            "club_admin/_checkins_chart.html",
+            chart=context["visit_number_chart"],
+            chart_extra_class="checkins-visit-number-chart",
+            legend_label="Check-in group legend",
+        ),
+        "rows_html": render_template(
+            "club_admin/_checkins_report_rows.html",
+            **context,
+        ),
+    }
+
+
+def _checkins_report_event_stream(
+    connection_context: Callable[[], Iterator[sqlite3.Connection]],
+    start_date: date,
+    end_date: date,
+) -> Iterator[str]:
+    last_version = checkin_events.current_checkins_version()
+    while True:
+        with connection_context() as connection:
+            payload = _checkins_report_stream_payload(connection, start_date, end_date)
+        yield f"data: {json.dumps(payload)}\n\n"
+
+        deadline = time.monotonic() + 30.0
+        while True:
+            timeout_seconds = min(1.0, max(0.0, deadline - time.monotonic()))
+            next_version = checkin_events.wait_for_checkins_change(
+                last_version,
+                timeout_seconds,
+            )
+            if next_version != last_version:
+                last_version = next_version
+                break
+            if time.monotonic() >= deadline:
+                yield ": keepalive\n\n"
+                deadline = time.monotonic() + 30.0
 
 
 def _collapsed_text(value: str | None) -> str:
@@ -1913,6 +2011,8 @@ def create_app(db_path: Path | None = None) -> Flask:
                         new_value=checkin_result.check_in_at,
                     )
                 connection.commit()
+                if checkin_result.recorded:
+                    checkin_events.notify_checkins_changed()
             return redirect(url_for("guest_registration_thanks"))
 
         return render_template(
@@ -2038,6 +2138,8 @@ def create_app(db_path: Path | None = None) -> Flask:
                 else:
                     recent_repeat_members.append(member)
             connection.commit()
+        if checked_in_members:
+            checkin_events.notify_checkins_changed()
 
         if len(checked_in_members) == 1 and not recent_repeat_members and not blocked_members:
             member = checked_in_members[0]
@@ -2463,6 +2565,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
             if request.method == "POST":
                 try:
+                    checkins_changed = False
                     if request.form.get("checkin_action") == "delete_selected":
                         deleted_checkin_ids = {
                             checkin.id
@@ -2486,7 +2589,10 @@ def create_app(db_path: Path | None = None) -> Flask:
                                 old_value=deleted_checkin.check_in_at,
                                 new_value=None,
                             )
+                        checkins_changed = bool(deleted_checkin_ids)
                         connection.commit()
+                        if checkins_changed:
+                            checkin_events.notify_checkins_changed()
                         return redirect(url_for("edit_member_checkins", member_id=member_id))
 
                     edited_checkins = []
@@ -2534,6 +2640,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                             checkin for checkin in checkins if checkin.id == edited_checkin.id
                         )
                         if original_checkin.check_in_at != edited_checkin.check_in_at:
+                            checkins_changed = True
                             _record_checkin_change(
                                 connection,
                                 member_id=member_id,
@@ -2542,6 +2649,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                                 new_value=edited_checkin.check_in_at,
                             )
                         if original_checkin.membership != edited_checkin.membership:
+                            checkins_changed = True
                             _record_checkin_change(
                                 connection,
                                 member_id=member_id,
@@ -2551,6 +2659,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                             )
                     if new_checkin is not None:
                         checkin_repository.upsert_checkin(connection, new_checkin)
+                        checkins_changed = True
                         _record_checkin_change(
                             connection,
                             member_id=member_id,
@@ -2559,6 +2668,8 @@ def create_app(db_path: Path | None = None) -> Flask:
                             new_value=new_checkin.check_in_at,
                         )
                     connection.commit()
+                    if checkins_changed:
+                        checkin_events.notify_checkins_changed()
                 except CheckInFormError as error:
                     abort(400, str(error))
                 except sqlite3.IntegrityError as error:
@@ -2583,37 +2694,33 @@ def create_app(db_path: Path | None = None) -> Flask:
         date_presets = _date_range_presets(today)
 
         with open_connection() as connection:
-            checkins = checkin_repository.list_checkins_for_date_range(
-                connection,
-                start_date,
-                end_date,
-            )
-            visit_number_counts = checkin_repository.count_visit_numbers_for_date_range(
-                connection,
-                start_date,
-                end_date,
-            )
-            notes_by_user_id = user_note_repository.list_user_notes_by_user_ids(
-                connection,
-                {checkin.user_id for checkin in checkins if checkin.user_id is not None},
-            )
+            report_context = _checkins_report_context(connection, start_date, end_date)
 
         return render_template(
             "club_admin/checkins_report.html",
-            checkins=checkins,
-            membership_breakdown=_checkin_membership_breakdown(checkins),
-            time_chart=_checkin_time_chart(checkins, start_date, end_date),
-            visit_number_chart=_checkin_visit_number_chart(visit_number_counts),
-            notes_by_user_id=notes_by_user_id,
             date_presets=date_presets,
             active_date_preset_label=_active_date_range_preset_label(
                 date_presets,
                 start_date,
                 end_date,
             ),
-            start_date=start_date,
-            end_date=end_date,
+            **report_context,
         )
+
+    @flask_app.route("/checkins/report/stream")
+    @require_admin
+    def checkins_report_stream():
+        today = date.today()
+        start_date, end_date = _date_range_from_request(today)
+        response = Response(
+            stream_with_context(
+                _checkins_report_event_stream(open_connection, start_date, end_date)
+            ),
+            mimetype="text/event-stream",
+        )
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["X-Accel-Buffering"] = "no"
+        return response
 
     @flask_app.route("/documents/report")
     @require_admin
@@ -2817,6 +2924,8 @@ def create_app(db_path: Path | None = None) -> Flask:
                         barcode_svg = _code128b_svg(token)
                         barcode_show_default = not barcode_token
                     connection.commit()
+                    if checkin_result.recorded:
+                        checkin_events.notify_checkins_changed()
             checkin_success = member is not None and not checkin_blocked
             if checkin_blocked:
                 message = "Please see the front desk."

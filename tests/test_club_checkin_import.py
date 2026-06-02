@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import sqlite3
 import sys
@@ -18,6 +19,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from club_admin import audit_repository
+from club_admin import checkin_events
 from club_admin import checkin_repository
 from club_admin import database
 from club_admin import member_repository
@@ -371,7 +373,16 @@ class ClubCheckInImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Check-ins", body)
         self.assertIn('class="page checkins-report-page"', body)
+        self.assertIn(
+            'data-checkins-stream-url="/checkins/report/stream?start_date=2026-05-01&amp;end_date=2026-05-03"',
+            body,
+        )
         self.assertIn('class="print-report-range">2026-05-01 to 2026-05-03', body)
+        self.assertIn('data-checkins-count', body)
+        self.assertIn('data-checkins-membership-breakdown', body)
+        self.assertIn('data-checkins-time-chart', body)
+        self.assertIn('data-checkins-visit-number-chart', body)
+        self.assertIn('data-checkins-table-body', body)
         self.assertIn('class="report-date-fields"', body)
         self.assertIn('class="report-presets"', body)
         self.assertIn(">Today</a>", body)
@@ -425,6 +436,35 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('<td class="numeric" data-sort-value="1">1</td>', body)
         self.assertIn('<td class="numeric" data-sort-value="2">2</td>', body)
         self.assertNotIn("Jane", body)
+        self.assertIn("new EventSource(streamUrl)", body)
+        self.assertIn("window.ClubAdminTables?.applyStoredSort?.(table)", body)
+
+    def test_checkin_report_stream_sends_initial_report_fragments(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                checkin_repository.upsert_checkin(connection, checkin_fixture())
+                connection.commit()
+
+            response = client.get(
+                "/checkins/report/stream?start_date=2026-05-03&end_date=2026-05-03",
+                buffered=False,
+            )
+            first_event = next(response.response).decode()
+            response.close()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.content_type.startswith("text/event-stream"))
+        self.assertTrue(first_event.startswith("data: "))
+        payload = json.loads(first_event.removeprefix("data: ").strip())
+        self.assertEqual(payload["count_text"], "1 check-in")
+        self.assertIn("Visitor: 1", payload["membership_breakdown_html"])
+        self.assertIn("Check-ins by Hour", payload["time_chart_html"])
+        self.assertIn("Check-ins by Check-in Number", payload["visit_number_chart_html"])
+        self.assertIn("John", payload["rows_html"])
+        self.assertIn("2026-05-03 15:59:20", payload["rows_html"])
 
     def test_checkin_barcode_print_requires_admin_login(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -881,6 +921,38 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("checkin-barcode", body)
         self.assertIsNotNone(barcode_secret_row)
         self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_notifies_report_stream_only_when_recorded(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            client = flask_app.test_client()
+            with patch.object(checkin_events, "notify_checkins_changed") as notify:
+                first_response = client.post(
+                    "/self-checkin",
+                    data={"phone": "+1 (510) 510-5100", "initials": "JD"},
+                )
+                repeat_response = client.post(
+                    "/self-checkin",
+                    data={"phone": "+1 (510) 510-5100", "initials": "JD"},
+                )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertEqual(repeat_response.status_code, 200)
+        notify.assert_called_once_with()
 
     def test_self_checkin_blocks_banned_user_and_logs_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

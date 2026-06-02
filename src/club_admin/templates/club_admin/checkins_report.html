@@ -8,17 +8,18 @@
   <script src="{{ url_for('static', filename='club-admin-table-sort.js') }}" defer></script>
 </head>
 <body>
-  <main class="page checkins-report-page">
+  <main
+    class="page checkins-report-page"
+    data-checkins-stream-url="{{ url_for('checkins_report_stream', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
+  >
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
         <h1>Check-ins</h1>
-        <p class="summary">{{ checkins|length }} {{ 'check-in' if checkins|length == 1 else 'check-ins' }}</p>
+        <p class="summary" data-checkins-count>{{ checkins|length }} {{ 'check-in' if checkins|length == 1 else 'check-ins' }}</p>
         <p class="print-report-range">{{ start_date }} to {{ end_date }}</p>
-        <p class="checkins-membership-breakdown">
-          {% for label, count in membership_breakdown %}
-            <span>{{ label }}: {{ count }}</span>{% if not loop.last %}<span aria-hidden="true"> | </span>{% endif %}
-          {% endfor %}
+        <p class="checkins-membership-breakdown" data-checkins-membership-breakdown>
+          {% include "club_admin/_checkins_membership_breakdown.html" %}
         </p>
       </div>
       <nav class="nav-links" aria-label="Club admin navigation">
@@ -53,93 +54,19 @@
       </div>
     </form>
 
-    <section class="checkins-time-chart" aria-label="{{ time_chart.title }}">
-      <div class="checkins-chart-header">
-        <h2>{{ time_chart.title }}</h2>
-        {% if time_chart.legend %}
-          <div class="checkins-chart-legend" aria-label="Membership type legend">
-            {% for label, css_class in time_chart.legend %}
-              <span><span class="checkins-chart-key {{ css_class }}" aria-hidden="true"></span>{{ label }}</span>
-            {% endfor %}
-          </div>
-        {% endif %}
-      </div>
-      {% if time_chart.buckets %}
-        <div class="checkins-chart-rows">
-          {% for bucket in time_chart.buckets %}
-            {% if bucket.group_label %}
-              <div class="checkins-chart-group">
-                <span>{{ bucket.group_label }}</span>
-                {% if bucket.group_total is not none %}
-                  <span class="checkins-chart-group-total">{{ bucket.group_total }} {{ 'check-in' if bucket.group_total == 1 else 'check-ins' }}</span>
-                {% endif %}
-              </div>
-            {% endif %}
-            <div class="checkins-chart-row">
-              <span class="checkins-chart-label">{{ bucket.label }}</span>
-              <div class="checkins-chart-bar" aria-label="{{ bucket.label }}: {{ bucket.total }} {{ 'check-in' if bucket.total == 1 else 'check-ins' }}">
-                {% if bucket.total %}
-                  {% for segment in bucket.segments %}
-                    <span
-                      class="checkins-chart-segment {{ segment.css_class }}"
-                      style="width: {{ '%.2f'|format(segment.percent) }}%"
-                      title="{{ segment.label }}: {{ segment.count }}"
-                    >
-                      <span>{{ segment.count }}</span>
-                    </span>
-                  {% endfor %}
-                {% else %}
-                  <span class="checkins-chart-empty"></span>
-                {% endif %}
-              </div>
-              <span class="checkins-chart-total">{{ bucket.total }}</span>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="checkins-chart-empty-message">No check-ins in this range.</p>
-      {% endif %}
-    </section>
+    <div data-checkins-time-chart>
+      {% set chart = time_chart %}
+      {% set chart_extra_class = "" %}
+      {% set legend_label = "Membership type legend" %}
+      {% include "club_admin/_checkins_chart.html" %}
+    </div>
 
-    <section class="checkins-time-chart checkins-visit-number-chart" aria-label="{{ visit_number_chart.title }}">
-      <div class="checkins-chart-header">
-        <h2>{{ visit_number_chart.title }}</h2>
-        {% if visit_number_chart.legend %}
-          <div class="checkins-chart-legend" aria-label="Check-in group legend">
-            {% for label, css_class in visit_number_chart.legend %}
-              <span><span class="checkins-chart-key {{ css_class }}" aria-hidden="true"></span>{{ label }}</span>
-            {% endfor %}
-          </div>
-        {% endif %}
-      </div>
-      {% if visit_number_chart.buckets %}
-        <div class="checkins-chart-rows">
-          {% for bucket in visit_number_chart.buckets %}
-            <div class="checkins-chart-row">
-              <span class="checkins-chart-label">{{ bucket.label }}</span>
-              <div class="checkins-chart-bar" aria-label="{{ bucket.label }}: {{ bucket.total }} {{ 'check-in' if bucket.total == 1 else 'check-ins' }}">
-                {% if bucket.total %}
-                  {% for segment in bucket.segments %}
-                    <span
-                      class="checkins-chart-segment {{ segment.css_class }}"
-                      style="width: {{ '%.2f'|format(segment.percent) }}%"
-                      title="{{ segment.label }}: {{ segment.count }}"
-                    >
-                      <span>{{ segment.count }}</span>
-                    </span>
-                  {% endfor %}
-                {% else %}
-                  <span class="checkins-chart-empty"></span>
-                {% endif %}
-              </div>
-              <span class="checkins-chart-total">{{ bucket.total }}</span>
-            </div>
-          {% endfor %}
-        </div>
-      {% else %}
-        <p class="checkins-chart-empty-message">No check-ins in this range.</p>
-      {% endif %}
-    </section>
+    <div data-checkins-visit-number-chart>
+      {% set chart = visit_number_chart %}
+      {% set chart_extra_class = "checkins-visit-number-chart" %}
+      {% set legend_label = "Check-in group legend" %}
+      {% include "club_admin/_checkins_chart.html" %}
+    </div>
 
     <table class="checkins-table" data-sortable-table data-persist-sort-key="clubAdmin.checkinsReport.sort">
       <thead>
@@ -165,44 +92,57 @@
           <th scope="col" class="checkins-print-column">Barcode</th>
         </tr>
       </thead>
-      <tbody>
-        {% for checkin in checkins %}
-          {% set user_notes = notes_by_user_id.get(checkin.user_id, []) %}
-          <tr data-sortable-row>
-            <td class="nowrap" data-sort-value="{{ checkin.check_in_at.isoformat() }}">{{ checkin.check_in_at }}</td>
-            <td class="numeric" data-sort-value="{{ checkin.visit_number or '' }}">{{ checkin.visit_number or '' }}</td>
-            <td data-sort-value="{{ checkin.last_name }}">
-              <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.last_name }}</a>
-            </td>
-            <td data-sort-value="{{ checkin.first_name }}">
-              <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.first_name }}</a>
-            </td>
-            <td data-sort-value="{{ checkin.membership }}">{{ checkin.membership }}</td>
-            <td data-sort-value="{{ user_notes|map(attribute='summary')|join(' ') }}">
-              {% if user_notes %}
-                <ul class="checkin-note-summaries">
-                  {% for note in user_notes %}
-                    <li>
-                      <a
-                        href="{{ url_for('member_detail', member_id=checkin.user_id, _anchor='note-' ~ note.id) }}"
-                        {% if note.details %}title="{{ note.details }}"{% endif %}
-                      >{{ note.summary }}</a>
-                    </li>
-                  {% endfor %}
-                </ul>
-              {% endif %}
-            </td>
-            <td class="checkins-print-column">
-              <a href="{{ url_for('member_checkin_barcode_print', member_id=checkin.user_id) }}" target="_blank" rel="noopener">Print</a>
-            </td>
-          </tr>
-        {% else %}
-          <tr>
-            <td colspan="7" class="empty">No check-ins in this date range.</td>
-          </tr>
-        {% endfor %}
+      <tbody data-checkins-table-body>
+        {% include "club_admin/_checkins_report_rows.html" %}
       </tbody>
     </table>
   </main>
+  <script>
+    (() => {
+      const page = document.querySelector("[data-checkins-stream-url]");
+      if (!page || !("EventSource" in window)) {
+        return;
+      }
+
+      const streamUrl = page.dataset.checkinsStreamUrl || "";
+      if (!streamUrl) {
+        return;
+      }
+
+      const countElement = page.querySelector("[data-checkins-count]");
+      const membershipElement = page.querySelector("[data-checkins-membership-breakdown]");
+      const timeChartElement = page.querySelector("[data-checkins-time-chart]");
+      const visitNumberChartElement = page.querySelector("[data-checkins-visit-number-chart]");
+      const table = page.querySelector("[data-sortable-table]");
+      const tableBody = page.querySelector("[data-checkins-table-body]");
+      const stream = new EventSource(streamUrl);
+
+      stream.onmessage = (event) => {
+        let payload;
+        try {
+          payload = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+
+        if (typeof payload.count_text === "string" && countElement) {
+          countElement.textContent = payload.count_text;
+        }
+        if (typeof payload.membership_breakdown_html === "string" && membershipElement) {
+          membershipElement.innerHTML = payload.membership_breakdown_html;
+        }
+        if (typeof payload.time_chart_html === "string" && timeChartElement) {
+          timeChartElement.innerHTML = payload.time_chart_html;
+        }
+        if (typeof payload.visit_number_chart_html === "string" && visitNumberChartElement) {
+          visitNumberChartElement.innerHTML = payload.visit_number_chart_html;
+        }
+        if (typeof payload.rows_html === "string" && tableBody) {
+          tableBody.innerHTML = payload.rows_html;
+          window.ClubAdminTables?.applyStoredSort?.(table);
+        }
+      };
+    })();
+  </script>
 </body>
 </html>

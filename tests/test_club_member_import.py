@@ -18,6 +18,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from club_admin import audit_repository
+from club_admin import checkin_events
 from club_admin import checkin_repository
 from club_admin import database
 from club_admin import guest_registration_repository
@@ -344,6 +345,7 @@ class ClubMemberImportTests(unittest.TestCase):
             ("GET", "/members/1/edit"),
             ("POST", "/members/1/edit"),
             ("GET", "/checkins/report"),
+            ("GET", "/checkins/report/stream"),
             ("GET", "/documents/report"),
             ("GET", "/documents/image"),
             ("GET", "/guest-registrations"),
@@ -564,11 +566,12 @@ class ClubMemberImportTests(unittest.TestCase):
                 jane = members_by_first_name["Jane"]
 
             members_response = client.get("/members")
-            response = client.post(
-                "/members/check-ins",
-                data={"member_ids": [str(john.id), str(jane.id)]},
-                follow_redirects=True,
-            )
+            with patch.object(checkin_events, "notify_checkins_changed") as notify:
+                response = client.post(
+                    "/members/check-ins",
+                    data={"member_ids": [str(john.id), str(jane.id)]},
+                    follow_redirects=True,
+                )
 
             with closing(database.connect(db_path)) as connection:
                 john_checkins = checkin_repository.list_checkins_for_user(connection, john.id)
@@ -592,6 +595,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Check In Selected", members_body)
         self.assertNotIn("Select shown", members_body)
         self.assertEqual(response.status_code, 200)
+        notify.assert_called_once_with()
         self.assertIn("Checked in 2 users.", response.get_data(as_text=True))
         self.assertEqual(len(john_checkins), 1)
         self.assertEqual(john_checkins[0].user_id, john.id)

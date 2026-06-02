@@ -1,0 +1,47 @@
+<section class="checkins-time-chart{% if chart_extra_class %} {{ chart_extra_class }}{% endif %}" aria-label="{{ chart.title }}">
+  <div class="checkins-chart-header">
+    <h2>{{ chart.title }}</h2>
+    {% if chart.legend %}
+      <div class="checkins-chart-legend" aria-label="{{ legend_label }}">
+        {% for label, css_class in chart.legend %}
+          <span><span class="checkins-chart-key {{ css_class }}" aria-hidden="true"></span>{{ label }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+  {% if chart.buckets %}
+    <div class="checkins-chart-rows">
+      {% for bucket in chart.buckets %}
+        {% if bucket.group_label %}
+          <div class="checkins-chart-group">
+            <span>{{ bucket.group_label }}</span>
+            {% if bucket.group_total is not none %}
+              <span class="checkins-chart-group-total">{{ bucket.group_total }} {{ 'check-in' if bucket.group_total == 1 else 'check-ins' }}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+        <div class="checkins-chart-row">
+          <span class="checkins-chart-label">{{ bucket.label }}</span>
+          <div class="checkins-chart-bar" aria-label="{{ bucket.label }}: {{ bucket.total }} {{ 'check-in' if bucket.total == 1 else 'check-ins' }}">
+            {% if bucket.total %}
+              {% for segment in bucket.segments %}
+                <span
+                  class="checkins-chart-segment {{ segment.css_class }}"
+                  style="width: {{ '%.2f'|format(segment.percent) }}%"
+                  title="{{ segment.label }}: {{ segment.count }}"
+                >
+                  <span>{{ segment.count }}</span>
+                </span>
+              {% endfor %}
+            {% else %}
+              <span class="checkins-chart-empty"></span>
+            {% endif %}
+          </div>
+          <span class="checkins-chart-total">{{ bucket.total }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="checkins-chart-empty-message">No check-ins in this range.</p>
+  {% endif %}
+</section>

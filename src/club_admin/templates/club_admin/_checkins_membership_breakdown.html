@@ -1,0 +1,3 @@
+{% for label, count in membership_breakdown %}
+  <span>{{ label }}: {{ count }}</span>{% if not loop.last %}<span aria-hidden="true"> | </span>{% endif %}
+{% endfor %}

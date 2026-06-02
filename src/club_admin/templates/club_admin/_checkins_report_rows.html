@@ -1,0 +1,35 @@
+{% for checkin in checkins %}
+  {% set user_notes = notes_by_user_id.get(checkin.user_id, []) %}
+  <tr data-sortable-row>
+    <td class="nowrap" data-sort-value="{{ checkin.check_in_at.isoformat() }}">{{ checkin.check_in_at }}</td>
+    <td class="numeric" data-sort-value="{{ checkin.visit_number or '' }}">{{ checkin.visit_number or '' }}</td>
+    <td data-sort-value="{{ checkin.last_name }}">
+      <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.last_name }}</a>
+    </td>
+    <td data-sort-value="{{ checkin.first_name }}">
+      <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.first_name }}</a>
+    </td>
+    <td data-sort-value="{{ checkin.membership }}">{{ checkin.membership }}</td>
+    <td data-sort-value="{{ user_notes|map(attribute='summary')|join(' ') }}">
+      {% if user_notes %}
+        <ul class="checkin-note-summaries">
+          {% for note in user_notes %}
+            <li>
+              <a
+                href="{{ url_for('member_detail', member_id=checkin.user_id, _anchor='note-' ~ note.id) }}"
+                {% if note.details %}title="{{ note.details }}"{% endif %}
+              >{{ note.summary }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </td>
+    <td class="checkins-print-column">
+      <a href="{{ url_for('member_checkin_barcode_print', member_id=checkin.user_id) }}" target="_blank" rel="noopener">Print</a>
+    </td>
+  </tr>
+{% else %}
+  <tr>
+    <td colspan="7" class="empty">No check-ins in this date range.</td>
+  </tr>
+{% endfor %}
