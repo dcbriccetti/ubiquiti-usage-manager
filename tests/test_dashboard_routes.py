@@ -20,6 +20,35 @@ def admin_client(flask_app):
     return client
 
 
+def voucher_trend_fixture() -> app.db.PlusVoucherConsumptionTrend:
+    return app.db.PlusVoucherConsumptionTrend(
+        period_start=date(2026, 5, 20),
+        period_end=date(2026, 5, 30),
+        daily_usage=[],
+        total_used_mb=0.0,
+        total_remaining_mb=0.0,
+        active_allocation_gb=0,
+        activated_voucher_count=0,
+        lifetime_average_daily_mb=0.0,
+        recent_average_daily_mb=0.0,
+        prior_average_daily_mb=0.0,
+        today_mb=0.0,
+        yesterday_mb=0.0,
+        projected_days_remaining=None,
+        projected_depletion_date=None,
+        forecast_performance=app.db.PlusVoucherForecastPerformance(
+            scored_forecast_count=0,
+            mean_absolute_error_mb=None,
+            baseline_mean_absolute_error_mb=None,
+            improvement_pct=None,
+            calibration_factor=1.0,
+            baseline_daily_forecast_mb=0.0,
+            learned_daily_forecast_mb=0.0,
+            latest_scored_day=None,
+        ),
+    )
+
+
 class DashboardRouteTests(unittest.TestCase):
     def test_dashboard_entrypoint_shows_loading_page_before_building_payload(self) -> None:
         flask_app = app.create_app()
@@ -124,6 +153,95 @@ class DashboardRouteTests(unittest.TestCase):
         self.assertLess(topoff["cycle_forecast_mb"], 500_000.0)
         self.assertGreater(topoff["cycle_forecast_headroom_mb"], 0.0)
         self.assertEqual(topoff["recommendation"], "Wait")
+
+    def test_vouchers_page_links_to_batch_and_single_printing(self) -> None:
+        flask_app = app.create_app()
+        voucher = app.db.PlusVoucherRecord(
+            id=7,
+            batch_id="batch-123",
+            user_id=9123,
+            password="pass-9123",
+            allocation_gb=40,
+            generated_at=datetime(2026, 5, 30, 12, 0),
+            consumed_at=None,
+        )
+
+        with (
+            patch.object(app.db, "get_plus_vouchers", return_value=[voucher]),
+            patch.object(app.db, "get_active_plus_voucher_summaries", return_value=[]),
+            patch.object(app.db, "get_plus_voucher_consumption_trend", return_value=voucher_trend_fixture()),
+            patch.object(app.db, "get_unconsumed_plus_voucher_count", return_value=1),
+        ):
+            response = admin_client(flask_app).get("/vouchers")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn('href="/vouchers/batches/batch-123/print"', body)
+        self.assertIn('href="/vouchers/7/print"', body)
+        self.assertIn("Batch", body)
+        self.assertIn("Single", body)
+        self.assertNotIn("/vouchers/batches/batch-123/thermal", body)
+
+    def test_voucher_batch_print_renders_for_brother_printer(self) -> None:
+        flask_app = app.create_app()
+        vouchers = [
+            app.db.PlusVoucherRecord(
+                id=7,
+                batch_id="batch-123",
+                user_id=9123,
+                password="pass-9123",
+                allocation_gb=40,
+                generated_at=datetime(2026, 5, 30, 12, 0),
+                consumed_at=None,
+            ),
+            app.db.PlusVoucherRecord(
+                id=8,
+                batch_id="batch-123",
+                user_id=9124,
+                password="pass-9124",
+                allocation_gb=40,
+                generated_at=datetime(2026, 5, 30, 12, 0),
+                consumed_at=None,
+            ),
+        ]
+
+        with patch.object(app.db, "get_plus_voucher_batch", return_value=vouchers):
+            response = admin_client(flask_app).get("/vouchers/batches/batch-123/print")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Plus Vouchers", body)
+        self.assertIn("Batch batch-123", body)
+        self.assertIn("9123", body)
+        self.assertIn("pass-9123", body)
+        self.assertIn("9124", body)
+        self.assertIn("pass-9124", body)
+        self.assertIn("40 GB", body)
+        self.assertIn("@page", body)
+        self.assertIn("size: 62mm 90mm", body)
+        self.assertNotIn("iPhone/iPad", body)
+
+    def test_single_voucher_print_renders_one_voucher(self) -> None:
+        flask_app = app.create_app()
+        voucher = app.db.PlusVoucherRecord(
+            id=7,
+            batch_id="batch-123",
+            user_id=9123,
+            password="pass-9123",
+            allocation_gb=40,
+            generated_at=datetime(2026, 5, 30, 12, 0),
+            consumed_at=None,
+        )
+
+        with patch.object(app.db, "get_plus_voucher", return_value=voucher):
+            response = admin_client(flask_app).get("/vouchers/7/print")
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Batch batch-123", body)
+        self.assertIn("9123", body)
+        self.assertIn("pass-9123", body)
+        self.assertNotIn("9124", body)
 
     def test_client_detail_prompts_before_loading_wan_details(self) -> None:
         flask_app = app.create_app()

@@ -172,10 +172,11 @@ the app also refuses to start if it detects broken club-user foreign keys.
 - Client table with live/historical windows: Active Now, Online Now, Today, 7 Days, and current month.
 - Per-client usage details page for admins and self-service users with daily charts and usage history.
 - Plus voucher workflow (admin-only):
-  - `/vouchers` generates paper vouchers at preset dollar values,
+  - `/vouchers` generates vouchers at preset dollar values,
   - each voucher stores a local user ID, password, and GB allocation,
   - generated vouchers create matching UniFi local RADIUS users via `rest/account`,
-  - `/vouchers/batches/<batch_id>/print` renders print-ready voucher sheets.
+  - `/vouchers/batches/<batch_id>/print` and `/vouchers/<voucher_id>/print`
+    render browser-printable vouchers sized for the Brother printer.
 - Organization-paid analytics split:
   - payer split (organization-paid vs user-paid),
   - organization-paid client list.
@@ -302,7 +303,7 @@ By default, the importer reads completed `nfcapd.YYYYMMDDHHMM` files from `/var/
 5. Verify month cost values match `COST_IN_CENTS_PER_GB`.
 6. Visit `/vouchers` and generate one test voucher.
 7. Confirm the matching UniFi local RADIUS user is created.
-8. Print the generated voucher batch page and verify the SSID/cost details.
+8. Print the generated voucher page and verify the SSID/cost details.
 
 ## Notes
 

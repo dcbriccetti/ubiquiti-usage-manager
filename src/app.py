@@ -785,7 +785,7 @@ def create_app() -> Flask:
 
     @flask_app.route("/vouchers/batches/<batch_id>/print")
     def plus_voucher_batch_print(batch_id: str):
-        'Render a print-optimized sheet for one voucher batch.'
+        'Render printable vouchers for one voucher batch.'
         denied_response = admin_denied_response()
         if denied_response is not None:
             return denied_response
@@ -798,6 +798,26 @@ def create_app() -> Flask:
             "plus_voucher_print.html",
             batch_id=batch_id,
             vouchers=vouchers,
+            voucher_cost_cents=calculate_voucher_cost_cents,
+            voucher_wifi_ssid=get_voucher_wifi_ssid(),
+            generated_at=datetime.now(),
+        )
+
+    @flask_app.route("/vouchers/<int:voucher_id>/print")
+    def plus_voucher_print(voucher_id: int):
+        'Render one printable voucher.'
+        denied_response = admin_denied_response()
+        if denied_response is not None:
+            return denied_response
+
+        voucher = db.get_plus_voucher(voucher_id)
+        if voucher is None:
+            abort(404)
+
+        return render_template(
+            "plus_voucher_print.html",
+            batch_id=voucher.batch_id,
+            vouchers=[voucher],
             voucher_cost_cents=calculate_voucher_cost_cents,
             voucher_wifi_ssid=get_voucher_wifi_ssid(),
             generated_at=datetime.now(),

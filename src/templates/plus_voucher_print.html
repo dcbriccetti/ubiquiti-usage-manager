@@ -11,136 +11,120 @@
 
         body {
             margin: 0;
-            background: #f6f3ec;
+            background: #f3f4f6;
             color: #111827;
             font-family: "Avenir Next", "Segoe UI", sans-serif;
         }
 
         .toolbar {
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
             align-items: center;
-            padding: 18px 24px;
-            border-bottom: 1px solid #d7d0c4;
-            background: #fffaf2;
+            background: #fff;
+            border-bottom: 1px solid #d1d5db;
+            display: flex;
+            gap: 16px;
+            justify-content: space-between;
+            padding: 16px 20px;
         }
 
         .toolbar h1 {
+            font-size: 1.15rem;
             margin: 0;
-            font-size: 1.25rem;
         }
 
         .toolbar p {
+            color: #4b5563;
+            font-size: 0.9rem;
             margin: 4px 0 0;
-            color: #52606d;
-            font-size: 0.92rem;
         }
 
         .toolbar button {
-            min-height: 38px;
-            border: 1px solid #0f766e;
-            border-radius: 8px;
-            background: #0f766e;
-            color: white;
+            background: #111827;
+            border: 0;
+            border-radius: 6px;
+            color: #fff;
             cursor: pointer;
             font: inherit;
             font-weight: 700;
+            min-height: 38px;
             padding: 8px 14px;
         }
 
-        .sheet {
-            width: 7.6in;
-            margin: 0 auto;
-            padding: 0.12in 0;
+        .voucher-print-sheet {
+            align-items: start;
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 0.07in;
-            align-content: start;
+            gap: 10px;
+            justify-content: center;
+            padding: 18px;
         }
 
-        .voucher-card {
-            height: 1.84in;
-            border: 2px solid #111827;
-            border-radius: 6px;
-            background: white;
-            padding: 0.1in;
+        .voucher-print {
+            background: #fff;
+            border: 1px solid #111827;
             display: grid;
-            grid-template-columns: 1fr 1.2fr;
-            grid-template-rows: auto 1fr;
-            gap: 0.05in;
-            break-inside: avoid;
+            gap: 6px;
+            height: 90mm;
+            padding: 5mm;
+            width: 62mm;
         }
 
         .voucher-header {
-            grid-column: 1 / -1;
-            display: flex;
-            justify-content: space-between;
-            gap: 0.16in;
-            align-items: start;
+            border-bottom: 2px solid #111827;
+            padding-bottom: 3mm;
         }
 
-        .voucher-card h2 {
-            margin: 0;
-            font-size: 0.24in;
-            font-weight: 650;
-            line-height: 1.05;
-            text-align: left;
-        }
-
-        .voucher-value {
-            flex: 0 0 auto;
-            margin-top: 0;
-            font-size: 0.24in;
-            color: #075e57;
-            font-weight: 650;
-            text-align: right;
-            white-space: nowrap;
+        .voucher-title {
+            font-size: 16pt;
+            font-weight: 800;
             line-height: 1;
-        }
-
-        .voucher-login {
-            display: grid;
-            gap: 0.08in;
-            align-content: center;
             margin: 0;
-            grid-column: 1;
+            text-transform: uppercase;
         }
 
-        .credential-row {
+        .voucher-subtitle {
+            font-size: 10pt;
+            font-weight: 700;
+            margin: 2mm 0 0;
+        }
+
+        .credential-grid {
             display: grid;
-            gap: 0.015in;
+            gap: 3mm;
         }
 
-        .credential-label {
-            color: #111827;
-            font-size: 0.09in;
-            font-weight: 600;
+        .credential-name {
+            display: block;
+            font-size: 7pt;
+            font-weight: 700;
+            letter-spacing: 0.02em;
             text-transform: uppercase;
         }
 
         .credential-value {
+            display: block;
             font-family: "SFMono-Regular", "Menlo", monospace;
-            font-size: 0.27in;
-            font-weight: 650;
-            letter-spacing: 0;
+            font-size: 18pt;
+            font-weight: 800;
             line-height: 1;
+            overflow-wrap: anywhere;
         }
 
-        .voucher-instructions {
-            margin: 0;
-            padding-left: 0.1in;
-            color: #111827;
-            font-size: 0.08in;
-            line-height: 1.22;
+        .voucher-footer {
             align-self: end;
-            grid-column: 2;
-            grid-row: 2;
+            border-top: 1px solid #111827;
+            display: grid;
+            gap: 1mm;
+            font-size: 8pt;
+            padding-top: 2mm;
+        }
+
+        .voucher-value {
+            font-size: 11pt;
+            font-weight: 800;
         }
 
         @page {
-            size: letter;
-            margin: 0.35in;
+            size: 62mm 90mm;
+            margin: 0;
         }
 
         @media print {
@@ -148,24 +132,26 @@
                 background: white;
             }
 
-            html,
-            body {
-                width: auto;
-                height: auto;
-                margin: 0;
-                overflow: visible;
-            }
-
             .toolbar {
                 display: none;
             }
 
-            .sheet {
-                width: 7.6in;
-                min-height: 0;
-                height: auto;
-                margin: 0;
+            .voucher-print-sheet {
+                display: block;
                 padding: 0;
+            }
+
+            .voucher-print {
+                border: 0;
+                break-after: page;
+                height: 90mm;
+                page-break-after: always;
+                width: 62mm;
+            }
+
+            .voucher-print:last-child {
+                break-after: auto;
+                page-break-after: auto;
             }
         }
     </style>
@@ -179,35 +165,32 @@
                 Generated {{ generated_at.strftime("%Y-%m-%d %H:%M") }}
             </p>
         </div>
-        <button type="button" onclick="window.print()">Print</button>
+        <button type="button" onclick="window.print()">Print Vouchers</button>
     </header>
 
-    <main class="sheet">
+    <main class="voucher-print-sheet">
         {% for voucher in vouchers %}
-            <article class="voucher-card">
-                <div class="voucher-header">
-                    <h2>{{ voucher_wifi_ssid }}<br>Wi-Fi Voucher</h2>
-                    <div class="voucher-value">
-                        ${{ "{:.0f}".format(voucher_cost_cents(voucher.allocation_gb) / 100.0) }} · {{ voucher.allocation_gb }} GB
-                    </div>
-                </div>
+            <article class="voucher-print">
+                <header class="voucher-header">
+                    <h2 class="voucher-title">{{ voucher_wifi_ssid }}</h2>
+                    <p class="voucher-subtitle">Wi-Fi Voucher</p>
+                </header>
 
-                <div class="voucher-login">
-                    <div class="credential-row">
-                        <span class="credential-label">User ID</span>
+                <section class="credential-grid" aria-label="Voucher credentials">
+                    <div>
+                        <span class="credential-name">User ID</span>
                         <span class="credential-value">{{ voucher.user_id }}</span>
                     </div>
-                    <div class="credential-row">
-                        <span class="credential-label">Password</span>
+                    <div>
+                        <span class="credential-name">Password</span>
                         <span class="credential-value">{{ voucher.password }}</span>
                     </div>
-                </div>
+                </section>
 
-                <ul class="voucher-instructions">
-                    <li>iPhone/iPad: choose {{ voucher_wifi_ssid }}, then enter the User ID and Password.</li>
-                    <li>Android: choose {{ voucher_wifi_ssid }}. If extra fields appear, use PEAP, MSCHAPV2, and <strong>Do not validate for certificate</strong>.</li>
-                    <li>If your phone asks about a certificate, trust it for this network.</li>
-                </ul>
+                <footer class="voucher-footer">
+                    <span class="voucher-value">${{ "{:.0f}".format(voucher_cost_cents(voucher.allocation_gb) / 100.0) }} · {{ voucher.allocation_gb }} GB</span>
+                    <span>Choose {{ voucher_wifi_ssid }}, then enter the User ID and Password.</span>
+                </footer>
             </article>
         {% endfor %}
     </main>
