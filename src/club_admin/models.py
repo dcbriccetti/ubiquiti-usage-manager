@@ -41,6 +41,8 @@ class CheckIn:
     check_out_at: datetime | None = None
     total_checkins: int | None = None
     visit_number: int | None = None
+    previous_check_in_at: datetime | None = None
+    checkin_count: int | None = None
     duration: str | None = None
     user_id: int | None = None
     id: int | None = None

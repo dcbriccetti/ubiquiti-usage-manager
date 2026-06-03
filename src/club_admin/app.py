@@ -26,6 +26,7 @@ from flask import (
     Flask,
     Response,
     abort,
+    current_app,
     jsonify,
     make_response,
     redirect,
@@ -106,6 +107,10 @@ ID_DOCUMENT_NAME_PATTERN = re.compile(
 )
 BARCODE_TOKEN_VERSION = "UM1"
 CLUB_DISPLAY_TIMEZONE = ZoneInfo("America/Los_Angeles")
+CHECKIN_MONITOR_TOKEN_HEADER = "X-Checkin-Monitor-Token"
+CHECKIN_MONITOR_MAX_LIMIT = 50
+CHECKIN_MONITOR_MAX_WAIT_SECONDS = 30.0
+CHECKIN_MONITOR_POLL_SECONDS = 1.0
 PUBLIC_KIOSK_ENDPOINTS = frozenset(
     {
         "guest_registration",
@@ -163,6 +168,10 @@ def _format_sqlite_utc_datetime(value: datetime | str | None) -> str:
 def _format_sqlite_utc_date(value: datetime | str | None) -> str:
     local_value = _sqlite_utc_to_local(value)
     return local_value.strftime("%Y-%m-%d") if local_value is not None else ""
+
+
+def _datetime_to_stored_text(value: datetime | None) -> str | None:
+    return value.isoformat(timespec="seconds") if value is not None else None
 
 
 class UrlPrefixMiddleware:
@@ -995,6 +1004,57 @@ def _safe_next_url(next_url: str | None) -> str:
     if next_url and next_url.startswith("/") and not next_url.startswith("//"):
         return next_url
     return url_for("members")
+
+
+def _bearer_token() -> str:
+    authorization = request.headers.get("Authorization", "").strip()
+    prefix = "Bearer "
+    if authorization.startswith(prefix):
+        return authorization[len(prefix) :].strip()
+    return ""
+
+
+def _checkin_monitor_token_from_request() -> str:
+    return request.headers.get(CHECKIN_MONITOR_TOKEN_HEADER, "").strip() or _bearer_token()
+
+
+def _request_has_checkin_monitor_access() -> bool:
+    if session.get("user_management_admin_authenticated") is True:
+        return True
+    configured_token = str(
+        current_app.config.get("USER_MANAGEMENT_CHECKIN_MONITOR_TOKEN", "")
+    ).strip()
+    request_token = _checkin_monitor_token_from_request()
+    return bool(configured_token and request_token) and hmac.compare_digest(
+        configured_token,
+        request_token,
+    )
+
+
+def _checkin_monitor_display_name(checkin: CheckIn) -> str:
+    first_or_nickname = checkin.first_name.strip()
+    last_name = checkin.last_name.strip()
+    return " ".join(
+        part for part in (first_or_nickname, last_name) if part
+    ).strip()
+
+
+def _checkin_monitor_payload(checkin: CheckIn) -> dict[str, object]:
+    previous_visit_date = (
+        checkin.previous_check_in_at.date().isoformat()
+        if checkin.previous_check_in_at is not None
+        else None
+    )
+    return {
+        "id": checkin.id,
+        "user_id": checkin.user_id,
+        "display_name": _checkin_monitor_display_name(checkin),
+        "membership": checkin.membership,
+        "previous_visit_date": previous_visit_date,
+        "checkin_count": checkin.checkin_count,
+        "check_in_at": _datetime_to_stored_text(checkin.check_in_at),
+        "check_in_at_local": _format_sqlite_utc_datetime(checkin.check_in_at),
+    }
 
 
 def _guest_form_path_for_member(member: Member, documents_dir: str) -> Path | None:
@@ -1864,6 +1924,10 @@ def create_app(db_path: Path | None = None) -> Flask:
     flask_app.config["USER_MANAGEMENT_ADMIN_PASSWORD_HASH"] = str(
         getattr(cfg, "USER_MANAGEMENT_ADMIN_PASSWORD_HASH", "")
     ).strip()
+    flask_app.config["USER_MANAGEMENT_CHECKIN_MONITOR_TOKEN"] = (
+        os.getenv("USER_MANAGEMENT_CHECKIN_MONITOR_TOKEN", "").strip()
+        or str(getattr(cfg, "USER_MANAGEMENT_CHECKIN_MONITOR_TOKEN", "")).strip()
+    )
     flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"] = _configured_barcode_secret()
     flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"] = str(
         getattr(cfg, "USER_MANAGEMENT_DOCUMENTS_DIR", "")
@@ -1909,6 +1973,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         "guest_registration_thanks",
         "admin_login",
         "admin_logout",
+        "checkins_latest_api",
         "self_checkin",
     }
 
@@ -2720,6 +2785,72 @@ def create_app(db_path: Path | None = None) -> Flask:
         )
         response.headers["Cache-Control"] = "no-cache"
         response.headers["X-Accel-Buffering"] = "no"
+        return response
+
+    @flask_app.route("/api/checkins/latest")
+    def checkins_latest_api():
+        if not _request_has_checkin_monitor_access():
+            return jsonify({"error": "unauthorized"}), 401
+
+        after_raw = request.args.get("after")
+        limit_raw = request.args.get("limit", "")
+        wait_raw = request.args.get("wait", "")
+        try:
+            after_id = int(after_raw) if after_raw is not None else None
+            requested_limit = int(limit_raw) if limit_raw else 20
+            requested_wait = float(wait_raw) if wait_raw else 0.0
+        except ValueError:
+            return jsonify({"error": "after, limit, and wait must be numbers"}), 400
+        if after_id is not None and after_id < 0:
+            return jsonify({"error": "after must be zero or greater"}), 400
+        if requested_limit <= 0:
+            return jsonify({"error": "limit must be greater than zero"}), 400
+        if requested_wait < 0:
+            return jsonify({"error": "wait must be zero or greater"}), 400
+        limit = min(requested_limit, CHECKIN_MONITOR_MAX_LIMIT)
+        wait_seconds = min(requested_wait, CHECKIN_MONITOR_MAX_WAIT_SECONDS)
+
+        deadline = time.monotonic() + wait_seconds
+
+        while True:
+            with open_connection() as connection:
+                database_latest_id = checkin_repository.latest_checkin_id(connection) or 0
+                if after_id is None:
+                    latest_id = database_latest_id
+                    checkins: list[CheckIn] = []
+                    has_more = False
+                else:
+                    checkins = checkin_repository.list_checkins_after_id(
+                        connection,
+                        after_id=after_id,
+                        limit=limit,
+                    )
+                    if checkins and checkins[-1].id is not None:
+                        latest_id = int(checkins[-1].id)
+                        has_more = latest_id < database_latest_id
+                    else:
+                        latest_id = min(after_id, database_latest_id)
+                        has_more = False
+
+            if checkins or after_id is None or time.monotonic() >= deadline:
+                break
+            sleep_seconds = min(
+                CHECKIN_MONITOR_POLL_SECONDS,
+                max(0.0, deadline - time.monotonic()),
+            )
+            if sleep_seconds > 0:
+                time.sleep(sleep_seconds)
+
+        response = jsonify(
+            {
+                "latest_id": latest_id,
+                "has_more": has_more,
+                "checkins": [
+                    _checkin_monitor_payload(checkin) for checkin in checkins
+                ],
+            }
+        )
+        response.headers["Cache-Control"] = "no-store, max-age=0"
         return response
 
     @flask_app.route("/documents/report")

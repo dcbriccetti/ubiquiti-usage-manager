@@ -86,6 +86,17 @@ def checkin_from_row(row: sqlite3.Row) -> CheckIn:
             if "visit_number" in row.keys() and row["visit_number"] is not None
             else None
         ),
+        previous_check_in_at=(
+            datetime.fromisoformat(row["previous_check_in_at"])
+            if "previous_check_in_at" in row.keys()
+            and row["previous_check_in_at"] is not None
+            else None
+        ),
+        checkin_count=(
+            int(row["checkin_count"])
+            if "checkin_count" in row.keys() and row["checkin_count"] is not None
+            else None
+        ),
         duration=row["duration"],
         membership=row["membership"],
     )
@@ -203,6 +214,70 @@ def list_checkins(connection: sqlite3.Connection) -> list[CheckIn]:
         FROM checkins
         ORDER BY check_in_at DESC, last_name, first_name
         """
+    ).fetchall()
+    return [checkin_from_row(row) for row in rows]
+
+
+def latest_checkin_id(connection: sqlite3.Connection) -> int | None:
+    '''Return the newest check-in row id.'''
+    row = connection.execute("SELECT MAX(id) AS latest_id FROM checkins").fetchone()
+    if row is None or row["latest_id"] is None:
+        return None
+    return int(row["latest_id"])
+
+
+def list_checkins_after_id(
+    connection: sqlite3.Connection,
+    *,
+    after_id: int,
+    limit: int,
+) -> list[CheckIn]:
+    '''Return check-ins created after a row id, oldest first.'''
+    rows = connection.execute(
+        """
+        SELECT
+            c.id,
+            c.user_id,
+            c.member_id,
+            c.last_name,
+            COALESCE(NULLIF(u.nickname, ''), c.first_name) AS first_name,
+            c.card_number,
+            c.check_in_at,
+            c.check_out_at,
+            c.total_checkins,
+            (
+                SELECT MAX(prev.check_in_at)
+                FROM checkins prev
+                WHERE (
+                    (c.user_id IS NOT NULL AND prev.user_id = c.user_id)
+                    OR (c.user_id IS NULL AND prev.card_number = c.card_number)
+                )
+                AND (
+                    prev.check_in_at < c.check_in_at
+                    OR (prev.check_in_at = c.check_in_at AND prev.id < c.id)
+                )
+            ) AS previous_check_in_at,
+            (
+                SELECT COUNT(*)
+                FROM checkins counted
+                WHERE (
+                    (c.user_id IS NOT NULL AND counted.user_id = c.user_id)
+                    OR (c.user_id IS NULL AND counted.card_number = c.card_number)
+                )
+                AND (
+                    counted.check_in_at < c.check_in_at
+                    OR (counted.check_in_at = c.check_in_at AND counted.id <= c.id)
+                )
+            ) AS checkin_count,
+            c.duration,
+            c.membership
+        FROM checkins c
+        LEFT JOIN users u ON u.id = c.user_id
+        WHERE c.id > ?
+        ORDER BY c.id
+        LIMIT ?
+        """,
+        (after_id, limit),
     ).fetchall()
     return [checkin_from_row(row) for row in rows]
 

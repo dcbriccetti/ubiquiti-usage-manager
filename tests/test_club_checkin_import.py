@@ -6,7 +6,7 @@ import sys
 import tempfile
 from contextlib import closing
 import unittest
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -465,6 +465,118 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("Check-ins by Check-in Number", payload["visit_number_chart_html"])
         self.assertIn("John", payload["rows_html"])
         self.assertIn("2026-05-03 15:59:20", payload["rows_html"])
+
+    def test_checkins_latest_api_requires_admin_or_monitor_token(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().get("/api/checkins/latest")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json(), {"error": "unauthorized"})
+
+    def test_checkins_latest_api_arms_without_returning_old_checkins(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                checkin_repository.upsert_checkin(connection, checkin_fixture())
+                connection.commit()
+                latest_id = checkin_repository.latest_checkin_id(connection)
+
+            response = client.get("/api/checkins/latest")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["latest_id"], latest_id)
+        self.assertEqual(payload["checkins"], [])
+
+    def test_checkins_latest_api_returns_new_checkins_for_monitor_token(self) -> None:
+        monitor_token = "local-watch-token"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            with patch.object(
+                cfg,
+                "USER_MANAGEMENT_CHECKIN_MONITOR_TOKEN",
+                monitor_token,
+                create=True,
+            ):
+                flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Baroni",
+                        first_name="Jimbo",
+                        nickname="Sammy",
+                        card_number="1861",
+                        membership="Visitor",
+                    ),
+                )
+                checkin_repository.upsert_checkin(
+                    connection,
+                    checkin_fixture(
+                        last_name="Baroni",
+                        first_name="Jimbo",
+                        card_number="1861",
+                        check_in_at=datetime(2026, 4, 26, 11, 30, 0),
+                    ),
+                )
+                after_id = checkin_repository.latest_checkin_id(connection)
+                checkin_repository.upsert_checkin(
+                    connection,
+                    checkin_fixture(
+                        last_name="Baroni",
+                        first_name="Jimbo",
+                        card_number="1861",
+                        check_in_at=datetime(2026, 5, 3, 15, 59, 20),
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().get(
+                f"/api/checkins/latest?after={after_id}",
+                headers={"X-Checkin-Monitor-Token": monitor_token},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["latest_id"], 2)
+        self.assertEqual(len(payload["checkins"]), 1)
+        self.assertEqual(payload["checkins"][0]["display_name"], "Sammy Baroni")
+        self.assertEqual(payload["checkins"][0]["membership"], "Visitor")
+        self.assertEqual(payload["checkins"][0]["previous_visit_date"], "2026-04-26")
+        self.assertEqual(payload["checkins"][0]["checkin_count"], 2)
+        self.assertEqual(payload["checkins"][0]["check_in_at"], "2026-05-03T15:59:20")
+        self.assertIn("check_in_at_local", payload["checkins"][0])
+        self.assertNotIn("card_number", payload["checkins"][0])
+        self.assertNotIn("1861", json.dumps(payload))
+
+    def test_checkins_latest_api_does_not_skip_rows_when_limited(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            with closing(database.connect(db_path)) as connection:
+                checkin_repository.upsert_checkin(
+                    connection,
+                    checkin_fixture(check_in_at=datetime(2026, 5, 3, 15, 0, 0)),
+                )
+                checkin_repository.upsert_checkin(
+                    connection,
+                    checkin_fixture(check_in_at=datetime(2026, 5, 3, 16, 0, 0)),
+                )
+                connection.commit()
+
+            response = client.get("/api/checkins/latest?after=0&limit=1")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["latest_id"], 1)
+        self.assertTrue(payload["has_more"])
+        self.assertEqual(len(payload["checkins"]), 1)
 
     def test_checkin_barcode_print_requires_admin_login(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1337,6 +1449,107 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("Check-in recorded.", response.get_data(as_text=True))
         self.assertEqual(len(checkins), 1)
         self.assertEqual(checkins[0].first_name, "John")
+
+    def test_self_checkin_accepts_nickname_initials(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Briccetti",
+                        first_name="David",
+                        nickname="Dave",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "5105105100", "initials": "DB"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Check-in recorded.", response.get_data(as_text=True))
+        self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_accepts_single_name_user_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Comet",
+                        first_name="(none)",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "5105105100", "initials": "C"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Check-in recorded.", response.get_data(as_text=True))
+        self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_resolves_duplicate_imported_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Garcia",
+                        first_name="Nicholas",
+                        card_number="1460",
+                        membership="Visitor",
+                        date_of_birth=date(1997, 2, 21),
+                        cell_phone="(209) 406-1011",
+                    ),
+                )
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Garcia",
+                        first_name="Nicholas",
+                        card_number="1071",
+                        membership="Associate Member",
+                        date_of_birth=date(1997, 2, 21),
+                        cell_phone="(209) 406-1011",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"phone": "2094061011", "initials": "NG"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Check-in recorded.", response.get_data(as_text=True))
+        self.assertEqual(len(checkins), 1)
+        self.assertEqual(checkins[0].membership, "Associate Member")
 
     def test_self_checkin_rejects_ambiguous_household_initials(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

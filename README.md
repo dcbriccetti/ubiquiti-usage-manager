@@ -72,6 +72,15 @@ stays the same and the browser still has the session cookie. Use the app logout
 button, clear browser cookies, or rotate `USER_MANAGEMENT_SESSION_SECRET` when
 you intentionally need to invalidate existing admin sessions.
 
+Local check-in monitors can poll `GET /api/checkins/latest`. In production,
+with `USER_MANAGEMENT_URL_PREFIX = '/users'`, that is
+`/users/api/checkins/latest`. A signed-in admin browser may call it directly.
+Headless clients such as a watch app should set
+`USER_MANAGEMENT_CHECKIN_MONITOR_TOKEN` in `src/config_local.py` and send it as
+the `X-Checkin-Monitor-Token` header. The first request without `after` returns
+the current `latest_id` and no rows, which lets the client start monitoring
+without replaying old check-ins. Later requests use `?after=<latest_id>`.
+
 The LAN usage dashboard can also use a password-backed admin session, which is
 helpful from VPN or on-site networks when the browser is not connected to Plus
 with a `PLUS_ADMINS` identity. Generate the LAN app hash and session secret with:
@@ -229,6 +238,7 @@ Config values:
 - `ORGANIZATION_TITLE`
 - `PLUS_ADMINS`
 - `LAN_ADMIN_PASSWORD_HASH` and `LAN_ADMIN_SESSION_SECRET` (optional password login for LAN app admins)
+- `USER_MANAGEMENT_CHECKIN_MONITOR_TOKEN` (optional local token for check-in monitor clients)
 - `NFDUMP_DIR` (directory containing completed `nfcapd.*` flow capture files)
 - `NFDUMP_BIN` (path/name for the `nfdump` command)
 - `INTERNAL_NETWORKS` (CIDR ranges treated as LAN clients for WAN flow attribution)

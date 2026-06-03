@@ -101,11 +101,92 @@ def normalize_name_token(value: str | None) -> str:
     return re.sub(r"[^A-Za-z]+", "", value or "").upper()
 
 
+def _normalize_identity_name(value: str | None) -> str:
+    token = normalize_name_token(value)
+    return "" if token in {"NONE", "NA", "NAN", "UNKNOWN"} else token
+
+
 def member_initials(member: Member) -> str:
     '''Return first-name/last-name initials for a member.'''
-    first_initial = member.first_name[:1].upper()
-    last_initial = member.last_name[:1].upper()
-    return f"{first_initial}{last_initial}"
+    first_name = _normalize_identity_name(member.first_name)
+    last_name = _normalize_identity_name(member.last_name)
+    return f"{first_name[:1]}{last_name[:1]}"
+
+
+def _member_identity_tokens(member: Member) -> set[str]:
+    first_name = _normalize_identity_name(member.first_name)
+    last_name = _normalize_identity_name(member.last_name)
+    nickname = _normalize_identity_name(member.nickname)
+    tokens = {token for token in {first_name, nickname} if token}
+    if not first_name and last_name:
+        tokens.add(last_name)
+
+    initials = member_initials(member)
+    if initials:
+        tokens.add(initials)
+    if nickname and last_name:
+        tokens.add(f"{nickname[:1]}{last_name[:1]}")
+    elif nickname:
+        tokens.add(nickname[:1])
+    return tokens
+
+
+def _member_identity_key(member: Member) -> tuple[str, str, date | None]:
+    return (
+        _normalize_identity_name(member.first_name),
+        _normalize_identity_name(member.last_name),
+        member.date_of_birth,
+    )
+
+
+def _membership_rank(member: Member) -> int:
+    ranks = {
+        "Full Member": 0,
+        "Associate Member": 1,
+        "AANR Member": 2,
+        "Visitor": 3,
+    }
+    return ranks.get(member.membership, 4)
+
+
+def _matching_member_checkin_sort_key(
+    connection: sqlite3.Connection,
+    member: Member,
+) -> tuple[int, int, float, int]:
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS checkin_count, MAX(check_in_at) AS last_check_in_at
+        FROM checkins
+        WHERE user_id = ?
+        """,
+        (member.id,),
+    ).fetchone()
+    checkin_count = int(row["checkin_count"] or 0) if row is not None else 0
+    last_check_in_at = str(row["last_check_in_at"] or "") if row is not None else ""
+    last_check_in_timestamp = (
+        datetime.fromisoformat(last_check_in_at).timestamp()
+        if last_check_in_at
+        else 0.0
+    )
+    return (
+        _membership_rank(member),
+        -checkin_count,
+        -last_check_in_timestamp,
+        int(member.id or 0),
+    )
+
+
+def _resolve_duplicate_identity_match(
+    connection: sqlite3.Connection,
+    matches: list[Member],
+) -> Member | None:
+    identity_keys = {_member_identity_key(member) for member in matches}
+    if len(identity_keys) != 1:
+        return None
+    return sorted(
+        matches,
+        key=lambda member: _matching_member_checkin_sort_key(connection, member),
+    )[0]
 
 
 def member_from_row(row: sqlite3.Row) -> Member:
@@ -515,7 +596,11 @@ def find_member_by_phone(connection: sqlite3.Connection, phone: str) -> Member |
         if target_digits in member_numbers:
             matches.append(member)
 
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return _resolve_duplicate_identity_match(connection, matches)
+    return None
 
 
 def find_member_by_phone_and_initials(
@@ -538,15 +623,15 @@ def find_member_by_phone_and_initials(
             normalize_phone(member.work_phone),
             normalize_phone(member.cell_phone),
         }
-        identity_matches = (
-            member_initials(member) == target_identity
-            or normalize_name_token(member.first_name) == target_identity
-            or normalize_name_token(member.nickname) == target_identity
-        )
+        identity_matches = target_identity in _member_identity_tokens(member)
         if target_digits in member_numbers and identity_matches:
             matches.append(member)
 
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return _resolve_duplicate_identity_match(connection, matches)
+    return None
 
 
 def update_member(connection: sqlite3.Connection, member: Member) -> None:
