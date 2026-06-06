@@ -190,7 +190,7 @@
       checkinStatus?.focus({ preventScroll: true });
 
       if (!hasStatus && barcodeInput && barcodeForm) {
-        const barcodeTokenPattern = /v1:[A-Za-z0-9_-]{12}/;
+        const barcodeTokenPattern = /(?:U2:[A-Za-z0-9_-]{8}|UM1:[A-Za-z0-9_-]{12})/;
         let scanBuffer = "";
         let scanBufferTimer = 0;
 

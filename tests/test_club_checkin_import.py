@@ -642,7 +642,8 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('class="checkin-barcode"', body)
         self.assertIn("Print Barcode", body)
         self.assertIn("@page", body)
-        self.assertIn("size: 90mm 62mm", body)
+        self.assertIn("size: 62mm 90mm", body)
+        self.assertIn('shape-rendering="crispEdges"', body)
         self.assertNotIn("1861", body)
         self.assertNotIn("Baroni", body)
 
@@ -1029,7 +1030,6 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("Phone Check-in", body)
         self.assertNotIn("John", body)
         self.assertNotIn("1861", body)
-        self.assertNotIn("UM1:", body)
         self.assertIn("checkin-barcode", body)
         self.assertIsNotNone(barcode_secret_row)
         self.assertEqual(len(checkins), 1)
@@ -1134,9 +1134,10 @@ class ClubCheckInImportTests(unittest.TestCase):
                 barcode_secret = _barcode_secret_for_connection(
                     connection,
                     flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
-                )
+            )
                 connection.commit()
             token = _barcode_token_for_card_number("1861", barcode_secret)
+            self.assertTrue(token.startswith("U2:"))
             self.assertNotIn("1861", token)
             self.assertNotIn("MTg2MQ", token)
             response = flask_app.test_client().post(
@@ -1159,7 +1160,43 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("Phone Check-in", body)
         self.assertNotIn("John", body)
         self.assertNotIn("1861", body)
-        self.assertNotIn("UM1:", body)
+        self.assertEqual(len(checkins), 1)
+
+    def test_self_checkin_accepts_legacy_signed_barcode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="John",
+                        card_number="1861",
+                        membership="Visitor",
+                        cell_phone="(510) 510-5100",
+                    ),
+                )
+                connection.commit()
+
+            with closing(database.connect(db_path)) as connection:
+                barcode_secret = _barcode_secret_for_connection(
+                    connection,
+                    flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                )
+                connection.commit()
+            token = _barcode_token_for_card_number("1861", barcode_secret, "UM1")
+            self.assertTrue(token.startswith("UM1:"))
+            response = flask_app.test_client().post(
+                "/self-checkin",
+                data={"barcode_token": token},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Check-in recorded.", response.get_data(as_text=True))
         self.assertEqual(len(checkins), 1)
 
     def test_self_checkin_ignores_repeat_checkin_within_one_hour(self) -> None:
@@ -1619,7 +1656,6 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("John Doe", body)
         self.assertNotIn("john@example.test", body)
         self.assertNotIn("1861", body)
-        self.assertNotIn("UM1:", body)
         self.assertNotIn("Review my current information", body)
 
     def test_checkins_import_route_is_removed(self) -> None:

@@ -105,7 +105,8 @@ ID_DOCUMENT_NAME_PATTERN = re.compile(
     r"^(?:drivers?\s+license|drivers?\s+licence|dl|id|identification)(?:\b|[_\-\s])",
     re.IGNORECASE,
 )
-BARCODE_TOKEN_VERSION = "UM1"
+BARCODE_TOKEN_VERSION = "U2"
+LEGACY_BARCODE_TOKEN_VERSIONS = ("UM1",)
 CLUB_DISPLAY_TIMEZONE = ZoneInfo("America/Los_Angeles")
 CHECKIN_MONITOR_TOKEN_HEADER = "X-Checkin-Monitor-Token"
 CHECKIN_MONITOR_MAX_LIMIT = 50
@@ -1752,18 +1753,23 @@ def _barcode_secret_bytes(secret_key: object) -> bytes:
     return str(secret_key or "").encode("utf-8")
 
 
-def _barcode_signature(card_number: str, secret_key: object) -> str:
+def _barcode_signature(card_number: str, secret_key: object, byte_count: int = 6) -> str:
     digest = hmac.new(
         _barcode_secret_bytes(secret_key),
         card_number.encode("utf-8"),
         hashlib.sha256,
     ).digest()
-    return base64.urlsafe_b64encode(digest[:9]).decode("ascii").rstrip("=")
+    return base64.urlsafe_b64encode(digest[:byte_count]).decode("ascii").rstrip("=")
 
 
-def _barcode_token_for_card_number(card_number: str, secret_key: object) -> str:
-    signature = _barcode_signature(card_number, secret_key)
-    return f"{BARCODE_TOKEN_VERSION}:{signature}"
+def _barcode_token_for_card_number(
+    card_number: str,
+    secret_key: object,
+    version: str = BARCODE_TOKEN_VERSION,
+) -> str:
+    signature_byte_count = 9 if version in LEGACY_BARCODE_TOKEN_VERSIONS else 6
+    signature = _barcode_signature(card_number, secret_key, signature_byte_count)
+    return f"{version}:{signature}"
 
 
 def _barcode_print_display_name(member: Member) -> str:
@@ -1815,13 +1821,15 @@ def _member_from_barcode_token(
     token: str,
     secret_key: object,
 ) -> Member | None:
-    parts = token.strip().split(":")
-    if len(parts) != 2 or parts[0] != BARCODE_TOKEN_VERSION:
+    normalized_token = token.strip()
+    parts = normalized_token.split(":")
+    accepted_versions = (BARCODE_TOKEN_VERSION, *LEGACY_BARCODE_TOKEN_VERSIONS)
+    if len(parts) != 2 or parts[0] not in accepted_versions:
         return None
     for member in member_repository.list_members(connection):
         if hmac.compare_digest(
-            token.strip(),
-            _barcode_token_for_card_number(member.card_number, secret_key),
+            normalized_token,
+            _barcode_token_for_card_number(member.card_number, secret_key, parts[0]),
         ):
             return member
     return None
@@ -1855,9 +1863,10 @@ def _code128b_svg(value: str) -> str:
     svg_width = x_position + quiet_zone
     return (
         f'<svg class="checkin-barcode" role="img" aria-label="Self check-in barcode" '
-        f'viewBox="0 0 {svg_width} {height}" xmlns="http://www.w3.org/2000/svg">'
+        f'shape-rendering="crispEdges" viewBox="0 0 {svg_width} {height}" '
+        f'xmlns="http://www.w3.org/2000/svg">'
         f'<rect width="{svg_width}" height="{height}" fill="#fff"/>'
-        f'<g fill="#111827">{"".join(rects)}</g>'
+        f'<g fill="#000">{"".join(rects)}</g>'
         "</svg>"
     )
 
