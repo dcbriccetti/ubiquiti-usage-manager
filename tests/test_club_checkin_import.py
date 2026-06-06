@@ -642,7 +642,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('class="checkin-barcode"', body)
         self.assertIn("Print Barcode", body)
         self.assertIn("@page", body)
-        self.assertIn("size: 62mm 40mm", body)
+        self.assertIn("size: 90mm 62mm", body)
         self.assertNotIn("1861", body)
         self.assertNotIn("Baroni", body)
 
