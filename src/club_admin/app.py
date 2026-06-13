@@ -1001,6 +1001,66 @@ def _guest_registration_from_form(
     return member, registration
 
 
+def _guest_registration_identity_token(value: str | None) -> str:
+    return member_repository.normalize_name_token(value)
+
+
+def _guest_registration_contact_tokens(member: Member) -> set[str]:
+    tokens = {
+        member_repository.normalize_phone(member.phone),
+        member_repository.normalize_phone(member.work_phone),
+        member_repository.normalize_phone(member.cell_phone),
+    }
+    if member.email:
+        tokens.add(member.email.strip().lower())
+    tokens.discard("")
+    return tokens
+
+
+def _matching_guest_registration_member(
+    connection: sqlite3.Connection,
+    member: Member,
+) -> Member | None:
+    if member.date_of_birth is None:
+        return None
+    first_name = _guest_registration_identity_token(member.first_name)
+    last_name = _guest_registration_identity_token(member.last_name)
+    contact_tokens = _guest_registration_contact_tokens(member)
+    if not first_name or not last_name or not contact_tokens:
+        return None
+
+    matches = [
+        candidate
+        for candidate in member_repository.list_members(connection)
+        if candidate.membership == "Visitor"
+        and candidate.date_of_birth == member.date_of_birth
+        and _guest_registration_identity_token(candidate.first_name) == first_name
+        and _guest_registration_identity_token(candidate.last_name) == last_name
+        and bool(contact_tokens & _guest_registration_contact_tokens(candidate))
+    ]
+    if not matches:
+        return None
+    return sorted(matches, key=lambda candidate: int(candidate.id or 0))[0]
+
+
+def _guest_registration_exists_for_visit(
+    connection: sqlite3.Connection,
+    *,
+    user_id: int,
+    visit_date: date,
+) -> bool:
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM guest_registrations
+        WHERE user_id = ? AND visit_date = ?
+        LIMIT 1
+        """,
+        (user_id, visit_date.isoformat()),
+    ).fetchone()
+    return row is not None
+
+
 def _safe_next_url(next_url: str | None) -> str:
     if next_url and next_url.startswith("/") and not next_url.startswith("//"):
         return next_url
@@ -2053,28 +2113,46 @@ def create_app(db_path: Path | None = None) -> Flask:
 
             with open_connection() as connection:
                 connection.execute("BEGIN IMMEDIATE")
-                card_number = _generate_guest_card_number(connection)
-                member = replace(
-                    member,
-                    card_number=card_number,
-                    screening_status="pending",
-                )
+                existing_member = _matching_guest_registration_member(connection, member)
+                if existing_member is None:
+                    card_number = _generate_guest_card_number(connection)
+                    member = replace(
+                        member,
+                        card_number=card_number,
+                        screening_status="pending",
+                    )
+                    member_id = member_repository.insert_member(connection, member)
+                    member = replace(member, id=member_id)
+                else:
+                    member_id = cast(int, existing_member.id)
+                    member = replace(
+                        member,
+                        id=member_id,
+                        card_number=existing_member.card_number,
+                        membership=existing_member.membership,
+                        member_since=existing_member.member_since,
+                        screening_status=existing_member.screening_status,
+                    )
+                    member_repository.update_member(connection, member)
 
-                member_id = member_repository.insert_member(connection, member)
-                member = replace(member, id=member_id)
-                guest_registration_repository.insert_guest_registration(
+                if not _guest_registration_exists_for_visit(
                     connection,
-                    replace(registration, user_id=member_id),
-                )
-                audit_repository.record_field_change(
-                    connection,
-                    entity_type="user",
-                    entity_id=member_id,
-                    action="edit",
-                    field_name="guest registration submitted",
-                    old_value=None,
-                    new_value=registration.visit_date,
-                )
+                    user_id=member_id,
+                    visit_date=registration.visit_date,
+                ):
+                    guest_registration_repository.insert_guest_registration(
+                        connection,
+                        replace(registration, user_id=member_id),
+                    )
+                    audit_repository.record_field_change(
+                        connection,
+                        entity_type="user",
+                        entity_id=member_id,
+                        action="edit",
+                        field_name="guest registration submitted",
+                        old_value=None,
+                        new_value=registration.visit_date,
+                    )
                 checkin_result = _record_self_checkin(connection, member)
                 if checkin_result.recorded:
                     _record_checkin_change(

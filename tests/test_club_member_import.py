@@ -798,6 +798,59 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(checkins[0].last_name, "Doe")
         self.assertEqual(checkins[0].first_name, "John")
 
+    def test_guest_registration_duplicate_submit_reuses_visitor_user(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = flask_app.test_client()
+            form_data = {
+                "visit_date": "2026-05-14",
+                "last_name": "Doe",
+                "first_name": "John",
+                "date_of_birth": "06/15/1990",
+                "nickname": "Johnny",
+                "address": "123 Main St",
+                "city": "Everytown",
+                "state": "CA",
+                "zip": "94000",
+                "cell_phone": "510.510.5100",
+                "email": "john@example.test",
+                "marital_status": "single",
+            }
+
+            first_response = client.post("/guest-registration", data=form_data)
+            second_response = client.post("/guest-registration", data=form_data)
+
+            with closing(database.connect(db_path)) as connection:
+                users = member_repository.list_members(connection)
+                records = guest_registration_repository.list_guest_registration_records(
+                    connection
+                )
+                checkins = checkin_repository.list_checkins(connection)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=users[0].id,
+                )
+
+        self.assertEqual(first_response.status_code, 302)
+        self.assertEqual(second_response.status_code, 302)
+        self.assertEqual(len(users), 1)
+        self.assertEqual(users[0].last_name, "Doe")
+        self.assertEqual(users[0].card_number, "1")
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].registration.user_id, users[0].id)
+        self.assertEqual(len(checkins), 1)
+        self.assertEqual(checkins[0].user_id, users[0].id)
+        self.assertEqual(
+            [
+                entry.field_name
+                for entry in audit_entries
+                if entry.field_name == "guest registration submitted"
+            ],
+            ["guest registration submitted"],
+        )
+
     def test_guest_registration_normalizes_obvious_casing_without_lowercasing_email(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
