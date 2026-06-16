@@ -36,9 +36,9 @@ DEFAULT_LABELS = {
 
 
 DEFAULT_AGREEMENT_PARAGRAPHS = (
-    "In consideration for guest access to this organization's property, facilities, activities, and/or events, I agree to comply with all rules, regulations, policies, and procedures.",
-    "I release the organization, its employees, officers, directors, volunteers, and agents from claims resulting from my guest access to the property, facilities, activities, and/or events.",
-    "I understand that as a guest I have no right to remain on the property and may be asked to leave at any time without cause.",
+    "In consideration for visitor access to this organization's property, facilities, activities, and/or events, I agree to comply with all rules, regulations, policies, and procedures.",
+    "I release the organization, its employees, officers, directors, volunteers, and agents from claims resulting from my visitor access to the property, facilities, activities, and/or events.",
+    "I understand that as a visitor I have no right to remain on the property and may be asked to leave at any time without cause.",
     "I am 18 years or older. I have read and agree to the terms and conditions set forth on this form.",
 )
 
@@ -57,7 +57,7 @@ class GuestFormSpec:
 
 def default_guest_form_spec() -> GuestFormSpec:
     return GuestFormSpec(
-        title="Guest Registration",
+        title="Visitor Registration",
         subtitle="",
         labels=dict(DEFAULT_LABELS),
         agreement_title="Agreement and Release",

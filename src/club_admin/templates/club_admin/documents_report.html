@@ -28,7 +28,7 @@
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
         <a href="{{ url_for('checkins_report') }}">Check-ins</a>
-        <a href="{{ url_for('guest_registrations') }}">Guests</a>
+        <a href="{{ url_for('guest_registrations') }}">Visitors</a>
         <a class="active" href="{{ url_for('documents_report') }}" aria-current="page">Documents</a>
         <a href="{{ url_for('recent_changes') }}">Changes</a>
       </nav>
@@ -46,11 +46,11 @@
         <strong>{{ report.total_users }}</strong>
       </div>
       <div>
-        <span>With Guest Form</span>
+        <span>With Visitor Form</span>
         <strong>{{ report.users_with_guest_form }}</strong>
       </div>
       <div>
-        <span>Without Guest Form</span>
+        <span>Without Visitor Form</span>
         <strong>{{ report.users_without_guest_form }}</strong>
       </div>
       <div>
@@ -109,7 +109,7 @@
       </tbody>
     </table>
 
-    <h2>Users Missing Guest Form</h2>
+    <h2>Users Missing Visitor Form</h2>
     <table>
       <thead>
         <tr>
@@ -127,7 +127,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="3" class="empty">Every imported user has a guest form.</td>
+            <td colspan="3" class="empty">Every imported user has a visitor form.</td>
           </tr>
         {% endfor %}
       </tbody>

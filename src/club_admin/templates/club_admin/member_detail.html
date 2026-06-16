@@ -18,7 +18,7 @@
         <nav class="nav-links" aria-label="Club admin navigation">
           <a class="active" href="{{ url_for('members') }}" aria-current="page">Users</a>
           <a href="{{ url_for('checkins_report') }}">Check-ins</a>
-          <a href="{{ url_for('guest_registrations') }}">Guests</a>
+          <a href="{{ url_for('guest_registrations') }}">Visitors</a>
           <a href="{{ url_for('documents_report') }}">Documents</a>
           <a href="{{ url_for('recent_changes') }}">Changes</a>
         </nav>
@@ -230,7 +230,7 @@
         {% for entry in audit_entries if entry.field_name != 'card_number' %}
           <tr>
             <td class="nowrap">{{ entry.changed_at|local_sqlite_datetime }}</td>
-            <td>{{ entry.field_name }}</td>
+            <td>{{ entry.field_name|audit_field_name }}</td>
             <td>{{ entry.old_value or '' }}</td>
             <td>{{ entry.new_value or '' }}</td>
           </tr>

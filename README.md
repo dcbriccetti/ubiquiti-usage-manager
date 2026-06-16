@@ -52,7 +52,7 @@ Set `USER_MANAGEMENT_ORGANIZATION_NAME` in `src/config_local.py` to change the v
 When deploying behind the same Nginx server as the LAN app, set
 `USER_MANAGEMENT_URL_PREFIX = '/users'` so user-management links and static
 assets stay under `/users/...`.
-Self check-in and guest registration are public. User lists, details, reports,
+Self check-in and visitor registration are public. User lists, details, reports,
 exports, documents, notes, and edits require admin login. Set
 `USER_MANAGEMENT_ADMIN_PASSWORD_HASH` in ignored
 `src/config_local.py`; the app fails closed for admin pages when no hash is
@@ -106,11 +106,11 @@ Check-in procedure:
    send Enter/Return to submit the check-in.
 4. Plain card numbers are not accepted as barcode check-ins.
 
-Guest screening procedure:
+Visitor screening procedure:
 
-1. New guest registrations are created with screening status `Needs review`.
-2. A manager attaches the guest's ID image, checks the outside screening site,
-   and clicks `Mark Safe` before printing the guest form.
+1. New visitor registrations are created with screening status `Needs review`.
+2. A manager attaches the visitor's ID image, checks the outside screening site,
+   and clicks `Mark Safe` before printing the visitor form.
 3. Existing users have no screening flag by default and continue to check in
    normally unless a manager explicitly changes the status.
 4. If a user must be banned, a manager edits the user, changes
@@ -119,20 +119,23 @@ Guest screening procedure:
    The kiosk shows `Please see the front desk.`, and each blocked attempt is
    logged on that user.
 
-To show scanned guest forms on user detail pages, set
+To show scanned visitor forms on user detail pages, set
 `USER_MANAGEMENT_DOCUMENTS_DIR` in `src/config_local.py`. The app looks inside a
 folder named with the user's card number for the first `.jpg` or `.jpeg` file
-whose name starts with `Guest Form`.
+whose name starts with `Guest Form`. That filename prefix is historical and is
+still supported for existing scanned documents even though the UI says
+`Visitor Form`.
 To customize the printable first-time visitor form, set
 `USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH` in `src/config_local.py` to a local
-TOML file. When no form definition is configured, the app uses a generic
+TOML file. The config variable name is historical; it points to the visitor
+form definition. When no form definition is configured, the app uses a generic
 visitor registration form. Keep organization-specific form text in ignored
 local files.
 
 Example form definition:
 
 ```toml
-title = "Guest Registration"
+title = "Visitor Registration"
 version = "ORG-1.0"
 
 [labels]

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ app_title }} | Filled Guest Form</title>
+  <title>{{ app_title }} | Filled Visitor Form</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
   <style media="print">
     @page {
@@ -15,7 +15,7 @@
 <body class="print-body">
   <main class="print-page">
     <div class="print-actions">
-      <a href="{{ url_for('guest_registrations') }}">Guest Registrations</a>
+      <a href="{{ url_for('guest_registrations') }}">Visitor Registrations</a>
       <button type="button" data-upload-dialog-open="id-upload-dialog">
         {{ 'Replace ID Image' if id_document_name else 'Attach ID Image' }}
       </button>
@@ -80,7 +80,7 @@
         </header>
       </section>
 
-      <section class="generated-form-grid" aria-label="Guest information">
+      <section class="generated-form-grid" aria-label="Visitor information">
         <div class="form-line span-8">
           <span>{{ labels.name }}</span>
           <strong>{{ member.last_name }}, {{ member.first_name }}</strong>

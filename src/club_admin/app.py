@@ -171,6 +171,12 @@ def _format_sqlite_utc_date(value: datetime | str | None) -> str:
     return local_value.strftime("%Y-%m-%d") if local_value is not None else ""
 
 
+def _display_audit_field_name(value: str | None) -> str:
+    if value == "guest registration submitted":
+        return "visitor registration submitted"
+    return value or ""
+
+
 def _datetime_to_stored_text(value: datetime | None) -> str | None:
     return value.isoformat(timespec="seconds") if value is not None else None
 
@@ -1246,7 +1252,7 @@ def _id_document_name_for_member(member: Member, documents_dir: str) -> str | No
 
 def _member_document_preview(member: Member, documents_dir: str) -> MemberDocumentPreview | None:
     if _guest_form_path_for_member(member, documents_dir) is not None:
-        return MemberDocumentPreview(title="Guest Form", is_guest_form=True)
+        return MemberDocumentPreview(title="Visitor Form", is_guest_form=True)
     id_document_name = _id_document_name_for_member(member, documents_dir)
     if id_document_name is None:
         return None
@@ -2024,6 +2030,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     flask_app.add_template_filter(_format_sqlite_utc_datetime, "local_sqlite_datetime")
     flask_app.add_template_filter(_format_sqlite_utc_date, "local_sqlite_date")
+    flask_app.add_template_filter(_display_audit_field_name, "audit_field_name")
 
     def require_admin(view):
         @wraps(view)

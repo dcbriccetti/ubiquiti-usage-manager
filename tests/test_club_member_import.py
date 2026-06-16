@@ -495,7 +495,7 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0")
-        self.assertIn("Guest Registration", response.get_data(as_text=True))
+        self.assertIn("Visitor Registration", response.get_data(as_text=True))
 
     def test_guest_registration_thanks_returns_to_self_checkin_after_delay(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -952,7 +952,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         body = response.get_data(as_text=True)
         self.assertIn("Phone or email is required.", body)
-        self.assertIn("Guest Registration", body)
+        self.assertIn("Visitor Registration", body)
         self.assertIn('value="Doe"', body)
         self.assertIn('value="John"', body)
 
@@ -2118,7 +2118,7 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("<h2>Guest Form</h2>", body)
+        self.assertIn("<h2>Visitor Form</h2>", body)
         self.assertIn(f'/members/{member.id}/guest-form.jpg', body)
         self.assertIn("Driver License.jpg", body)
         self.assertIn(f'/members/{member.id}/document?name=Driver+License.jpg', body)
@@ -2328,8 +2328,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Documents Report", body)
         self.assertIn("Filename Patterns", body)
         self.assertIn("Extension Counts", body)
-        self.assertIn("With Guest Form", body)
-        self.assertIn("Without Guest Form", body)
+        self.assertIn("With Visitor Form", body)
+        self.assertIn("Without Visitor Form", body)
         self.assertIn("Public", body)
         self.assertIn("Jane", body)
         self.assertIn("Example", body)
@@ -3170,7 +3170,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(audit_entries[0].field_name, "driver license uploaded")
         self.assertEqual(audit_entries[0].new_value, "Driver License.jpg")
         self.assertEqual(queue_response.status_code, 200)
-        self.assertIn("Guest Registrations", queue_body)
+        self.assertIn("Visitor Registrations", queue_body)
         self.assertIn("2026-05-30 18:30:00", queue_body)
         self.assertNotIn("2026-05-31 01:30:00", queue_body)
         self.assertIn("Needs review", queue_body)
