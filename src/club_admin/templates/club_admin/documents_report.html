@@ -46,12 +46,16 @@
         <strong>{{ report.total_users }}</strong>
       </div>
       <div>
-        <span>With Visitor Form</span>
+        <span>Document Folders</span>
+        <strong>{{ report.total_document_folders }}</strong>
+      </div>
+      <div>
+        <span>Legacy Visitor Forms</span>
         <strong>{{ report.users_with_guest_form }}</strong>
       </div>
       <div>
-        <span>Without Visitor Form</span>
-        <strong>{{ report.users_without_guest_form }}</strong>
+        <span>Stored ID Images</span>
+        <strong>{{ report.users_with_id_document }}</strong>
       </div>
       <div>
         <span>Folders Without User</span>
@@ -69,7 +73,7 @@
         <tr>
           <th>Pattern</th>
           <th class="numeric">Count</th>
-          <th>Examples</th>
+          <th>Example Names</th>
         </tr>
       </thead>
       <tbody>
@@ -109,31 +113,37 @@
       </tbody>
     </table>
 
-    <h2>Users Missing Visitor Form</h2>
+    <h2>Banned</h2>
     <table>
       <thead>
         <tr>
-          <th>Last Name</th>
-          <th>First Name</th>
-          <th>Membership</th>
+          <th>User or Folder</th>
+          <th>Document</th>
         </tr>
       </thead>
       <tbody>
-        {% for member in report.missing_guest_form_users %}
+        {% for entry in report.banned_documents %}
           <tr>
-            <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.last_name }}</a></td>
-            <td><a href="{{ url_for('member_detail', member_id=member.id) }}">{{ member.first_name }}</a></td>
-            <td>{{ member.membership }}</td>
+            <td>
+              {% if entry.member %}
+                <a href="{{ url_for('member_detail', member_id=entry.member.id) }}">{{ entry.member.last_name }}, {{ entry.member.first_name }}</a>
+              {% elif entry.folder_name %}
+                {{ entry.folder_name }}
+              {% else %}
+                Top level
+              {% endif %}
+            </td>
+            <td>{{ document_entry(entry.entry_name, entry.folder_name) }}</td>
           </tr>
         {% else %}
           <tr>
-            <td colspan="3" class="empty">Every imported user has a visitor form.</td>
+            <td colspan="2" class="empty">No banned-related documents found.</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
 
-    <h2>Other Entries In User Folders</h2>
+    <h2>Additional Documents in User Folders</h2>
     <table>
       <thead>
         <tr>
@@ -153,7 +163,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="2" class="empty">No other entries found in user folders.</td>
+            <td colspan="2" class="empty">No additional documents found in user folders.</td>
           </tr>
         {% endfor %}
       </tbody>

@@ -286,16 +286,26 @@ class LiveCheckInResult:
 
 
 @dataclass(frozen=True, kw_only=True)
+class BannedDocumentEntry:
+    entry_name: str
+    folder_name: str | None
+    member: Member | None
+
+
+@dataclass(frozen=True, kw_only=True)
 class DocumentsScanReport:
     configured: bool
     readable: bool
     total_users: int
+    total_document_folders: int
     total_document_files: int
     users_with_guest_form: int
+    users_with_id_document: int
     users_without_guest_form: int
     extension_counts: tuple[DocumentExtensionCount, ...]
     filename_patterns: tuple[DocumentFilenamePattern, ...]
     missing_guest_form_users: tuple[Member, ...]
+    banned_documents: tuple[BannedDocumentEntry, ...]
     card_folders_without_user: tuple[tuple[str, tuple[str, ...]], ...]
     user_folders_with_extra_files: tuple[tuple[Member, tuple[str, ...]], ...]
     non_folder_entries: tuple[str, ...]
@@ -1583,8 +1593,17 @@ def _extra_document_names(card_dir: Path, guest_form_path: Path | None) -> tuple
         resolved_child = child.resolve(strict=False)
         if resolved_guest_form_path is not None and resolved_child == resolved_guest_form_path:
             continue
+        if child.is_file() and child.name.casefold() == DRIVER_LICENSE_DOCUMENT_NAME.casefold():
+            continue
+        if child.is_file() and _is_banned_document_name(child.name):
+            continue
         extra_names.append(child.name + ("/" if child.is_dir() else ""))
     return tuple(extra_names)
+
+
+def _is_banned_document_name(entry_name: str) -> bool:
+    normalized_name = _normalized_filename(entry_name).casefold()
+    return normalized_name.startswith("pink card") or normalized_name.startswith("banned")
 
 
 def _folder_entry_names(folder: Path) -> tuple[str, ...]:
@@ -1618,11 +1637,17 @@ def _filename_analysis(file_names: list[str]) -> tuple[
     extension_counter = Counter(_filename_extension(name) for name in file_names)
     pattern_counter = Counter(_filename_pattern(name) for name in file_names)
     pattern_examples: dict[str, list[str]] = {}
+    pattern_example_names: dict[str, set[str]] = {}
     for file_name in sorted(file_names, key=_normalized_filename):
         pattern = _filename_pattern(file_name)
         pattern_examples.setdefault(pattern, [])
+        pattern_example_names.setdefault(pattern, set())
+        normalized_name = _normalized_filename(file_name).casefold()
+        if normalized_name in pattern_example_names[pattern]:
+            continue
         if len(pattern_examples[pattern]) < 3:
             pattern_examples[pattern].append(file_name)
+            pattern_example_names[pattern].add(normalized_name)
 
     extension_counts = tuple(
         DocumentExtensionCount(extension=extension, count=count)
@@ -1685,12 +1710,15 @@ def _scan_documents_directory(members: list[Member], documents_dir: str) -> Docu
             configured=False,
             readable=False,
             total_users=len(members),
+            total_document_folders=0,
             total_document_files=0,
             users_with_guest_form=0,
+            users_with_id_document=0,
             users_without_guest_form=len(members),
             extension_counts=empty_extension_counts,
             filename_patterns=empty_filename_patterns,
             missing_guest_form_users=tuple(members),
+            banned_documents=(),
             card_folders_without_user=(),
             user_folders_with_extra_files=(),
             non_folder_entries=(),
@@ -1702,12 +1730,15 @@ def _scan_documents_directory(members: list[Member], documents_dir: str) -> Docu
             configured=True,
             readable=False,
             total_users=len(members),
+            total_document_folders=0,
             total_document_files=0,
             users_with_guest_form=0,
+            users_with_id_document=0,
             users_without_guest_form=len(members),
             extension_counts=empty_extension_counts,
             filename_patterns=empty_filename_patterns,
             missing_guest_form_users=tuple(members),
+            banned_documents=(),
             card_folders_without_user=(),
             user_folders_with_extra_files=(),
             non_folder_entries=(),
@@ -1718,10 +1749,13 @@ def _scan_documents_directory(members: list[Member], documents_dir: str) -> Docu
         for member in members
     }
     user_cards_with_guest_form: set[str] = set()
+    user_cards_with_id_document: set[str] = set()
+    banned_documents: list[BannedDocumentEntry] = []
     user_folders_with_extra_files: list[tuple[Member, tuple[str, ...]]] = []
     card_folders_without_user: list[tuple[str, tuple[str, ...]]] = []
     non_folder_entries: list[str] = []
     document_file_names: list[str] = []
+    document_folder_count = 0
 
     try:
         children = sorted(base_dir.iterdir(), key=lambda path: _normalized_filename(path.name))
@@ -1730,12 +1764,15 @@ def _scan_documents_directory(members: list[Member], documents_dir: str) -> Docu
             configured=True,
             readable=False,
             total_users=len(members),
+            total_document_folders=0,
             total_document_files=0,
             users_with_guest_form=0,
+            users_with_id_document=0,
             users_without_guest_form=len(members),
             extension_counts=empty_extension_counts,
             filename_patterns=empty_filename_patterns,
             missing_guest_form_users=tuple(members),
+            banned_documents=(),
             card_folders_without_user=(),
             user_folders_with_extra_files=(),
             non_folder_entries=(),
@@ -1748,13 +1785,31 @@ def _scan_documents_directory(members: list[Member], documents_dir: str) -> Docu
             non_folder_entries.append(child.name)
             if child.is_file():
                 document_file_names.append(child.name)
+                if _is_banned_document_name(child.name):
+                    banned_documents.append(
+                        BannedDocumentEntry(
+                            entry_name=child.name,
+                            folder_name=None,
+                            member=None,
+                        )
+                    )
             continue
 
-        document_file_names.extend(
-            folder_child.name for folder_child in _folder_entry_paths(child) if folder_child.is_file()
-        )
+        document_folder_count += 1
+        folder_children = _folder_entry_paths(child)
+        document_file_names.extend(folder_child.name for folder_child in folder_children if folder_child.is_file())
         normalized_card = _normalized_filename(child.name)
         member = members_by_card.get(normalized_card)
+        for folder_child in folder_children:
+            if not folder_child.is_file() or not _is_banned_document_name(folder_child.name):
+                continue
+            banned_documents.append(
+                BannedDocumentEntry(
+                    entry_name=folder_child.name,
+                    folder_name=child.name,
+                    member=member,
+                )
+            )
         if member is None:
             card_folders_without_user.append((child.name, _folder_entry_names(child)))
             continue
@@ -1762,6 +1817,8 @@ def _scan_documents_directory(members: list[Member], documents_dir: str) -> Docu
         guest_form_path = _first_guest_form_image(child)
         if guest_form_path is not None:
             user_cards_with_guest_form.add(normalized_card)
+        if _id_document_name_for_member(member, documents_dir) is not None:
+            user_cards_with_id_document.add(normalized_card)
 
         extra_names = _extra_document_names(child, guest_form_path)
         if extra_names:
@@ -1779,12 +1836,15 @@ def _scan_documents_directory(members: list[Member], documents_dir: str) -> Docu
         configured=True,
         readable=True,
         total_users=len(members),
+        total_document_folders=document_folder_count,
         total_document_files=len(document_file_names),
         users_with_guest_form=len(user_cards_with_guest_form),
+        users_with_id_document=len(user_cards_with_id_document),
         users_without_guest_form=len(missing_guest_form_users),
         extension_counts=extension_counts,
         filename_patterns=filename_patterns,
         missing_guest_form_users=missing_guest_form_users,
+        banned_documents=tuple(banned_documents),
         card_folders_without_user=tuple(card_folders_without_user),
         user_folders_with_extra_files=tuple(user_folders_with_extra_files),
         non_folder_entries=tuple(non_folder_entries),

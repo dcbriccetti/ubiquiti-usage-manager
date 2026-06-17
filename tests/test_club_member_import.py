@@ -2258,7 +2258,7 @@ class ClubMemberImportTests(unittest.TestCase):
             response.get_data(as_text=True),
         )
 
-    def test_documents_report_describes_guest_form_coverage_and_extra_entries(self) -> None:
+    def test_documents_report_describes_form_coverage_and_extra_entries(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             db_path = temp_path / "club-users.db"
@@ -2271,10 +2271,14 @@ class ClubMemberImportTests(unittest.TestCase):
             (card_123_dir / ".DS_Store").write_text("synthetic finder metadata")
             card_456_dir = documents_dir / "456"
             card_456_dir.mkdir()
+            (card_456_dir / "Guest Form scan.JPG").write_bytes(b"\xff\xd8\xff\xe0test-jpeg")
+            (card_456_dir / "Driver License.jpg").write_bytes(b"\xff\xd8\xff\xe0test-id")
+            (card_456_dir / "Pink Card_Public Jane.jpg").write_bytes(b"\xff\xd8\xff\xe0pink")
             (card_456_dir / "notes.txt").write_text("synthetic note")
             (card_456_dir / "other-photo.png").write_bytes(b"synthetic-png")
             card_999_dir = documents_dir / "999"
             card_999_dir.mkdir()
+            (card_999_dir / "Banned_unknown.jpg").write_bytes(b"\xff\xd8\xff\xe0banned")
             (card_999_dir / "Guest Form_unknown.jpg").write_bytes(b"\xff\xd8\xff\xe0test-jpeg")
             (documents_dir / "top-level.txt").write_text("synthetic top-level note")
             (documents_dir / "Guest Form extra.jpg").write_bytes(b"\xff\xd8\xff\xe0test-jpeg")
@@ -2327,14 +2331,26 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Documents Report", body)
         self.assertIn("Filename Patterns", body)
+        self.assertIn("Example Names", body)
         self.assertIn("Extension Counts", body)
-        self.assertIn("With Visitor Form", body)
-        self.assertIn("Without Visitor Form", body)
+        self.assertIn("Document Folders", body)
+        self.assertIn("Legacy Visitor Forms", body)
+        self.assertIn("Stored ID Images", body)
+        self.assertIn("<h2>Banned</h2>", body)
+        self.assertIn("Additional Documents in User Folders", body)
+        self.assertNotIn("With Visitor Form", body)
+        self.assertNotIn("Without Visitor Form", body)
+        self.assertNotIn("Users Missing Visitor Form", body)
         self.assertIn("Public", body)
         self.assertIn("Jane", body)
-        self.assertIn("Example", body)
-        self.assertIn("Sam", body)
+        self.assertNotIn("Example, Sam", body)
+        self.assertNotIn("/members/3", body)
         self.assertIn("waiver.pdf", body)
+        self.assertIn("Driver License.jpg", body)
+        self.assertNotIn("Driver License.jpg, notes.txt", body)
+        self.assertIn("Pink Card_Public Jane.jpg", body)
+        self.assertIn("Banned_unknown.jpg", body)
+        self.assertNotIn("Pink Card_Public Jane.jpg, notes.txt", body)
         self.assertIn("notes.txt", body)
         self.assertIn("other-photo.png", body)
         self.assertIn("999", body)
@@ -2342,6 +2358,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("/documents/image", body)
         self.assertIn("top-level.txt", body)
         self.assertIn("Guest Form &lt;text&gt;.jpg", body)
+        self.assertIn("Guest Form extra.jpg, Guest Form scan.JPG", body)
+        self.assertNotIn("Guest Form scan.JPG, Guest Form scan.JPG", body)
         self.assertIn("Guest Form_&lt;text&gt;.jpg", body)
         self.assertIn(".jpg", body)
         self.assertIn(".png", body)
