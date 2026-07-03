@@ -91,6 +91,10 @@ CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN = (
     ("AANR", "AANR Member", "membership-aanr"),
     ("Visitor", "Visitor", "membership-visitor"),
 )
+CHECKIN_SEASON_COMPARISON_GROUPS = (
+    ("Members", ("Full Member", "Associate Member"), "membership-members"),
+    ("Visitors", ("AANR Member", "Visitor"), "membership-visitors"),
+)
 CHECKIN_VISIT_NUMBER_CHART_MAX_EXACT = 9
 LIVE_CHECKIN_REPEAT_WINDOW = timedelta(hours=1)
 BARCODE_SECRET_SETTING_KEY = "self_checkin_barcode_secret"
@@ -276,6 +280,44 @@ class CheckinTimeChart:
     title: str
     legend: tuple[tuple[str, str], ...]
     buckets: tuple[CheckinChartBucket, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinSeasonPoint:
+    x: float
+    y: float
+    bar_x: float
+    bar_y: float
+    bar_width: float
+    bar_height: float
+    label: str
+    count: int
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinSeasonSeries:
+    year: int
+    css_class: str
+    points: tuple[CheckinSeasonPoint, ...]
+    total: int
+    latest_label: str | None
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinSeasonPanel:
+    label: str
+    css_class: str
+    max_count: int
+    midpoint_count: int
+    series: tuple[CheckinSeasonSeries, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinSeasonComparisonChart:
+    title: str
+    previous_year: int
+    current_year: int
+    panels: tuple[CheckinSeasonPanel, ...]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -734,6 +776,128 @@ def _checkin_visit_number_chart(
     )
 
 
+def _season_date_range(year: int) -> tuple[date, date]:
+    return date(year, 4, 1), date(year, 10, 31)
+
+
+def _checkin_season_comparison_chart(
+    checkins: list[CheckIn],
+    *,
+    today: date,
+) -> CheckinSeasonComparisonChart:
+    current_year = today.year
+    previous_year = current_year - 1
+    comparison_years = (previous_year, current_year)
+    season_ranges = {
+        year: _season_date_range(year)
+        for year in comparison_years
+    }
+    current_season_start, current_season_end = season_ranges[current_year]
+    season_ranges[current_year] = (
+        current_season_start,
+        min(today, current_season_end),
+    )
+    operating_dates_by_year: dict[int, set[date]] = {
+        year: set()
+        for year in comparison_years
+    }
+    daily_counts: dict[int, dict[str, Counter[date]]] = {
+        year: {
+            membership: Counter()
+            for _, membership, _ in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
+        }
+        for year in comparison_years
+    }
+
+    counted_memberships = {
+        membership for _, membership, _ in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
+    }
+    for checkin in checkins:
+        checkin_date = checkin.check_in_at.date()
+        checkin_year = checkin_date.year
+        if checkin_year not in season_ranges or checkin.membership not in counted_memberships:
+            continue
+        season_start, season_end = season_ranges[checkin_year]
+        if season_start <= checkin_date <= season_end:
+            operating_dates_by_year[checkin_year].add(checkin_date)
+            daily_counts[checkin_year][checkin.membership][checkin_date] += 1
+
+    operating_days_by_year = {
+        year: tuple(sorted(operating_dates))
+        for year, operating_dates in operating_dates_by_year.items()
+    }
+    max_operating_days = max(
+        (len(operating_days) for operating_days in operating_days_by_year.values()),
+        default=0,
+    )
+
+    panels: list[CheckinSeasonPanel] = []
+    for label, memberships, css_class in CHECKIN_SEASON_COMPARISON_GROUPS:
+        counts_by_year: dict[int, list[tuple[date, int]]] = {}
+        max_count = 0
+        for year in comparison_years:
+            year_points: list[tuple[date, int]] = []
+            for operating_date in operating_days_by_year[year]:
+                count = sum(
+                    daily_counts[year][membership][operating_date]
+                    for membership in memberships
+                )
+                year_points.append((operating_date, count))
+                max_count = max(max_count, count)
+            counts_by_year[year] = year_points
+
+        series_rows: list[CheckinSeasonSeries] = []
+        year_count = len(comparison_years)
+        point_gap = 0.6
+        for year_index, year in enumerate(comparison_years):
+            year_points = counts_by_year[year]
+            chart_points: list[CheckinSeasonPoint] = []
+            for index, (operating_date, count) in enumerate(year_points):
+                group_width = 100 / max_operating_days if max_operating_days else 100
+                lane_width = max(0.35, (group_width - point_gap) / year_count)
+                lane_x = (index * group_width) + (point_gap / 2) + (year_index * lane_width)
+                point_height = 0.0 if max_count <= 0 else (count / max_count) * 100
+                x = lane_x + (lane_width / 2)
+                y = 100 - point_height
+                chart_points.append(
+                    CheckinSeasonPoint(
+                        x=x,
+                        y=y,
+                        bar_x=lane_x,
+                        bar_y=y,
+                        bar_width=lane_width,
+                        bar_height=point_height,
+                        label=_date_label(operating_date),
+                        count=count,
+                    )
+                )
+            series_rows.append(
+                CheckinSeasonSeries(
+                    year=year,
+                    css_class="season-current" if year == current_year else "season-previous",
+                    points=tuple(chart_points),
+                    total=sum(point.count for point in chart_points),
+                    latest_label=chart_points[-1].label if chart_points else None,
+                )
+            )
+        panels.append(
+            CheckinSeasonPanel(
+                label=label,
+                css_class=css_class,
+                max_count=max_count,
+                midpoint_count=(max_count + 1) // 2,
+                series=tuple(series_rows),
+            )
+        )
+
+    return CheckinSeasonComparisonChart(
+        title="Season Comparison",
+        previous_year=previous_year,
+        current_year=current_year,
+        panels=tuple(panels),
+    )
+
+
 def _checkins_count_text(checkins: list[CheckIn]) -> str:
     count = len(checkins)
     return f"{count} {'check-in' if count == 1 else 'check-ins'}"
@@ -743,11 +907,20 @@ def _checkins_report_context(
     connection: sqlite3.Connection,
     start_date: date,
     end_date: date,
+    *,
+    today: date,
 ) -> dict[str, object]:
     checkins = checkin_repository.list_checkins_for_date_range(
         connection,
         start_date,
         end_date,
+    )
+    previous_season_start, _ = _season_date_range(today.year - 1)
+    _, current_season_end = _season_date_range(today.year)
+    season_checkins = checkin_repository.list_checkins_for_date_range(
+        connection,
+        previous_season_start,
+        min(today, current_season_end),
     )
     visit_number_counts = checkin_repository.count_visit_numbers_for_date_range(
         connection,
@@ -764,6 +937,10 @@ def _checkins_report_context(
         "membership_breakdown": _checkin_membership_breakdown(checkins),
         "time_chart": _checkin_time_chart(checkins, start_date, end_date),
         "visit_number_chart": _checkin_visit_number_chart(visit_number_counts),
+        "season_comparison_chart": _checkin_season_comparison_chart(
+            season_checkins,
+            today=today,
+        ),
         "notes_by_user_id": notes_by_user_id,
         "start_date": start_date,
         "end_date": end_date,
@@ -774,8 +951,10 @@ def _checkins_report_stream_payload(
     connection: sqlite3.Connection,
     start_date: date,
     end_date: date,
+    *,
+    today: date,
 ) -> dict[str, str]:
-    context = _checkins_report_context(connection, start_date, end_date)
+    context = _checkins_report_context(connection, start_date, end_date, today=today)
     return {
         "count_text": str(context["count_text"]),
         "membership_breakdown_html": render_template(
@@ -794,6 +973,10 @@ def _checkins_report_stream_payload(
             chart_extra_class="checkins-visit-number-chart",
             legend_label="Check-in group legend",
         ),
+        "season_comparison_chart_html": render_template(
+            "club_admin/_checkins_season_comparison.html",
+            chart=context["season_comparison_chart"],
+        ),
         "rows_html": render_template(
             "club_admin/_checkins_report_rows.html",
             **context,
@@ -805,11 +988,18 @@ def _checkins_report_event_stream(
     connection_context: Callable[[], Iterator[sqlite3.Connection]],
     start_date: date,
     end_date: date,
+    *,
+    today: date,
 ) -> Iterator[str]:
     last_version = checkin_events.current_checkins_version()
     while True:
         with connection_context() as connection:
-            payload = _checkins_report_stream_payload(connection, start_date, end_date)
+            payload = _checkins_report_stream_payload(
+                connection,
+                start_date,
+                end_date,
+                today=today,
+            )
         yield f"data: {json.dumps(payload)}\n\n"
 
         deadline = time.monotonic() + 30.0
@@ -2913,10 +3103,41 @@ def create_app(db_path: Path | None = None) -> Flask:
         date_presets = _date_range_presets(today)
 
         with open_connection() as connection:
-            report_context = _checkins_report_context(connection, start_date, end_date)
+            report_context = _checkins_report_context(
+                connection,
+                start_date,
+                end_date,
+                today=today,
+            )
 
         return render_template(
             "club_admin/checkins_report.html",
+            date_presets=date_presets,
+            active_date_preset_label=_active_date_range_preset_label(
+                date_presets,
+                start_date,
+                end_date,
+            ),
+            **report_context,
+        )
+
+    @flask_app.route("/checkins/charts")
+    @require_admin
+    def checkins_charts():
+        today = date.today()
+        start_date, end_date = _date_range_from_request(today)
+        date_presets = _date_range_presets(today)
+
+        with open_connection() as connection:
+            report_context = _checkins_report_context(
+                connection,
+                start_date,
+                end_date,
+                today=today,
+            )
+
+        return render_template(
+            "club_admin/checkins_charts.html",
             date_presets=date_presets,
             active_date_preset_label=_active_date_range_preset_label(
                 date_presets,
@@ -2933,7 +3154,12 @@ def create_app(db_path: Path | None = None) -> Flask:
         start_date, end_date = _date_range_from_request(today)
         response = Response(
             stream_with_context(
-                _checkins_report_event_stream(open_connection, start_date, end_date)
+                _checkins_report_event_stream(
+                    open_connection,
+                    start_date,
+                    end_date,
+                    today=today,
+                )
             ),
             mimetype="text/event-stream",
         )

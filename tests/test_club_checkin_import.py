@@ -380,8 +380,9 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('class="print-report-range">2026-05-01 to 2026-05-03', body)
         self.assertIn('data-checkins-count', body)
         self.assertIn('data-checkins-membership-breakdown', body)
-        self.assertIn('data-checkins-time-chart', body)
-        self.assertIn('data-checkins-visit-number-chart', body)
+        self.assertNotIn('data-checkins-time-chart', body)
+        self.assertNotIn('data-checkins-visit-number-chart', body)
+        self.assertNotIn('data-checkins-season-comparison', body)
         self.assertIn('data-checkins-table-body', body)
         self.assertIn('class="report-date-fields"', body)
         self.assertIn('class="report-presets"', body)
@@ -395,15 +396,15 @@ class ClubCheckInImportTests(unittest.TestCase):
             'href="/members/map?start_date=2026-05-01&amp;end_date=2026-05-03"',
             body,
         )
+        self.assertIn(
+            'href="/checkins/charts?start_date=2026-05-01&amp;end_date=2026-05-03"',
+            body,
+        )
         self.assertIn(">Map</a>", body)
-        self.assertIn('class="checkins-time-chart"', body)
-        self.assertIn("Check-ins by Day", body)
-        self.assertIn("Week of Apr 27", body)
-        self.assertIn('class="checkins-chart-group-total">2 check-ins', body)
-        self.assertIn("May 1", body)
-        self.assertNotIn("May 2", body)
-        self.assertIn("May 3", body)
-        self.assertIn('class="checkins-chart-total">1</span>', body)
+        self.assertIn(">Charts</a>", body)
+        self.assertNotIn('class="checkins-time-chart"', body)
+        self.assertNotIn("Check-ins by Day", body)
+        self.assertNotIn("Week of Apr 27", body)
         self.assertNotIn('class="report-tabs"', body)
         self.assertNotIn('name="view"', body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
@@ -438,6 +439,49 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn("Jane", body)
         self.assertIn("new EventSource(streamUrl)", body)
         self.assertIn("window.ClubAdminTables?.applyStoredSort?.(table)", body)
+
+    def test_checkin_charts_page_shows_large_charts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            for checkin in checkin_range_fixtures():
+                with closing(database.connect(db_path)) as connection:
+                    checkin_repository.upsert_checkin(connection, checkin)
+                    connection.commit()
+
+            response = client.get(
+                "/checkins/charts?start_date=2026-05-01&end_date=2026-05-03"
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Check-in Charts", body)
+        self.assertIn('class="page checkins-report-page checkins-charts-page"', body)
+        self.assertIn(
+            'data-checkins-stream-url="/checkins/report/stream?start_date=2026-05-01&amp;end_date=2026-05-03"',
+            body,
+        )
+        self.assertIn('data-checkins-time-chart', body)
+        self.assertIn('data-checkins-visit-number-chart', body)
+        self.assertIn('data-checkins-season-comparison', body)
+        self.assertIn('class="checkins-time-chart"', body)
+        self.assertIn("Check-ins by Day", body)
+        self.assertIn("Check-ins by Check-in Number", body)
+        self.assertIn("Season Comparison", body)
+        self.assertIn("Week of Apr 27", body)
+        self.assertIn('class="checkins-chart-group-total">2 check-ins', body)
+        self.assertIn("May 1", body)
+        self.assertNotIn("May 2", body)
+        self.assertIn("May 3", body)
+        self.assertIn('class="checkins-chart-total">1</span>', body)
+        self.assertIn(
+            'href="/checkins/report?start_date=2026-05-01&amp;end_date=2026-05-03"',
+            body,
+        )
+        self.assertIn(">Check-ins</a>", body)
+        self.assertNotIn('class="checkins-table" data-sortable-table', body)
+        self.assertNotIn('src="/static/club-admin-table-sort.js"', body)
 
     def test_checkin_report_stream_sends_initial_report_fragments(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -708,7 +752,7 @@ class ClubCheckInImportTests(unittest.TestCase):
                 connection.commit()
 
             response = client.get(
-                "/checkins/report?start_date=2026-05-01&end_date=2026-05-01"
+                "/checkins/charts?start_date=2026-05-01&end_date=2026-05-01"
             )
 
         self.assertEqual(response.status_code, 200)
@@ -814,7 +858,7 @@ class ClubCheckInImportTests(unittest.TestCase):
                 connection.commit()
 
             response = client.get(
-                "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
+                "/checkins/charts?start_date=2026-05-10&end_date=2026-05-10"
             )
 
         self.assertEqual(response.status_code, 200)
@@ -876,7 +920,7 @@ class ClubCheckInImportTests(unittest.TestCase):
                 connection.commit()
 
             response = client.get(
-                "/checkins/report?start_date=2026-05-10&end_date=2026-05-10"
+                "/checkins/charts?start_date=2026-05-10&end_date=2026-05-10"
             )
 
         self.assertEqual(response.status_code, 200)
@@ -885,10 +929,6 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("Assoc.: 1", body)
         self.assertIn("AANR: 1", body)
         self.assertIn("Visitor: 1", body)
-        self.assertIn(">Full</a>", body)
-        self.assertIn(">Associate</a>", body)
-        self.assertIn(">AANR</a>", body)
-        self.assertIn(">Visitor</a>", body)
         self.assertNotIn('class="chart-toggle-form"', body)
         self.assertNotIn('name="visit_number_membership"', body)
         self.assertNotIn("visit_number_membership=", body)

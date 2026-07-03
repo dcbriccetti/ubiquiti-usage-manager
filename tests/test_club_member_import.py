@@ -3,7 +3,7 @@ import io
 import sys
 import tempfile
 from contextlib import closing
-from datetime import datetime
+from datetime import date, datetime
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -345,6 +345,7 @@ class ClubMemberImportTests(unittest.TestCase):
             ("GET", "/members/1/edit"),
             ("POST", "/members/1/edit"),
             ("GET", "/checkins/report"),
+            ("GET", "/checkins/charts"),
             ("GET", "/checkins/report/stream"),
             ("GET", "/documents/report"),
             ("GET", "/documents/image"),
@@ -1306,6 +1307,82 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('data-sort-value="2026-05-03"', body)
         self.assertNotIn("2026-05-03 15:59:20", body)
         self.assertNotIn(">0<", body)
+
+    def test_checkins_report_shows_season_comparison_by_operating_day(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            client = admin_client(flask_app)
+            current_year = date.today().year
+            previous_year = current_year - 1
+            with closing(database.connect(db_path)) as connection:
+                for checkin in (
+                    CheckIn(
+                        member_id="1001",
+                        last_name="Doe",
+                        first_name="Pat",
+                        card_number="1001",
+                        check_in_at=datetime(previous_year, 4, 5, 9, 0, 0),
+                        membership="Visitor",
+                    ),
+                    CheckIn(
+                        member_id="1002",
+                        last_name="Smith",
+                        first_name="Sam",
+                        card_number="1002",
+                        check_in_at=datetime(current_year, 4, 5, 9, 0, 0),
+                        membership="Visitor",
+                    ),
+                    CheckIn(
+                        member_id="1002",
+                        last_name="Smith",
+                        first_name="Sam",
+                        card_number="1002",
+                        check_in_at=datetime(current_year, 4, 7, 9, 0, 0),
+                        membership="Visitor",
+                    ),
+                    CheckIn(
+                        member_id="1003",
+                        last_name="Jones",
+                        first_name="Jess",
+                        card_number="1003",
+                        check_in_at=datetime(current_year, 4, 7, 10, 0, 0),
+                        membership="Full Member",
+                    ),
+                    CheckIn(
+                        member_id="1004",
+                        last_name="AANR",
+                        first_name="Alex",
+                        card_number="1004",
+                        check_in_at=datetime(current_year, 4, 7, 10, 30, 0),
+                        membership="AANR Member",
+                    ),
+                ):
+                    checkin_repository.upsert_checkin(connection, checkin)
+                connection.commit()
+
+            response = client.get(
+                "/checkins/charts",
+                query_string={
+                    "start_date": f"{current_year}-04-05",
+                    "end_date": f"{current_year}-04-07",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Season Comparison", body)
+        self.assertIn(str(previous_year), body)
+        self.assertIn(str(current_year), body)
+        self.assertIn("Members", body)
+        self.assertIn("Visitors", body)
+        self.assertNotIn("<h3>Full Member</h3>", body)
+        self.assertNotIn("<h3>Assoc.</h3>", body)
+        self.assertNotIn("<h3>AANR</h3>", body)
+        self.assertNotIn("<h3>Visitor</h3>", body)
+        self.assertIn(f"{current_year} Apr 5: 1", body)
+        self.assertIn(f"{current_year} Apr 7: 2", body)
+        self.assertNotIn(f"{current_year} Apr 6:", body)
 
     def test_members_export_downloads_users_csv(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

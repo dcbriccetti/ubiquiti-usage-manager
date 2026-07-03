@@ -3,19 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ app_title }} | Check-ins</title>
+  <title>{{ app_title }} | Check-in Charts</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
-  <script src="{{ url_for('static', filename='club-admin-table-sort.js') }}" defer></script>
 </head>
 <body>
   <main
-    class="page checkins-report-page"
+    class="page checkins-report-page checkins-charts-page"
     data-checkins-stream-url="{{ url_for('checkins_report_stream', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}"
   >
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
-        <h1>Check-ins</h1>
+        <h1>Check-in Charts</h1>
         <p class="summary" data-checkins-count>{{ checkins|length }} {{ 'check-in' if checkins|length == 1 else 'check-ins' }}</p>
         <p class="print-report-range">{{ start_date }} to {{ end_date }}</p>
         <p class="checkins-membership-breakdown" data-checkins-membership-breakdown>
@@ -31,7 +30,7 @@
       </nav>
     </header>
 
-    <form class="report-filters" action="{{ url_for('checkins_report') }}" method="get">
+    <form class="report-filters" action="{{ url_for('checkins_charts') }}" method="get">
       <div class="report-date-fields">
         <label>
           Start
@@ -46,43 +45,35 @@
       <div class="report-presets" aria-label="Date range presets">
         {% for preset in date_presets %}
           <a
-            href="{{ url_for('checkins_report', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat()) }}"
+            href="{{ url_for('checkins_charts', start_date=preset.start_date.isoformat(), end_date=preset.end_date.isoformat()) }}"
             {% if preset.label == active_date_preset_label %}class="active" aria-current="date"{% endif %}
           >{{ preset.label }}</a>
         {% endfor %}
-        <a href="{{ url_for('checkins_charts', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}">Charts</a>
+        <a href="{{ url_for('checkins_report', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}">Check-ins</a>
         <a href="{{ url_for('members_map', start_date=start_date.isoformat(), end_date=end_date.isoformat()) }}">Map</a>
       </div>
     </form>
 
-    <table class="checkins-table" data-sortable-table data-persist-sort-key="clubAdmin.checkinsReport.sort">
-      <thead>
-        <tr>
-          <th scope="col" class="nowrap" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="0" data-sort-type="date">Check-in <span class="sort-indicator" aria-hidden="true"></span></span>
-          </th>
-          <th scope="col" class="numeric nowrap" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="1" data-sort-type="number">Check-in # <span class="sort-indicator" aria-hidden="true"></span></span>
-          </th>
-          <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="2" data-sort-type="text">Last Name <span class="sort-indicator" aria-hidden="true"></span></span>
-          </th>
-          <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="3" data-sort-type="text">First/Nickname <span class="sort-indicator" aria-hidden="true"></span></span>
-          </th>
-          <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="4" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></span>
-          </th>
-          <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="5" data-sort-type="text">Notes <span class="sort-indicator" aria-hidden="true"></span></span>
-          </th>
-          <th scope="col" class="checkins-print-column">Barcode</th>
-        </tr>
-      </thead>
-      <tbody data-checkins-table-body>
-        {% include "club_admin/_checkins_report_rows.html" %}
-      </tbody>
-    </table>
+    <div class="checkins-chart-stack">
+      <div data-checkins-time-chart>
+        {% set chart = time_chart %}
+        {% set chart_extra_class = "" %}
+        {% set legend_label = "Membership type legend" %}
+        {% include "club_admin/_checkins_chart.html" %}
+      </div>
+
+      <div data-checkins-visit-number-chart>
+        {% set chart = visit_number_chart %}
+        {% set chart_extra_class = "checkins-visit-number-chart" %}
+        {% set legend_label = "Check-in group legend" %}
+        {% include "club_admin/_checkins_chart.html" %}
+      </div>
+
+      <div data-checkins-season-comparison>
+        {% set chart = season_comparison_chart %}
+        {% include "club_admin/_checkins_season_comparison.html" %}
+      </div>
+    </div>
   </main>
   <script>
     (() => {
@@ -98,8 +89,9 @@
 
       const countElement = page.querySelector("[data-checkins-count]");
       const membershipElement = page.querySelector("[data-checkins-membership-breakdown]");
-      const table = page.querySelector("[data-sortable-table]");
-      const tableBody = page.querySelector("[data-checkins-table-body]");
+      const timeChartElement = page.querySelector("[data-checkins-time-chart]");
+      const visitNumberChartElement = page.querySelector("[data-checkins-visit-number-chart]");
+      const seasonComparisonElement = page.querySelector("[data-checkins-season-comparison]");
       const stream = new EventSource(streamUrl);
 
       stream.onmessage = (event) => {
@@ -116,9 +108,14 @@
         if (typeof payload.membership_breakdown_html === "string" && membershipElement) {
           membershipElement.innerHTML = payload.membership_breakdown_html;
         }
-        if (typeof payload.rows_html === "string" && tableBody) {
-          tableBody.innerHTML = payload.rows_html;
-          window.ClubAdminTables?.applyStoredSort?.(table);
+        if (typeof payload.time_chart_html === "string" && timeChartElement) {
+          timeChartElement.innerHTML = payload.time_chart_html;
+        }
+        if (typeof payload.visit_number_chart_html === "string" && visitNumberChartElement) {
+          visitNumberChartElement.innerHTML = payload.visit_number_chart_html;
+        }
+        if (typeof payload.season_comparison_chart_html === "string" && seasonComparisonElement) {
+          seasonComparisonElement.innerHTML = payload.season_comparison_chart_html;
         }
       };
     })();

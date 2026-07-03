@@ -830,6 +830,291 @@ th {
   margin: 0;
 }
 
+.checkins-chart-stack {
+  display: grid;
+  gap: 24px;
+}
+
+.checkins-charts-page .checkins-time-chart,
+.checkins-charts-page .checkins-season-comparison {
+  margin-bottom: 0;
+  padding: 20px;
+}
+
+.checkins-charts-page .checkins-time-chart h2,
+.checkins-charts-page .checkins-season-comparison h2 {
+  font-size: 24px;
+}
+
+.checkins-charts-page .checkins-chart-legend {
+  font-size: 15px;
+  gap: 14px;
+}
+
+.checkins-charts-page .checkins-chart-key {
+  height: 13px;
+  width: 24px;
+}
+
+.checkins-charts-page .checkins-chart-rows {
+  gap: 10px;
+}
+
+.checkins-charts-page .checkins-chart-row {
+  gap: 12px;
+  grid-template-columns: 92px minmax(240px, 1fr) 48px;
+}
+
+.checkins-charts-page .checkins-chart-label,
+.checkins-charts-page .checkins-chart-empty-message {
+  font-size: 15px;
+}
+
+.checkins-charts-page .checkins-chart-bar {
+  min-height: 34px;
+}
+
+.checkins-charts-page .checkins-chart-segment {
+  font-size: 14px;
+}
+
+.checkins-charts-page .checkins-chart-total {
+  font-size: 15px;
+}
+
+.checkins-charts-page .checkins-chart-group {
+  font-size: 15px;
+  margin-top: 10px;
+}
+
+.checkins-charts-page .checkins-chart-group-total {
+  font-size: 14px;
+}
+
+.checkins-season-comparison {
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(16 24 40 / 8%);
+  margin-bottom: 18px;
+  padding: 14px;
+}
+
+.season-year-key {
+  background: var(--season-key-color, #334155);
+  border: 1px solid rgb(17 24 39 / 16%);
+  display: inline-block;
+  height: 12px;
+  width: 22px;
+}
+
+.season-year-key.season-previous {
+  --season-key-color: #64748b;
+}
+
+.season-year-key.season-current {
+  --season-key-color: #2563eb;
+}
+
+.season-comparison-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.checkins-charts-page .season-comparison-grid {
+  gap: 18px;
+  grid-template-columns: 1fr;
+}
+
+.season-comparison-panel {
+  --season-muted: #64748b;
+  --season-tint: #f8fafc;
+  background: #fff;
+  border: 1px solid #d8e0ea;
+  border-top-width: 4px;
+  padding: 10px;
+}
+
+.checkins-charts-page .season-comparison-panel {
+  padding: 16px;
+}
+
+.season-comparison-panel header {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.season-comparison-panel h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.checkins-charts-page .season-comparison-panel h3 {
+  font-size: 20px;
+}
+
+.season-comparison-panel header span {
+  color: var(--season-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.checkins-charts-page .season-comparison-panel header span {
+  font-size: 15px;
+}
+
+.season-plot {
+  align-items: stretch;
+  display: grid;
+  gap: 7px;
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.season-y-axis {
+  color: #64748b;
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  font-weight: 650;
+  justify-content: space-between;
+  line-height: 1;
+  padding: 3px 0 2px;
+  text-align: right;
+}
+
+.checkins-charts-page .season-y-axis {
+  font-size: 13px;
+}
+
+.checkins-charts-page .season-plot {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+.season-comparison-panel svg {
+  background: var(--season-tint);
+  display: block;
+  height: 132px;
+  overflow: visible;
+  width: 100%;
+}
+
+.checkins-charts-page .season-comparison-panel svg {
+  height: 230px;
+}
+
+.season-grid-line {
+  stroke: #cbd5e1;
+  stroke-width: 0.7;
+}
+
+.season-grid-mid {
+  opacity: 0.72;
+}
+
+.season-axis {
+  stroke: #94a3b8;
+  stroke-width: 0.7;
+}
+
+.season-bar {
+  vector-effect: non-scaling-stroke;
+}
+
+.season-bar.season-previous {
+  fill: #94a3b8;
+  stroke: #64748b;
+  stroke-width: 0.25;
+}
+
+.season-bar.season-current {
+  fill: #2563eb;
+  stroke: #1d4ed8;
+  stroke-width: 0.25;
+}
+
+.season-x-axis {
+  color: #64748b;
+  display: flex;
+  font-size: 11px;
+  font-weight: 650;
+  justify-content: space-between;
+  margin: 4px 0 0 35px;
+}
+
+.checkins-charts-page .season-x-axis {
+  font-size: 13px;
+  margin-left: 43px;
+}
+
+.season-comparison-panel.membership-full {
+  border-color: #5fa9c9;
+  --season-muted: #396f86;
+  --season-tint: #f0f9fd;
+}
+
+.season-comparison-panel.membership-assoc {
+  border-color: #d99700;
+  --season-muted: #854d0e;
+  --season-tint: #fffbeb;
+}
+
+.season-comparison-panel.membership-aanr {
+  border-color: #6f9f4d;
+  --season-muted: #3f6b25;
+  --season-tint: #f4faef;
+}
+
+.season-comparison-panel.membership-visitor {
+  border-color: #d95f5d;
+  --season-muted: #9f3434;
+  --season-tint: #fff5f5;
+}
+
+.season-comparison-panel.membership-members {
+  border-color: #5fa9c9;
+  --season-muted: #396f86;
+  --season-tint: #f0f9fd;
+}
+
+.season-comparison-panel.membership-visitors {
+  border-color: #d95f5d;
+  --season-muted: #9f3434;
+  --season-tint: #fff5f5;
+}
+
+.season-comparison-panel dl {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.season-comparison-panel dl div {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.season-comparison-panel dt,
+.season-comparison-panel dd {
+  font-size: 12px;
+}
+
+.season-comparison-panel dt {
+  color: #4b5563;
+  font-weight: 700;
+}
+
+.season-comparison-panel dd {
+  margin: 0;
+  text-align: right;
+}
+
+.season-comparison-panel dd span {
+  color: #64748b;
+}
+
 .membership-full {
   background: #8ecae6;
 }

@@ -1,0 +1,67 @@
+<section class="checkins-season-comparison" aria-label="{{ chart.title }}">
+  <div class="checkins-chart-header">
+    <h2>{{ chart.title }}</h2>
+    <div class="checkins-chart-legend" aria-label="Season comparison legend">
+      <span><span class="season-year-key season-previous" aria-hidden="true"></span>{{ chart.previous_year }}</span>
+      <span><span class="season-year-key season-current" aria-hidden="true"></span>{{ chart.current_year }}</span>
+    </div>
+  </div>
+  <div class="season-comparison-grid">
+    {% for panel in chart.panels %}
+      <article class="season-comparison-panel {{ panel.css_class }}">
+        <header>
+          <h3>{{ panel.label }}</h3>
+          <span>{{ panel.max_count }} peak/day</span>
+        </header>
+        {% if panel.max_count %}
+          <div class="season-plot">
+            <div class="season-y-axis" aria-hidden="true">
+              <span>{{ panel.max_count }}</span>
+              <span>{{ panel.midpoint_count }}</span>
+              <span>0</span>
+            </div>
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="{{ panel.label }} check-ins by operating day">
+              <line class="season-grid-line" x1="0" y1="0" x2="100" y2="0"></line>
+              <line class="season-grid-line season-grid-mid" x1="0" y1="50" x2="100" y2="50"></line>
+              <line class="season-axis" x1="0" y1="100" x2="100" y2="100"></line>
+              {% for series in panel.series %}
+                {% for point in series.points %}
+                  {% if point.count %}
+                    <rect
+                      class="season-bar {{ series.css_class }}"
+                      x="{{ '%.2f'|format(point.bar_x) }}"
+                      y="{{ '%.2f'|format(point.bar_y) }}"
+                      width="{{ '%.2f'|format(point.bar_width) }}"
+                      height="{{ '%.2f'|format(point.bar_height) }}"
+                    >
+                      <title>{{ series.year }} {{ point.label }}: {{ point.count }}</title>
+                    </rect>
+                  {% endif %}
+                {% endfor %}
+              {% endfor %}
+            </svg>
+          </div>
+          <div class="season-x-axis" aria-hidden="true">
+            <span>First operating day</span>
+            <span>Last operating day</span>
+          </div>
+        {% else %}
+          <p class="checkins-chart-empty-message">No season check-ins.</p>
+        {% endif %}
+        <dl>
+          {% for series in panel.series %}
+            <div>
+              <dt>{{ series.year }}</dt>
+              <dd>
+                {{ series.total }}
+                {% if series.latest_label %}
+                  <span>total through {{ series.latest_label }}</span>
+                {% endif %}
+              </dd>
+            </div>
+          {% endfor %}
+        </dl>
+      </article>
+    {% endfor %}
+  </div>
+</section>
