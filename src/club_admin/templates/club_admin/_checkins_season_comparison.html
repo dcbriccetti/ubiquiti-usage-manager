@@ -11,40 +11,67 @@
       <article class="season-comparison-panel {{ panel.css_class }}">
         <header>
           <h3>{{ panel.label }}</h3>
-          <span>{{ panel.max_count }} peak/day</span>
+          <span>{{ panel.max_count }} peak/{{ chart.peak_unit }}</span>
         </header>
         {% if panel.max_count %}
           <div class="season-plot">
             <div class="season-y-axis" aria-hidden="true">
-              <span>{{ panel.max_count }}</span>
-              <span>{{ panel.midpoint_count }}</span>
-              <span>0</span>
+              {% for axis_label in panel.y_axis_labels %}
+                <span>{{ axis_label.label }}</span>
+              {% endfor %}
             </div>
-            <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="{{ panel.label }} check-ins by operating day">
-              <line class="season-grid-line" x1="0" y1="0" x2="100" y2="0"></line>
-              <line class="season-grid-line season-grid-mid" x1="0" y1="50" x2="100" y2="50"></line>
-              <line class="season-axis" x1="0" y1="100" x2="100" y2="100"></line>
-              {% for series in panel.series %}
-                {% for point in series.points %}
-                  {% if point.count %}
-                    <rect
-                      class="season-bar {{ series.css_class }}"
-                      x="{{ '%.2f'|format(point.bar_x) }}"
-                      y="{{ '%.2f'|format(point.bar_y) }}"
-                      width="{{ '%.2f'|format(point.bar_width) }}"
-                      height="{{ '%.2f'|format(point.bar_height) }}"
-                    >
-                      <title>{{ series.year }} {{ point.label }}: {{ point.count }}</title>
-                    </rect>
+            <div class="season-plot-area">
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="{{ panel.label }} check-ins by {{ chart.aria_unit }}">
+                {% for axis_label in panel.y_axis_labels %}
+                  {% if axis_label.y < 100 %}
+                    <line class="season-grid-line" x1="0" y1="{{ '%.2f'|format(axis_label.y) }}" x2="100" y2="{{ '%.2f'|format(axis_label.y) }}"></line>
                   {% endif %}
                 {% endfor %}
+                <line class="season-axis" x1="0" y1="100" x2="100" y2="100"></line>
+                {% for series in panel.series %}
+                  {% for point in series.points %}
+                    {% if point.count %}
+                      <rect
+                        class="season-bar {{ series.css_class }}"
+                        x="{{ '%.2f'|format(point.bar_x) }}"
+                        y="{{ '%.2f'|format(point.bar_y) }}"
+                        width="{{ '%.2f'|format(point.bar_width) }}"
+                        height="{{ '%.2f'|format(point.bar_height) }}"
+                      >
+                        <title>{{ series.year }} {{ point.label }}: {{ point.count }}</title>
+                      </rect>
+                    {% endif %}
+                  {% endfor %}
+                {% endfor %}
+              </svg>
+              {% if chart.x_axis_labels %}
+                <div class="season-value-layer" aria-hidden="true">
+                  {% for series in panel.series %}
+                    {% for point in series.points %}
+                      {% if point.count %}
+                        <span
+                          class="season-bar-value {{ series.css_class }}"
+                          style="left: {{ '%.2f'|format(point.x) }}%; top: {{ '%.2f'|format(point.value_label_y) }}%"
+                        >{{ point.count }}</span>
+                      {% endif %}
+                    {% endfor %}
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </div>
+          </div>
+          {% if chart.x_axis_labels %}
+            <div class="season-x-axis season-x-axis-months" aria-hidden="true">
+              {% for axis_label in chart.x_axis_labels %}
+                <span style="left: {{ '%.2f'|format(axis_label.x) }}%">{{ axis_label.label }}</span>
               {% endfor %}
-            </svg>
-          </div>
-          <div class="season-x-axis" aria-hidden="true">
-            <span>First operating day</span>
-            <span>Last operating day</span>
-          </div>
+            </div>
+          {% else %}
+            <div class="season-x-axis" aria-hidden="true">
+              <span>First operating day</span>
+              <span>Last operating day</span>
+            </div>
+          {% endif %}
         {% else %}
           <p class="checkins-chart-empty-message">No season check-ins.</p>
         {% endif %}

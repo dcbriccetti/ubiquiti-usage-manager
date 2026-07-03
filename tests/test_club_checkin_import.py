@@ -465,10 +465,18 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn('data-checkins-time-chart', body)
         self.assertIn('data-checkins-visit-number-chart', body)
         self.assertIn('data-checkins-season-comparison', body)
+        self.assertIn('data-checkins-monthly-season-comparison', body)
         self.assertIn('class="checkins-time-chart"', body)
         self.assertIn("Check-ins by Day", body)
         self.assertIn("Check-ins by Check-in Number", body)
-        self.assertIn("Season Comparison", body)
+        self.assertIn("Season Comparison by Operating Day", body)
+        self.assertIn("Season Comparison by Month", body)
+        self.assertIn("peak/month", body)
+        self.assertIn('class="season-x-axis season-x-axis-months"', body)
+        self.assertIn('class="season-bar-value season-current"', body)
+        self.assertNotIn("season-grid-mid", body)
+        self.assertIn(">Apr</span>", body)
+        self.assertIn(">Oct</span>", body)
         self.assertIn("Week of Apr 27", body)
         self.assertIn('class="checkins-chart-group-total">2 check-ins', body)
         self.assertIn("May 1", body)
@@ -507,6 +515,10 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("Visitor: 1", payload["membership_breakdown_html"])
         self.assertIn("Check-ins by Hour", payload["time_chart_html"])
         self.assertIn("Check-ins by Check-in Number", payload["visit_number_chart_html"])
+        self.assertIn(
+            "Season Comparison by Month",
+            payload["monthly_season_comparison_chart_html"],
+        )
         self.assertIn("John", payload["rows_html"])
         self.assertIn("2026-05-03 15:59:20", payload["rows_html"])
 

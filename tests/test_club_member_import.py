@@ -1371,7 +1371,8 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("Season Comparison", body)
+        self.assertIn("Season Comparison by Operating Day", body)
+        self.assertIn("Season Comparison by Month", body)
         self.assertIn(str(previous_year), body)
         self.assertIn(str(current_year), body)
         self.assertIn("Members", body)

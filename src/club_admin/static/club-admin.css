@@ -991,6 +991,10 @@ th {
   grid-template-columns: 36px minmax(0, 1fr);
 }
 
+.season-plot-area {
+  position: relative;
+}
+
 .season-comparison-panel svg {
   background: var(--season-tint);
   display: block;
@@ -1006,10 +1010,6 @@ th {
 .season-grid-line {
   stroke: #cbd5e1;
   stroke-width: 0.7;
-}
-
-.season-grid-mid {
-  opacity: 0.72;
 }
 
 .season-axis {
@@ -1033,6 +1033,27 @@ th {
   stroke-width: 0.25;
 }
 
+.season-bar-value {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  position: absolute;
+  text-shadow:
+    -1px -1px 0 var(--season-tint),
+    1px -1px 0 var(--season-tint),
+    -1px 1px 0 var(--season-tint),
+    1px 1px 0 var(--season-tint);
+  transform: translate(-50%, -100%);
+}
+
+.season-value-layer {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
 .season-x-axis {
   color: #64748b;
   display: flex;
@@ -1040,6 +1061,18 @@ th {
   font-weight: 650;
   justify-content: space-between;
   margin: 4px 0 0 35px;
+}
+
+.season-x-axis-months {
+  display: block;
+  height: 18px;
+  position: relative;
+}
+
+.season-x-axis-months span {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .checkins-charts-page .season-x-axis {

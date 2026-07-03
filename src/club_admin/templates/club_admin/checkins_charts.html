@@ -73,6 +73,11 @@
         {% set chart = season_comparison_chart %}
         {% include "club_admin/_checkins_season_comparison.html" %}
       </div>
+
+      <div data-checkins-monthly-season-comparison>
+        {% set chart = monthly_season_comparison_chart %}
+        {% include "club_admin/_checkins_season_comparison.html" %}
+      </div>
     </div>
   </main>
   <script>
@@ -92,6 +97,7 @@
       const timeChartElement = page.querySelector("[data-checkins-time-chart]");
       const visitNumberChartElement = page.querySelector("[data-checkins-visit-number-chart]");
       const seasonComparisonElement = page.querySelector("[data-checkins-season-comparison]");
+      const monthlySeasonComparisonElement = page.querySelector("[data-checkins-monthly-season-comparison]");
       const stream = new EventSource(streamUrl);
 
       stream.onmessage = (event) => {
@@ -116,6 +122,9 @@
         }
         if (typeof payload.season_comparison_chart_html === "string" && seasonComparisonElement) {
           seasonComparisonElement.innerHTML = payload.season_comparison_chart_html;
+        }
+        if (typeof payload.monthly_season_comparison_chart_html === "string" && monthlySeasonComparisonElement) {
+          monthlySeasonComparisonElement.innerHTML = payload.monthly_season_comparison_chart_html;
         }
       };
     })();

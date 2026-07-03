@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import io
 import json
+import math
 import os
 import re
 import sqlite3
@@ -283,6 +284,18 @@ class CheckinTimeChart:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CheckinSeasonAxisLabel:
+    x: float
+    label: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class CheckinSeasonYAxisLabel:
+    y: float
+    label: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class CheckinSeasonPoint:
     x: float
     y: float
@@ -290,6 +303,7 @@ class CheckinSeasonPoint:
     bar_y: float
     bar_width: float
     bar_height: float
+    value_label_y: float
     label: str
     count: int
 
@@ -308,7 +322,8 @@ class CheckinSeasonPanel:
     label: str
     css_class: str
     max_count: int
-    midpoint_count: int
+    scale_max_count: int
+    y_axis_labels: tuple[CheckinSeasonYAxisLabel, ...]
     series: tuple[CheckinSeasonSeries, ...]
 
 
@@ -317,6 +332,9 @@ class CheckinSeasonComparisonChart:
     title: str
     previous_year: int
     current_year: int
+    peak_unit: str
+    aria_unit: str
+    x_axis_labels: tuple[CheckinSeasonAxisLabel, ...]
     panels: tuple[CheckinSeasonPanel, ...]
 
 
@@ -780,10 +798,61 @@ def _season_date_range(year: int) -> tuple[date, date]:
     return date(year, 4, 1), date(year, 10, 31)
 
 
+def _season_month_buckets(year: int, *, today: date) -> tuple[date, ...]:
+    season_start, season_end = _season_date_range(year)
+    if year == today.year:
+        if today < season_start:
+            return ()
+        month_end = min(today, season_end).month
+    else:
+        month_end = season_end.month
+    return tuple(date(year, month, 1) for month in range(season_start.month, month_end + 1))
+
+
+def _season_x_axis_labels(bucket_count: int, labels: tuple[str, ...]) -> tuple[CheckinSeasonAxisLabel, ...]:
+    if not labels:
+        return ()
+    return tuple(
+        CheckinSeasonAxisLabel(
+            x=((index + 0.5) / bucket_count) * 100,
+            label=label,
+        )
+        for index, label in enumerate(labels[:bucket_count])
+    )
+
+
+def _nice_season_tick_step(max_count: int) -> int:
+    if max_count <= 3:
+        return 1
+    rough_step = max_count / 3
+    magnitude = 10 ** math.floor(math.log10(rough_step))
+    for multiplier in (1, 2, 5, 10):
+        step = multiplier * magnitude
+        if step >= rough_step:
+            return int(step)
+    return int(10 * magnitude)
+
+
+def _season_y_axis_labels(max_count: int) -> tuple[int, tuple[CheckinSeasonYAxisLabel, ...]]:
+    if max_count <= 0:
+        return 0, ()
+    step = _nice_season_tick_step(max_count)
+    scale_max_count = int(math.ceil(max_count / step) * step)
+    labels = tuple(
+        CheckinSeasonYAxisLabel(
+            y=100 - ((tick / scale_max_count) * 100),
+            label=str(tick),
+        )
+        for tick in range(scale_max_count, -1, -step)
+    )
+    return scale_max_count, labels
+
+
 def _checkin_season_comparison_chart(
     checkins: list[CheckIn],
     *,
     today: date,
+    by_month: bool = False,
 ) -> CheckinSeasonComparisonChart:
     current_year = today.year
     previous_year = current_year - 1
@@ -797,11 +866,11 @@ def _checkin_season_comparison_chart(
         current_season_start,
         min(today, current_season_end),
     )
-    operating_dates_by_year: dict[int, set[date]] = {
+    bucket_dates_by_year: dict[int, set[date]] = {
         year: set()
         for year in comparison_years
     }
-    daily_counts: dict[int, dict[str, Counter[date]]] = {
+    counts: dict[int, dict[str, Counter[date]]] = {
         year: {
             membership: Counter()
             for _, membership, _ in CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN
@@ -819,16 +888,31 @@ def _checkin_season_comparison_chart(
             continue
         season_start, season_end = season_ranges[checkin_year]
         if season_start <= checkin_date <= season_end:
-            operating_dates_by_year[checkin_year].add(checkin_date)
-            daily_counts[checkin_year][checkin.membership][checkin_date] += 1
+            bucket_date = (
+                date(checkin_year, checkin_date.month, 1)
+                if by_month
+                else checkin_date
+            )
+            bucket_dates_by_year[checkin_year].add(bucket_date)
+            counts[checkin_year][checkin.membership][bucket_date] += 1
 
-    operating_days_by_year = {
-        year: tuple(sorted(operating_dates))
-        for year, operating_dates in operating_dates_by_year.items()
+    buckets_by_year = {
+        year: (
+            _season_month_buckets(year, today=today)
+            if by_month
+            else tuple(sorted(bucket_dates))
+        )
+        for year, bucket_dates in bucket_dates_by_year.items()
     }
-    max_operating_days = max(
-        (len(operating_days) for operating_days in operating_days_by_year.values()),
+    max_bucket_count = max(
+        (len(bucket_dates) for bucket_dates in buckets_by_year.values()),
         default=0,
+    )
+    x_axis_labels = _season_x_axis_labels(
+        max_bucket_count,
+        tuple(date(2000, month, 1).strftime("%b") for month in range(4, 11))
+        if by_month
+        else (),
     )
 
     panels: list[CheckinSeasonPanel] = []
@@ -837,26 +921,27 @@ def _checkin_season_comparison_chart(
         max_count = 0
         for year in comparison_years:
             year_points: list[tuple[date, int]] = []
-            for operating_date in operating_days_by_year[year]:
+            for bucket_date in buckets_by_year[year]:
                 count = sum(
-                    daily_counts[year][membership][operating_date]
+                    counts[year][membership][bucket_date]
                     for membership in memberships
                 )
-                year_points.append((operating_date, count))
+                year_points.append((bucket_date, count))
                 max_count = max(max_count, count)
             counts_by_year[year] = year_points
 
+        scale_max_count, y_axis_labels = _season_y_axis_labels(max_count)
         series_rows: list[CheckinSeasonSeries] = []
         year_count = len(comparison_years)
         point_gap = 0.6
         for year_index, year in enumerate(comparison_years):
             year_points = counts_by_year[year]
             chart_points: list[CheckinSeasonPoint] = []
-            for index, (operating_date, count) in enumerate(year_points):
-                group_width = 100 / max_operating_days if max_operating_days else 100
+            for index, (bucket_date, count) in enumerate(year_points):
+                group_width = 100 / max_bucket_count if max_bucket_count else 100
                 lane_width = max(0.35, (group_width - point_gap) / year_count)
                 lane_x = (index * group_width) + (point_gap / 2) + (year_index * lane_width)
-                point_height = 0.0 if max_count <= 0 else (count / max_count) * 100
+                point_height = 0.0 if scale_max_count <= 0 else (count / scale_max_count) * 100
                 x = lane_x + (lane_width / 2)
                 y = 100 - point_height
                 chart_points.append(
@@ -867,7 +952,12 @@ def _checkin_season_comparison_chart(
                         bar_y=y,
                         bar_width=lane_width,
                         bar_height=point_height,
-                        label=_date_label(operating_date),
+                        value_label_y=max(4.0, y - 2.0),
+                        label=(
+                            bucket_date.strftime("%b")
+                            if by_month
+                            else _date_label(bucket_date)
+                        ),
                         count=count,
                     )
                 )
@@ -885,15 +975,19 @@ def _checkin_season_comparison_chart(
                 label=label,
                 css_class=css_class,
                 max_count=max_count,
-                midpoint_count=(max_count + 1) // 2,
+                scale_max_count=scale_max_count,
+                y_axis_labels=y_axis_labels,
                 series=tuple(series_rows),
             )
         )
 
     return CheckinSeasonComparisonChart(
-        title="Season Comparison",
+        title="Season Comparison by Month" if by_month else "Season Comparison by Operating Day",
         previous_year=previous_year,
         current_year=current_year,
+        peak_unit="month" if by_month else "day",
+        aria_unit="month" if by_month else "operating day",
+        x_axis_labels=x_axis_labels,
         panels=tuple(panels),
     )
 
@@ -941,6 +1035,11 @@ def _checkins_report_context(
             season_checkins,
             today=today,
         ),
+        "monthly_season_comparison_chart": _checkin_season_comparison_chart(
+            season_checkins,
+            today=today,
+            by_month=True,
+        ),
         "notes_by_user_id": notes_by_user_id,
         "start_date": start_date,
         "end_date": end_date,
@@ -976,6 +1075,10 @@ def _checkins_report_stream_payload(
         "season_comparison_chart_html": render_template(
             "club_admin/_checkins_season_comparison.html",
             chart=context["season_comparison_chart"],
+        ),
+        "monthly_season_comparison_chart_html": render_template(
+            "club_admin/_checkins_season_comparison.html",
+            chart=context["monthly_season_comparison_chart"],
         ),
         "rows_html": render_template(
             "club_admin/_checkins_report_rows.html",
