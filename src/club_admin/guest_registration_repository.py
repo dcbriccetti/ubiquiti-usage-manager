@@ -119,7 +119,17 @@ def _guest_registration_select_sql() -> str:
             u.email,
             u.work_phone,
             u.cell_phone,
-            u.screening_status
+            u.screening_status,
+            u.gender,
+            u.occupation,
+            u.driver_license_number,
+            u.driver_license_state,
+            u.driver_license_expires,
+            u.emergency_contact_name,
+            u.emergency_contact_relationship,
+            u.emergency_contact_phone,
+            u.aanr_number,
+            u.other_club_name
         FROM guest_registrations g
         JOIN users u ON u.id = g.user_id
     """
@@ -153,5 +163,22 @@ def get_guest_registration_record(
         WHERE g.id = ?
         """,
         (registration_id,),
+    ).fetchone()
+    return _record_from_row(row) if row is not None else None
+
+
+def get_latest_guest_registration_for_user(
+    connection: sqlite3.Connection,
+    user_id: int,
+) -> GuestRegistrationRecord | None:
+    '''Return the most recent first-time visitor registration for one user.'''
+    row = connection.execute(
+        _guest_registration_select_sql()
+        + """
+        WHERE g.user_id = ?
+        ORDER BY g.visit_date DESC, g.created_at DESC, g.id DESC
+        LIMIT 1
+        """,
+        (user_id,),
     ).fetchone()
     return _record_from_row(row) if row is not None else None

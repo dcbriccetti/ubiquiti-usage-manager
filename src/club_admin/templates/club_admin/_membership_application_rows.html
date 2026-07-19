@@ -1,0 +1,41 @@
+{% for record in records %}
+  {% set application = record.application %}
+  {% set member = record.member %}
+  <tr>
+    <td class="nowrap">{{ application.created_at|local_sqlite_datetime }}</td>
+    <td>
+      <a href="{{ url_for('member_detail', member_id=member.id) }}">
+        {{ member.last_name }}, {{ member.first_name }}
+      </a>
+    </td>
+    <td class="nowrap">{{ application.requested_membership }}</td>
+    <td class="nowrap">{{ member.membership }}</td>
+    <td class="nowrap">{{ application.status|replace('_', ' ')|title }}</td>
+    <td class="nowrap">{{ member.cell_phone or member.phone or '' }}</td>
+    <td class="guest-actions-cell">
+      <div class="guest-actions">
+        <a class="button-link secondary" href="{{ url_for('edit_membership_application', application_id=application.id) }}">Edit</a>
+        <a class="button-link secondary" href="{{ url_for('filled_membership_application_form', application_id=application.id) }}">Print Form</a>
+        {% if application.status == "pending" %}
+          {% if application.application_fee_received_at %}
+            <span class="status-pill safe">Fee Received</span>
+          {% else %}
+            <form method="post" action="{{ url_for('mark_membership_application_fee_received', application_id=application.id) }}">
+              <button class="secondary" type="submit">Fee Received</button>
+            </form>
+          {% endif %}
+          <form method="post" action="{{ url_for('approve_membership_application', application_id=application.id) }}">
+            <button type="submit">Approve</button>
+          </form>
+          <form method="post" action="{{ url_for('decline_membership_application', application_id=application.id) }}">
+            <button class="secondary" type="submit">Decline</button>
+          </form>
+        {% endif %}
+      </div>
+    </td>
+  </tr>
+{% else %}
+  <tr>
+    <td colspan="7" class="empty">No membership applications submitted yet.</td>
+  </tr>
+{% endfor %}

@@ -16,9 +16,8 @@
         <p class="app-title">{{ app_title }}</p>
         <h1>Self Check-in</h1>
       </div>
-      <nav class="nav-links self-checkin-nav" aria-label="Public check-in navigation">
-        <a href="{{ url_for('guest_registration') }}">Visitor Registration</a>
-      </nav>
+      {% set active_public_page = "checkin" %}
+      {% include "club_admin/_public_kiosk_nav.html" %}
     </header>
 
     <div class="self-checkin-layout{% if message or barcode_svg %} has-status{% endif %}">

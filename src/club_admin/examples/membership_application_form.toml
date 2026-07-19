@@ -1,0 +1,9 @@
+title = "Membership Application"
+version = "ORG-MEMBER-1.0"
+
+[agreement]
+title = "Membership Agreement"
+paragraphs = [
+  "Replace this sample paragraph with the organization-specific membership application agreement text kept in a private local TOML file.",
+  "Keep legal language outside the repository when it is specific to one organization, and point USER_MANAGEMENT_MEMBERSHIP_APPLICATION_DEFINITION_PATH at that private file.",
+]

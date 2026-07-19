@@ -55,6 +55,10 @@ class GuestFormSpec:
     version: str
 
 
+class FormDefinitionError(ValueError):
+    '''Raised when a required form definition cannot be loaded safely.'''
+
+
 def default_guest_form_spec() -> GuestFormSpec:
     return GuestFormSpec(
         title="Visitor Registration",
@@ -70,20 +74,8 @@ def _string_value(value: Any, fallback: str) -> str:
     return value.strip() if isinstance(value, str) and value.strip() else fallback
 
 
-def load_guest_form_spec(definition_path: str) -> GuestFormSpec:
-    '''Load a guest form definition from TOML, or return a generic default.'''
+def _form_spec_from_data(data: dict[str, Any]) -> GuestFormSpec:
     spec = default_guest_form_spec()
-    if not definition_path.strip():
-        return spec
-
-    path = Path(definition_path).expanduser().resolve(strict=False)
-    if not path.is_file():
-        return spec
-
-    try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
-        return spec
     labels = dict(spec.labels)
     raw_labels = data.get("labels") or data.get("fields") or {}
     if isinstance(raw_labels, dict):
@@ -118,3 +110,46 @@ def load_guest_form_spec(definition_path: str) -> GuestFormSpec:
         agreement_paragraphs=agreement_paragraphs,
         version=_string_value(data.get("version"), spec.version),
     )
+
+
+def load_guest_form_spec(definition_path: str) -> GuestFormSpec:
+    '''Load a visitor form definition from TOML, or return a generic default.'''
+    if not definition_path.strip():
+        return default_guest_form_spec()
+
+    path = Path(definition_path).expanduser().resolve(strict=False)
+    if not path.is_file():
+        return default_guest_form_spec()
+
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return default_guest_form_spec()
+    return _form_spec_from_data(data)
+
+
+def load_required_form_spec(definition_path: str) -> GuestFormSpec:
+    '''Load a required form definition without substituting generic legal text.'''
+    if not definition_path.strip():
+        raise FormDefinitionError("No form definition path is configured.")
+
+    path = Path(definition_path).expanduser().resolve(strict=False)
+    if not path.is_file():
+        raise FormDefinitionError(f"Form definition file does not exist: {path}")
+
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise FormDefinitionError(f"Could not read form definition: {path}") from error
+    except tomllib.TOMLDecodeError as error:
+        raise FormDefinitionError(f"Form definition is invalid TOML: {path}") from error
+
+    agreement = data.get("agreement")
+    paragraphs = agreement.get("paragraphs") if isinstance(agreement, dict) else None
+    if not isinstance(paragraphs, list) or not any(
+        isinstance(paragraph, str) and paragraph.strip() for paragraph in paragraphs
+    ):
+        raise FormDefinitionError(
+            f"Form definition has no agreement paragraphs: {path}"
+        )
+    return _form_spec_from_data(data)

@@ -13,9 +13,8 @@
         <p class="app-title">{{ app_title }}</p>
         <h1>Visitor Registration</h1>
       </div>
-      <nav class="nav-links" aria-label="User management navigation">
-        <a href="{{ url_for('self_checkin') }}">Back to Self Check-in</a>
-      </nav>
+      {% set active_public_page = "visitor" %}
+      {% include "club_admin/_public_kiosk_nav.html" %}
     </header>
 
     {% if message %}
@@ -48,7 +47,7 @@
         </label>
         <label class="required-field">
           <span>Date of Birth</span>
-          <input type="text" name="date_of_birth" value="{{ form_data.get('date_of_birth', '') }}" autocomplete="off" inputmode="numeric" placeholder="YYYY-MM-DD or MM/DD/YYYY" required>
+          <input type="text" name="date_of_birth" value="{{ form_data.get('date_of_birth', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY" required>
         </label>
       </section>
 
@@ -121,9 +120,9 @@
           <span>Member Name</span>
           <input type="text" name="member_name" value="{{ form_data.get('member_name', '') }}" autocomplete="off">
         </label>
-        <label class="detail-wide">
+        <label class="detail-wide required-field">
           <span>How Did You Hear About Us?</span>
-          <input type="text" name="heard_about" value="{{ form_data.get('heard_about', '') }}" autocomplete="off">
+          <input type="text" name="heard_about" value="{{ form_data.get('heard_about', '') }}" autocomplete="off" required>
         </label>
         <label class="checkbox-field detail-wide">
           <input type="checkbox" name="newsletter_opt_out" value="1" {% if form_data.get('newsletter_opt_out') %}checked{% endif %}>

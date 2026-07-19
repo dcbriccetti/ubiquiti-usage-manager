@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS users (
     city TEXT,
     state TEXT,
     zip TEXT,
+    mailing_address TEXT,
+    mailing_address2 TEXT,
+    mailing_city TEXT,
+    mailing_state TEXT,
+    mailing_zip TEXT,
     phone TEXT,
     email TEXT,
     work_phone TEXT,
@@ -33,6 +38,19 @@ CREATE TABLE IF NOT EXISTS users (
         screening_status IS NULL
         OR screening_status IN ('pending', 'safe', 'banned')
     ),
+    gender TEXT,
+    occupation TEXT,
+    driver_license_number TEXT,
+    driver_license_state TEXT,
+    driver_license_expires TEXT CHECK (
+        driver_license_expires IS NULL
+        OR driver_license_expires GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    ),
+    emergency_contact_name TEXT,
+    emergency_contact_relationship TEXT,
+    emergency_contact_phone TEXT,
+    aanr_number TEXT,
+    other_club_name TEXT,
     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -56,6 +74,65 @@ CREATE TABLE IF NOT EXISTS guest_registrations (
 
 CREATE INDEX IF NOT EXISTS ix_guest_registrations_created_at
 ON guest_registrations (created_at);
+
+CREATE TABLE IF NOT EXISTS membership_applications (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    requested_membership TEXT NOT NULL CHECK (requested_membership IN ('Full Member', 'Associate Member')),
+    gender TEXT,
+    occupation TEXT,
+    driver_license_number TEXT,
+    driver_license_state TEXT,
+    driver_license_expires TEXT CHECK (
+        driver_license_expires IS NULL
+        OR driver_license_expires GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    ),
+    mailing_address TEXT,
+    mailing_address2 TEXT,
+    mailing_city TEXT,
+    mailing_state TEXT,
+    mailing_zip TEXT,
+    club_news_name_permission INTEGER CHECK (club_news_name_permission IS NULL OR club_news_name_permission IN (0, 1)),
+    emergency_contact_name TEXT,
+    emergency_contact_relationship TEXT,
+    emergency_contact_phone TEXT,
+    minor_children TEXT,
+    convicted INTEGER CHECK (convicted IS NULL OR convicted IN (0, 1)),
+    conviction_explanation TEXT,
+    social_nudity_practiced INTEGER CHECK (social_nudity_practiced IS NULL OR social_nudity_practiced IN (0, 1)),
+    social_nudity_duration TEXT,
+    social_nudity_experience TEXT,
+    aanr_member INTEGER CHECK (aanr_member IS NULL OR aanr_member IN (0, 1)),
+    aanr_number TEXT,
+    aanr_expires TEXT CHECK (
+        aanr_expires IS NULL
+        OR aanr_expires GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    ),
+    other_club_member INTEGER CHECK (other_club_member IS NULL OR other_club_member IN (0, 1)),
+    other_club_name TEXT,
+    agreement_accepted INTEGER NOT NULL DEFAULT 0 CHECK (agreement_accepted IN (0, 1)),
+    signed_at TEXT CHECK (
+        signed_at IS NULL
+        OR signed_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    ),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'declined', 'withdrawn')),
+    application_fee_received_at TEXT CHECK (
+        application_fee_received_at IS NULL
+        OR application_fee_received_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+    ),
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS ix_membership_applications_user_created
+ON membership_applications (user_id, created_at);
+
+CREATE INDEX IF NOT EXISTS ix_membership_applications_status_created
+ON membership_applications (status, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_membership_applications_pending_user
+ON membership_applications (user_id)
+WHERE status = 'pending';
 
 CREATE TABLE IF NOT EXISTS checkins (
     id INTEGER PRIMARY KEY,
@@ -230,6 +307,80 @@ def _ensure_user_screening_status_column(connection: sqlite3.Connection) -> None
         )
 
 
+def _ensure_user_membership_profile_columns(connection: sqlite3.Connection) -> None:
+    columns = _column_names(connection, "users")
+    text_columns = (
+        "gender",
+        "occupation",
+        "driver_license_number",
+        "driver_license_state",
+        "emergency_contact_name",
+        "emergency_contact_relationship",
+        "emergency_contact_phone",
+        "aanr_number",
+        "other_club_name",
+        "mailing_address",
+        "mailing_address2",
+        "mailing_city",
+        "mailing_state",
+        "mailing_zip",
+    )
+    for column_name in text_columns:
+        if column_name not in columns:
+            connection.execute(f"ALTER TABLE users ADD COLUMN {column_name} TEXT")
+    if "driver_license_expires" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE users
+            ADD COLUMN driver_license_expires TEXT
+            CHECK (
+                driver_license_expires IS NULL
+                OR driver_license_expires GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            )
+            """
+        )
+
+
+def _ensure_membership_application_columns(connection: sqlite3.Connection) -> None:
+    if not _table_exists(connection, "membership_applications"):
+        return
+    columns = _column_names(connection, "membership_applications")
+    text_columns = (
+        "mailing_address",
+        "mailing_address2",
+        "mailing_city",
+        "mailing_state",
+        "mailing_zip",
+        "social_nudity_duration",
+    )
+    for column_name in text_columns:
+        if column_name not in columns:
+            connection.execute(
+                f"ALTER TABLE membership_applications ADD COLUMN {column_name} TEXT"
+            )
+    integer_columns = (
+        "social_nudity_practiced",
+        "aanr_member",
+        "other_club_member",
+    )
+    for column_name in integer_columns:
+        if column_name not in columns:
+            connection.execute(
+                f"ALTER TABLE membership_applications ADD COLUMN {column_name} INTEGER"
+            )
+    if "aanr_expires" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE membership_applications
+            ADD COLUMN aanr_expires TEXT
+            CHECK (
+                aanr_expires IS NULL
+                OR aanr_expires GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            )
+            """
+        )
+
+
 def _drop_guest_registration_middle_name_column(connection: sqlite3.Connection) -> None:
     if not _table_exists(connection, "guest_registrations"):
         return
@@ -246,6 +397,8 @@ def init_db(db_path: Path | None = None) -> None:
         connection.executescript(SCHEMA_SQL)
         _ensure_user_date_columns(connection)
         _ensure_user_screening_status_column(connection)
+        _ensure_user_membership_profile_columns(connection)
+        _ensure_membership_application_columns(connection)
         _drop_guest_registration_middle_name_column(connection)
         _validate_foreign_keys(connection)
         connection.commit()

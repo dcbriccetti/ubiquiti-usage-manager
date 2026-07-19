@@ -48,10 +48,11 @@ from club_admin import checkin_repository
 from club_admin import database
 from club_admin import guest_form
 from club_admin import guest_registration_repository
+from club_admin import membership_application_repository
 from club_admin import member_repository
 from club_admin import user_note_repository
 from club_admin import zip_repository
-from club_admin.models import CheckIn, GuestRegistration, Member
+from club_admin.models import CheckIn, GuestRegistration, Member, MembershipApplication
 
 
 EDITABLE_MEMBER_FIELDS = (
@@ -67,6 +68,11 @@ EDITABLE_MEMBER_FIELDS = (
     "city",
     "state",
     "zip",
+    "mailing_address",
+    "mailing_address2",
+    "mailing_city",
+    "mailing_state",
+    "mailing_zip",
     "phone",
     "email",
     "work_phone",
@@ -117,10 +123,13 @@ CHECKIN_MONITOR_TOKEN_HEADER = "X-Checkin-Monitor-Token"
 CHECKIN_MONITOR_MAX_LIMIT = 50
 CHECKIN_MONITOR_MAX_WAIT_SECONDS = 30.0
 CHECKIN_MONITOR_POLL_SECONDS = 1.0
+MEMBERSHIP_APPLICATION_SESSION_KEY = "membership_application_user_id"
 PUBLIC_KIOSK_ENDPOINTS = frozenset(
     {
         "guest_registration",
         "guest_registration_thanks",
+        "membership_application",
+        "membership_application_thanks",
         "self_checkin",
     }
 )
@@ -176,6 +185,15 @@ def _format_sqlite_utc_date(value: datetime | str | None) -> str:
     return local_value.strftime("%Y-%m-%d") if local_value is not None else ""
 
 
+def _format_date_entry(value: date | str | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, date):
+        return value.strftime("%m/%d/%Y")
+    parsed_value = _parse_flexible_date(str(value))
+    return parsed_value.strftime("%m/%d/%Y") if parsed_value is not None else str(value)
+
+
 def _display_audit_field_name(value: str | None) -> str:
     if value == "guest registration submitted":
         return "visitor registration submitted"
@@ -227,6 +245,12 @@ class MemberDocumentPreview:
     title: str
     document_name: str | None = None
     is_guest_form: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class KioskIdentityResult:
+    member: Member | None
+    used_barcode: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -375,6 +399,10 @@ class GuestRegistrationFormError(ValueError):
     '''Raised when a visitor registration submission cannot be accepted.'''
 
 
+class MembershipApplicationFormError(ValueError):
+    '''Raised when a membership application submission cannot be accepted.'''
+
+
 class MemberFormError(ValueError):
     '''Raised when admin-edited user fields cannot be accepted.'''
 
@@ -390,7 +418,7 @@ def _parse_member_form_date(form_data: Any, field_name: str) -> date | None:
     parsed_date = _parse_flexible_date(value)
     if parsed_date is not None:
         return parsed_date
-    raise MemberFormError("Enter valid user dates.")
+    raise MemberFormError("Enter valid user dates as MM/DD/YYYY.")
 
 
 def _screening_status_from_form(form_data: Any) -> str | None:
@@ -411,7 +439,7 @@ def _parse_flexible_date(value: str) -> date | None:
         return date.fromisoformat(value)
     except ValueError:
         pass
-    for date_format in ("%m/%d/%Y", "%m/%d/%y"):
+    for date_format in ("%m/%d/%Y", "%m/%d/%y", "%m-%d-%Y", "%m-%d-%y"):
         try:
             return datetime.strptime(value, date_format).date()
         except ValueError:
@@ -434,6 +462,11 @@ def _member_from_form(member: Member, form_data: Any) -> Member:
         city=form_data.get("city", "").strip() or None,
         state=form_data.get("state", "").strip() or None,
         zip=form_data.get("zip", "").strip() or None,
+        mailing_address=form_data.get("mailing_address", "").strip() or None,
+        mailing_address2=form_data.get("mailing_address2", "").strip() or None,
+        mailing_city=form_data.get("mailing_city", "").strip() or None,
+        mailing_state=form_data.get("mailing_state", "").strip() or None,
+        mailing_zip=form_data.get("mailing_zip", "").strip() or None,
         phone=member_repository.format_phone_number(form_data.get("phone")),
         email=form_data.get("email", "").strip() or None,
         work_phone=member_repository.format_phone_number(form_data.get("work_phone")),
@@ -502,6 +535,72 @@ def _record_checkin_change(
         old_value=old_value,
         new_value=new_value,
     )
+
+
+def _member_with_approved_application(
+    member: Member,
+    application: MembershipApplication,
+) -> Member:
+    return replace(
+        member,
+        membership=application.requested_membership,
+        gender=application.gender,
+        occupation=application.occupation,
+        driver_license_number=application.driver_license_number,
+        driver_license_state=application.driver_license_state,
+        driver_license_expires=application.driver_license_expires,
+        mailing_address=application.mailing_address,
+        mailing_address2=application.mailing_address2,
+        mailing_city=application.mailing_city,
+        mailing_state=application.mailing_state,
+        mailing_zip=application.mailing_zip,
+        emergency_contact_name=application.emergency_contact_name,
+        emergency_contact_relationship=application.emergency_contact_relationship,
+        emergency_contact_phone=application.emergency_contact_phone,
+        aanr_number=application.aanr_number,
+        other_club_name=application.other_club_name,
+    )
+
+
+def _record_member_profile_changes(
+    connection: sqlite3.Connection,
+    *,
+    old_member: Member,
+    new_member: Member,
+) -> None:
+    if old_member.id is None:
+        raise ValueError("old_member.id is required for audit.")
+    for field_name in (
+        "membership",
+        "gender",
+        "occupation",
+        "driver_license_number",
+        "driver_license_state",
+        "driver_license_expires",
+        "mailing_address",
+        "mailing_address2",
+        "mailing_city",
+        "mailing_state",
+        "mailing_zip",
+        "emergency_contact_name",
+        "emergency_contact_relationship",
+        "emergency_contact_phone",
+        "aanr_number",
+        "other_club_name",
+    ):
+        old_value = getattr(old_member, field_name)
+        new_value = getattr(new_member, field_name)
+        if old_value == new_value:
+            continue
+        audit_repository.record_field_change(
+            connection,
+            entity_type="user",
+            entity_id=old_member.id,
+            action="edit",
+            field_name=field_name,
+            old_value=old_value,
+            new_value=new_value,
+        )
 
 
 def _visible_member_audit_entries(audit_entries: list[audit_repository.AuditLogEntry]):
@@ -1170,6 +1269,259 @@ def _visitor_choice(
     return value if value in allowed_values else None
 
 
+def _membership_choice(
+    form_data: Any,
+    field_name: str,
+    allowed_values: set[str],
+    message: str,
+) -> str:
+    value = form_data.get(field_name, "").strip()
+    if value in allowed_values:
+        return value
+    raise MembershipApplicationFormError(message)
+
+
+def _membership_optional_choice(
+    form_data: Any,
+    field_name: str,
+    allowed_values: set[str],
+) -> str | None:
+    value = form_data.get(field_name, "").strip()
+    return value if value in allowed_values else None
+
+
+def _membership_bool_choice(
+    form_data: Any,
+    field_name: str,
+    message: str,
+) -> bool:
+    value = form_data.get(field_name, "").strip()
+    if value == "yes":
+        return True
+    if value == "no":
+        return False
+    raise MembershipApplicationFormError(message)
+
+
+def _membership_optional_bool_choice(form_data: Any, field_name: str) -> bool | None:
+    value = form_data.get(field_name, "").strip()
+    if value == "yes":
+        return True
+    if value == "no":
+        return False
+    return None
+
+
+def _parse_membership_application_date(
+    form_data: Any,
+    field_name: str,
+    *,
+    required: bool = False,
+    message: str = "Enter valid dates.",
+) -> date | None:
+    value = form_data.get(field_name, "").strip()
+    if not value:
+        if required:
+            raise MembershipApplicationFormError(message)
+        return None
+    parsed_date = _parse_flexible_date(value)
+    if parsed_date is None:
+        raise MembershipApplicationFormError(message)
+    return parsed_date
+
+
+def _membership_application_from_form(
+    form_data: Any,
+    *,
+    user_id: int,
+) -> MembershipApplication:
+    requested_membership = _membership_choice(
+        form_data,
+        "requested_membership",
+        {"Full Member", "Associate Member"},
+        "Choose a membership type.",
+    )
+    convicted = _membership_bool_choice(
+        form_data,
+        "convicted",
+        "Answer the conviction question.",
+    )
+    conviction_explanation = _visitor_text_or_none(form_data, "conviction_explanation")
+    if convicted and not conviction_explanation:
+        raise MembershipApplicationFormError("Explain the conviction answer.")
+    gender = _membership_choice(
+        form_data,
+        "gender",
+        {"female", "male", "non_binary", "self_described", "prefer_not_to_say"},
+        "Choose a gender option.",
+    )
+    occupation = _membership_required_text(
+        form_data,
+        "occupation",
+        "Occupation is required.",
+        titlecase=True,
+    )
+    driver_license_number = _membership_required_text(
+        form_data,
+        "driver_license_number",
+        "Driver license number is required.",
+    )
+    driver_license_state = _visitor_state_or_none_for_field(
+        form_data,
+        "driver_license_state",
+    )
+    if not driver_license_state:
+        raise MembershipApplicationFormError("Driver license state is required.")
+    driver_license_expires = _parse_membership_application_date(
+        form_data,
+        "driver_license_expires",
+        required=True,
+        message="Driver license expiration must use MM/DD/YYYY.",
+    )
+    club_news_name_permission = _membership_bool_choice(
+        form_data,
+        "club_news_name_permission",
+        "Answer the club news name permission question.",
+    )
+    social_nudity_practiced = _membership_optional_bool_choice(
+        form_data,
+        "social_nudity_practiced",
+    )
+    aanr_member = _membership_bool_choice(
+        form_data,
+        "aanr_member",
+        "Answer the AANR membership question.",
+    )
+    other_club_member = _membership_bool_choice(
+        form_data,
+        "other_club_member",
+        "Answer the other nudist club membership question.",
+    )
+    emergency_contact_name = _membership_required_text(
+        form_data,
+        "emergency_contact_name",
+        "Emergency contact name is required.",
+        titlecase=True,
+    )
+    emergency_contact_relationship = _membership_required_text(
+        form_data,
+        "emergency_contact_relationship",
+        "Emergency contact relationship is required.",
+        titlecase=True,
+    )
+    emergency_contact_phone = member_repository.format_phone_number(
+        _membership_required_text(
+            form_data,
+            "emergency_contact_phone",
+            "Emergency contact phone is required.",
+        )
+    )
+    return MembershipApplication(
+        user_id=user_id,
+        requested_membership=requested_membership,
+        gender=gender,
+        occupation=occupation,
+        driver_license_number=driver_license_number,
+        driver_license_state=driver_license_state,
+        driver_license_expires=driver_license_expires,
+        mailing_address=_visitor_text_or_none(form_data, "mailing_address"),
+        mailing_address2=_visitor_text_or_none(form_data, "mailing_address2"),
+        mailing_city=_visitor_title_text_or_none(form_data, "mailing_city"),
+        mailing_state=_visitor_state_or_none_for_field(form_data, "mailing_state"),
+        mailing_zip=_visitor_text_or_none(form_data, "mailing_zip"),
+        club_news_name_permission=club_news_name_permission,
+        emergency_contact_name=emergency_contact_name,
+        emergency_contact_relationship=emergency_contact_relationship,
+        emergency_contact_phone=emergency_contact_phone,
+        minor_children=_visitor_text_or_none(form_data, "minor_children"),
+        convicted=convicted,
+        conviction_explanation=conviction_explanation,
+        social_nudity_practiced=social_nudity_practiced,
+        social_nudity_duration=_visitor_text_or_none(
+            form_data,
+            "social_nudity_duration",
+        ),
+        social_nudity_experience=_visitor_text_or_none(
+            form_data, "social_nudity_experience"
+        ),
+        aanr_member=aanr_member,
+        aanr_number=_visitor_text_or_none(form_data, "aanr_number"),
+        aanr_expires=_parse_membership_application_date(
+            form_data,
+            "aanr_expires",
+            message="AANR expiration must use MM/DD/YYYY.",
+        ),
+        other_club_member=other_club_member,
+        other_club_name=_visitor_title_text_or_none(form_data, "other_club_name"),
+        agreement_accepted=True,
+        signed_at=None,
+    )
+
+
+def _membership_application_form_data(
+    application: MembershipApplication,
+) -> dict[str, object]:
+    return {
+        "requested_membership": application.requested_membership,
+        "gender": application.gender or "",
+        "occupation": application.occupation or "",
+        "driver_license_number": application.driver_license_number or "",
+        "driver_license_state": application.driver_license_state or "",
+        "driver_license_expires": application.driver_license_expires,
+        "mailing_address": application.mailing_address or "",
+        "mailing_address2": application.mailing_address2 or "",
+        "mailing_city": application.mailing_city or "",
+        "mailing_state": application.mailing_state or "",
+        "mailing_zip": application.mailing_zip or "",
+        "club_news_name_permission": (
+            "yes" if application.club_news_name_permission else "no"
+        ),
+        "emergency_contact_name": application.emergency_contact_name or "",
+        "emergency_contact_relationship": (
+            application.emergency_contact_relationship or ""
+        ),
+        "emergency_contact_phone": application.emergency_contact_phone or "",
+        "minor_children": application.minor_children or "",
+        "convicted": "yes" if application.convicted else "no",
+        "conviction_explanation": application.conviction_explanation or "",
+        "social_nudity_practiced": (
+            ""
+            if application.social_nudity_practiced is None
+            else "yes"
+            if application.social_nudity_practiced
+            else "no"
+        ),
+        "social_nudity_duration": application.social_nudity_duration or "",
+        "aanr_member": "yes" if application.aanr_member else "no",
+        "aanr_number": application.aanr_number or "",
+        "aanr_expires": application.aanr_expires,
+        "other_club_member": "yes" if application.other_club_member else "no",
+        "other_club_name": application.other_club_name or "",
+    }
+
+
+def _visitor_state_or_none_for_field(form_data: Any, field_name: str) -> str | None:
+    value = _collapsed_text(form_data.get(field_name, ""))
+    return value.upper() if value else None
+
+
+def _membership_required_text(
+    form_data: Any,
+    field_name: str,
+    message: str,
+    *,
+    titlecase: bool = False,
+) -> str:
+    value = (
+        _visitor_title_text_or_none(form_data, field_name)
+        if titlecase
+        else _visitor_text_or_none(form_data, field_name)
+    )
+    if value:
+        return value
+    raise MembershipApplicationFormError(message)
+
+
 def _members_csv(roster: list[member_repository.MemberReportRow]) -> str:
     output = io.StringIO(newline="")
     writer = csv.writer(output)
@@ -1245,7 +1597,7 @@ def _parse_visitor_date_of_birth(form_data: Any) -> date | None:
         return None
     parsed_date = _parse_flexible_date(value)
     if parsed_date is None:
-        raise GuestRegistrationFormError("Date of birth must use YYYY-MM-DD or MM/DD/YYYY.")
+        raise GuestRegistrationFormError("Date of birth must use MM/DD/YYYY.")
     return parsed_date
 
 
@@ -1263,6 +1615,8 @@ def _guest_registration_validation_message(
         return "Street address, city, state, and zip code are required."
     if not registration.marital_status:
         return "Marital status is required."
+    if not registration.heard_about:
+        return "How you heard about us is required."
     return None
 
 
@@ -1368,6 +1722,33 @@ def _guest_registration_exists_for_visit(
         (user_id, visit_date.isoformat()),
     ).fetchone()
     return row is not None
+
+
+def _guest_registration_exists(
+    connection: sqlite3.Connection,
+    *,
+    user_id: int,
+) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM guest_registrations WHERE user_id = ? LIMIT 1",
+        (user_id,),
+    ).fetchone()
+    return row is not None
+
+
+def _membership_application_form_spec() -> guest_form.GuestFormSpec:
+    try:
+        return guest_form.load_required_form_spec(
+            current_app.config[
+                "USER_MANAGEMENT_MEMBERSHIP_APPLICATION_DEFINITION_PATH"
+            ]
+        )
+    except guest_form.FormDefinitionError as error:
+        current_app.logger.error("Membership application unavailable: %s", error)
+        abort(
+            503,
+            "Membership applications are temporarily unavailable. Please see the front desk.",
+        )
 
 
 def _safe_next_url(next_url: str | None) -> str:
@@ -2254,6 +2635,34 @@ def _member_from_barcode_token(
     return None
 
 
+def _resolve_kiosk_identity(
+    connection: sqlite3.Connection,
+    form_data: Any,
+    *,
+    barcode_secret: object,
+) -> KioskIdentityResult:
+    '''Resolve the shared public kiosk barcode/phone identity form.'''
+    barcode_token = form_data.get("barcode_token", "").strip()
+    if barcode_token:
+        return KioskIdentityResult(
+            member=_member_from_barcode_token(
+                connection,
+                barcode_token,
+                barcode_secret,
+            ),
+            used_barcode=True,
+        )
+
+    return KioskIdentityResult(
+        member=member_repository.find_member_by_phone_and_initials(
+            connection,
+            form_data.get("phone", "").strip(),
+            form_data.get("initials", "").strip(),
+        ),
+        used_barcode=False,
+    )
+
+
 def _code128b_svg(value: str) -> str:
     if not value or any(not 32 <= ord(character) <= 127 for character in value):
         raise ValueError("Code 128B barcodes require printable ASCII text.")
@@ -2363,6 +2772,9 @@ def create_app(db_path: Path | None = None) -> Flask:
     flask_app.config["USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH"] = str(
         getattr(cfg, "USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH", "")
     ).strip()
+    flask_app.config["USER_MANAGEMENT_MEMBERSHIP_APPLICATION_DEFINITION_PATH"] = str(
+        getattr(cfg, "USER_MANAGEMENT_MEMBERSHIP_APPLICATION_DEFINITION_PATH", "")
+    ).strip()
     flask_app.config["USER_MANAGEMENT_ZIP_COORDINATES"] = getattr(
         cfg,
         "USER_MANAGEMENT_ZIP_COORDINATES",
@@ -2383,6 +2795,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     flask_app.add_template_filter(_format_sqlite_utc_datetime, "local_sqlite_datetime")
     flask_app.add_template_filter(_format_sqlite_utc_date, "local_sqlite_date")
+    flask_app.add_template_filter(_format_date_entry, "date_entry")
     flask_app.add_template_filter(_display_audit_field_name, "audit_field_name")
 
     def require_admin(view):
@@ -2400,6 +2813,8 @@ def create_app(db_path: Path | None = None) -> Flask:
         "index",
         "guest_registration",
         "guest_registration_thanks",
+        "membership_application",
+        "membership_application_thanks",
         "admin_login",
         "admin_logout",
         "checkins_latest_api",
@@ -2485,6 +2900,17 @@ def create_app(db_path: Path | None = None) -> Flask:
                     member = replace(member, id=member_id)
                 else:
                     member_id = cast(int, existing_member.id)
+                    if _guest_registration_exists(connection, user_id=member_id):
+                        connection.rollback()
+                        return render_template(
+                            "club_admin/guest_registration.html",
+                            today=date.today(),
+                            message=(
+                                "You are already registered. Please use Self Check-in or "
+                                "see the front desk for help."
+                            ),
+                            form_data=request.form,
+                        ), 409
                     member = replace(
                         member,
                         id=member_id,
@@ -2492,6 +2918,12 @@ def create_app(db_path: Path | None = None) -> Flask:
                         membership=existing_member.membership,
                         member_since=existing_member.member_since,
                         screening_status=existing_member.screening_status,
+                        address2=existing_member.address2,
+                        mailing_address=existing_member.mailing_address,
+                        mailing_address2=existing_member.mailing_address2,
+                        mailing_city=existing_member.mailing_city,
+                        mailing_state=existing_member.mailing_state,
+                        mailing_zip=existing_member.mailing_zip,
                     )
                     member_repository.update_member(connection, member)
 
@@ -2538,6 +2970,130 @@ def create_app(db_path: Path | None = None) -> Flask:
         response = make_response(
             render_template(
                 "club_admin/guest_registration_thanks.html",
+                auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
+                auto_return_delay_ms=KIOSK_AUTO_RETURN_SECONDS * 1000,
+            )
+        )
+        response.headers["Refresh"] = (
+            f"{KIOSK_AUTO_RETURN_SECONDS}; url={url_for('self_checkin')}"
+        )
+        return response
+
+    @flask_app.route("/membership-application", methods=["GET", "POST"])
+    def membership_application():
+        form_spec = _membership_application_form_spec()
+        message = ""
+        member: Member | None = None
+        form_data: Any = {}
+        if request.method == "POST":
+            action = request.form.get("action", "identify").strip()
+            if action == "cancel":
+                session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+                return redirect(url_for("self_checkin"))
+            if action == "submit":
+                form_data = request.form
+                raw_user_id = session.get(MEMBERSHIP_APPLICATION_SESSION_KEY)
+                try:
+                    user_id = int(raw_user_id)
+                except (TypeError, ValueError):
+                    session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+                    return redirect(url_for("membership_application"))
+                with open_connection() as connection:
+                    connection.execute("BEGIN IMMEDIATE")
+                    member = member_repository.get_member(connection, user_id)
+                    if member is None:
+                        session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+                        return redirect(url_for("membership_application"))
+                    try:
+                        application = _membership_application_from_form(
+                            request.form,
+                            user_id=user_id,
+                        )
+                    except MembershipApplicationFormError as error:
+                        message = str(error)
+                    else:
+                        pending_application = (
+                            membership_application_repository.get_pending_membership_application_for_user(
+                                connection,
+                                user_id,
+                            )
+                        )
+                        if pending_application is not None:
+                            message = (
+                                "You already have a pending membership application. "
+                                "Please see the front desk for help."
+                            )
+                        else:
+                            application_id = membership_application_repository.insert_membership_application(
+                                connection,
+                                application,
+                            )
+                            audit_repository.record_field_change(
+                                connection,
+                                entity_type="user",
+                                entity_id=user_id,
+                                action="edit",
+                                field_name="membership application submitted",
+                                old_value=None,
+                                new_value=application_id,
+                            )
+                            connection.commit()
+                            session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+                            return redirect(url_for("membership_application_thanks"))
+            else:
+                with open_connection() as connection:
+                    barcode_secret = _barcode_secret_for_connection(
+                        connection,
+                        flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                    )
+                    identity_result = _resolve_kiosk_identity(
+                        connection,
+                        request.form,
+                        barcode_secret=barcode_secret,
+                    )
+                    member = identity_result.member
+                    connection.commit()
+                if member is None:
+                    message = "No matching user was found. Please check your barcode, phone number, and initials or first name."
+                elif member.membership != "Visitor":
+                    member = None
+                    message = "Please see the front desk."
+                else:
+                    session[MEMBERSHIP_APPLICATION_SESSION_KEY] = member.id
+        elif session.get(MEMBERSHIP_APPLICATION_SESSION_KEY) is not None:
+            with open_connection() as connection:
+                try:
+                    member_id = int(session[MEMBERSHIP_APPLICATION_SESSION_KEY])
+                except (TypeError, ValueError):
+                    member = None
+                else:
+                    member = member_repository.get_member(connection, member_id)
+            if member is None:
+                session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+
+        response = make_response(
+            render_template(
+                "club_admin/membership_application.html",
+                member=member,
+                message=message,
+                form_data=form_data,
+                today=date.today(),
+                form_spec=form_spec,
+                auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
+                auto_return_delay_ms=KIOSK_AUTO_RETURN_SECONDS * 1000,
+            )
+        )
+        if message and member is None:
+            response.headers["Refresh"] = (
+                f"{KIOSK_AUTO_RETURN_SECONDS}; url={url_for('self_checkin')}"
+            )
+        return response
+
+    @flask_app.route("/membership-application/thanks")
+    def membership_application_thanks():
+        response = make_response(
+            render_template(
+                "club_admin/membership_application_thanks.html",
                 auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
                 auto_return_delay_ms=KIOSK_AUTO_RETURN_SECONDS * 1000,
             )
@@ -3460,6 +4016,198 @@ def create_app(db_path: Path | None = None) -> Flask:
             ),
         )
 
+    @flask_app.route("/membership-applications")
+    @require_admin
+    def membership_applications():
+        with open_connection() as connection:
+            records = membership_application_repository.list_membership_application_records(
+                connection
+            )
+        return render_template(
+            "club_admin/membership_applications.html",
+            records=records,
+            status_message=request.args.get("message", "").strip(),
+        )
+
+    @flask_app.post("/membership-applications/<int:application_id>/fee-received")
+    @require_admin
+    def mark_membership_application_fee_received(application_id: int):
+        with open_connection() as connection:
+            record = membership_application_repository.get_membership_application_record(
+                connection,
+                application_id,
+            )
+            if record is None:
+                abort(404)
+            if record.application.status != "pending":
+                abort(400, "Only pending applications can be updated.")
+            membership_application_repository.mark_application_fee_received(
+                connection,
+                application_id,
+                date.today(),
+            )
+            connection.commit()
+        return redirect(url_for("membership_applications", message="Application fee recorded."))
+
+    @flask_app.route("/membership-applications/<int:application_id>/edit", methods=["GET", "POST"])
+    @require_admin
+    def edit_membership_application(application_id: int):
+        form_spec = _membership_application_form_spec()
+        message = ""
+        with open_connection() as connection:
+            record = membership_application_repository.get_membership_application_record(
+                connection,
+                application_id,
+            )
+        if record is None:
+            abort(404)
+        if record.application.status != "pending":
+            abort(400, "Only pending applications can be edited.")
+
+        form_data: Any = _membership_application_form_data(record.application)
+        if request.method == "POST":
+            form_data = request.form
+            try:
+                updated_application = _membership_application_from_form(
+                    request.form,
+                    user_id=record.member.id,
+                )
+            except MembershipApplicationFormError as error:
+                message = str(error)
+            else:
+                updated_application = replace(
+                    updated_application,
+                    id=record.application.id,
+                    status=record.application.status,
+                    application_fee_received_at=(
+                        record.application.application_fee_received_at
+                    ),
+                    reviewed_at=record.application.reviewed_at,
+                    created_at=record.application.created_at,
+                    signed_at=record.application.signed_at,
+                )
+                with open_connection() as connection:
+                    membership_application_repository.update_membership_application(
+                        connection,
+                        updated_application,
+                    )
+                    audit_repository.record_field_change(
+                        connection,
+                        entity_type="user",
+                        entity_id=record.member.id,
+                        action="edit",
+                        field_name="membership application edited",
+                        old_value=record.application.id,
+                        new_value=record.application.id,
+                    )
+                    connection.commit()
+                return redirect(
+                    url_for(
+                        "membership_applications",
+                        message="Application updated.",
+                    )
+                )
+
+        return render_template(
+            "club_admin/membership_application.html",
+            member=record.member,
+            message=message,
+            form_data=form_data,
+            today=date.today(),
+            form_action=url_for(
+                "edit_membership_application",
+                application_id=application_id,
+            ),
+            submit_label="Save Application",
+            cancel_url=url_for("membership_applications"),
+            form_spec=form_spec,
+            auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
+            auto_return_delay_ms=KIOSK_AUTO_RETURN_SECONDS * 1000,
+        )
+
+    @flask_app.post("/membership-applications/<int:application_id>/approve")
+    @require_admin
+    def approve_membership_application(application_id: int):
+        reviewed_at = datetime.now()
+        with open_connection() as connection:
+            record = membership_application_repository.get_membership_application_record(
+                connection,
+                application_id,
+            )
+            if record is None:
+                abort(404)
+            if record.application.status != "pending":
+                abort(400, "Only pending applications can be approved.")
+            approved_member = _member_with_approved_application(
+                record.member,
+                record.application,
+            )
+            _record_member_profile_changes(
+                connection,
+                old_member=record.member,
+                new_member=approved_member,
+            )
+            member_repository.update_member_membership_profile(connection, approved_member)
+            membership_application_repository.update_application_status(
+                connection,
+                application_id,
+                status="approved",
+                reviewed_at=reviewed_at,
+            )
+            connection.commit()
+        return redirect(url_for("membership_applications", message="Application approved."))
+
+    @flask_app.post("/membership-applications/<int:application_id>/decline")
+    @require_admin
+    def decline_membership_application(application_id: int):
+        with open_connection() as connection:
+            record = membership_application_repository.get_membership_application_record(
+                connection,
+                application_id,
+            )
+            if record is None:
+                abort(404)
+            if record.application.status != "pending":
+                abort(400, "Only pending applications can be declined.")
+            membership_application_repository.update_application_status(
+                connection,
+                application_id,
+                status="declined",
+                reviewed_at=datetime.now(),
+            )
+            connection.commit()
+        return redirect(url_for("membership_applications", message="Application declined."))
+
+    @flask_app.route("/membership-applications/<int:application_id>/form")
+    @require_admin
+    def filled_membership_application_form(application_id: int):
+        form_spec = _membership_application_form_spec()
+        with open_connection() as connection:
+            record = membership_application_repository.get_membership_application_record(
+                connection,
+                application_id,
+            )
+            latest_registration = (
+                guest_registration_repository.get_latest_guest_registration_for_user(
+                    connection,
+                    record.member.id,
+                )
+                if record is not None
+                else None
+            )
+        if record is None:
+            abort(404)
+        return render_template(
+            "club_admin/filled_membership_application_form.html",
+            record=record,
+            heard_about=(
+                latest_registration.registration.heard_about
+                if latest_registration is not None
+                else None
+            ),
+            form_spec=form_spec,
+        )
+
     @flask_app.post("/guest-registrations/<int:registration_id>/driver-license")
     @require_admin
     def upload_guest_registration_driver_license(registration_id: int):
@@ -3501,42 +4249,29 @@ def create_app(db_path: Path | None = None) -> Flask:
         barcode_svg = ""
         barcode_show_default = True
         if request.method == "POST":
-            barcode_token = request.form.get("barcode_token", "").strip()
             member = None
             checkin_result: LiveCheckInResult | None = None
             with open_connection() as connection:
-                if barcode_token:
-                    barcode_secret = _barcode_secret_for_connection(
-                        connection,
-                        flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
-                    )
-                    member = _member_from_barcode_token(
-                        connection,
-                        barcode_token,
-                        barcode_secret,
-                    )
-                else:
-                    phone = request.form.get("phone", "").strip()
-                    initials = request.form.get("initials", "").strip()
-                    member = member_repository.find_member_by_phone_and_initials(
-                        connection,
-                        phone,
-                        initials,
-                    )
+                barcode_secret = _barcode_secret_for_connection(
+                    connection,
+                    flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
+                )
+                identity_result = _resolve_kiosk_identity(
+                    connection,
+                    request.form,
+                    barcode_secret=barcode_secret,
+                )
+                member = identity_result.member
                 if member is not None:
                     checkin_result = _record_self_checkin(connection, member)
                     checkin_blocked = checkin_result.blocked
                     if not checkin_blocked:
-                        barcode_secret = _barcode_secret_for_connection(
-                            connection,
-                            flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
-                        )
                         token = _barcode_token_for_card_number(
                             member.card_number,
                             barcode_secret,
                         )
                         barcode_svg = _code128b_svg(token)
-                        barcode_show_default = not barcode_token
+                        barcode_show_default = not identity_result.used_barcode
                     connection.commit()
                     if checkin_result.recorded:
                         checkin_events.notify_checkins_changed()

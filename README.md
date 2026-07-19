@@ -132,6 +132,16 @@ form definition. When no form definition is configured, the app uses a generic
 visitor registration form. Keep organization-specific form text in ignored
 local files.
 
+The membership application has its own definition file. Set
+`USER_MANAGEMENT_MEMBERSHIP_APPLICATION_DEFINITION_PATH` in
+`src/config_local.py` to a private TOML file with the application agreement
+language. A generic skeleton is tracked at
+`src/club_admin/examples/membership_application_form.toml`; keep the real club
+legal text in an ignored local file such as `data/membership_application.toml`.
+If the configured file is missing, invalid, or has no agreement paragraphs,
+membership application pages return a temporary-unavailable error instead of
+silently substituting generic legal language. Other app features remain available.
+
 Example form definition:
 
 ```toml

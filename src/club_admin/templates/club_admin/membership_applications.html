@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Membership Applications</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page guest-registrations-page membership-applications-page">
+    <header class="page-header">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Membership Applications</h1>
+        <p class="summary">{{ records|length }} pending review</p>
+      </div>
+      <nav class="nav-links" aria-label="Club admin navigation">
+        <a href="{{ url_for('members') }}">Users</a>
+        <a href="{{ url_for('checkins_report') }}">Check-ins</a>
+        <a href="{{ url_for('guest_registrations') }}">Visitors</a>
+        <a class="active" href="{{ url_for('membership_applications') }}" aria-current="page">Applications</a>
+        <a href="{{ url_for('documents_report') }}">Documents</a>
+        <a href="{{ url_for('recent_changes') }}">Changes</a>
+      </nav>
+    </header>
+
+    {% if status_message %}
+      <p class="notice">{{ status_message }}</p>
+    {% endif %}
+
+    <table class="guest-registrations-table membership-applications-table">
+      <thead>
+        <tr>
+          <th>Submitted</th>
+          <th>Name</th>
+          <th>Requested</th>
+          <th>Current</th>
+          <th>Status</th>
+          <th class="nowrap">Phone</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% include "club_admin/_membership_application_rows.html" %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

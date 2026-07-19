@@ -259,7 +259,8 @@ button:disabled {
   cursor: default;
 }
 
-.button-link.secondary {
+.button-link.secondary,
+button.secondary {
   background: #5b6472;
 }
 
@@ -547,6 +548,10 @@ th {
   max-width: 1240px;
 }
 
+.membership-applications-page {
+  max-width: 1240px;
+}
+
 .guest-registration-refresh {
   align-items: center;
   color: #5b6472;
@@ -595,6 +600,11 @@ th {
 .guest-actions-cell {
   min-width: 19rem;
   width: 19rem;
+}
+
+.membership-applications-table .guest-actions-cell {
+  min-width: 24rem;
+  width: 24rem;
 }
 
 @media (max-width: 900px) {
@@ -1234,6 +1244,10 @@ th {
   max-width: 760px;
 }
 
+.page.membership-application-page {
+  max-width: 1040px;
+}
+
 .guest-registration-section {
   border-top: 1px solid #e2e8f0;
   display: grid;
@@ -1264,12 +1278,14 @@ th {
 
 .required-note span,
 .required-field > span::before,
+.required-field > legend::before,
 .required-section-title span[aria-hidden="true"] {
   color: #b42318;
   font-weight: 750;
 }
 
-.required-field > span::before {
+.required-field > span::before,
+.required-field > legend::before {
   content: "•";
   font-size: 18px;
   line-height: 1;
@@ -1316,7 +1332,140 @@ th {
 
 .form-actions {
   display: flex;
+  gap: 10px;
   justify-content: flex-end;
+}
+
+.membership-application-form .guest-registration-section {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.guest-registration-form.membership-application-form {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.membership-paper-summary {
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.membership-paper-summary h2 {
+  color: #20242c;
+  font-size: 15px;
+  font-weight: 650;
+  margin: 0;
+}
+
+.membership-paper-summary dl {
+  display: grid;
+  gap: 8px 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.membership-paper-summary div {
+  min-width: 0;
+}
+
+.membership-paper-summary dt {
+  color: #5b6472;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.membership-paper-summary dd {
+  color: #20242c;
+  font-size: 14px;
+  font-weight: 650;
+  margin: 2px 0 0;
+}
+
+.membership-application-form .radio-field {
+  grid-column: 1 / -1;
+}
+
+.membership-application-form .detail-wide {
+  grid-column: 1 / -1;
+}
+
+.membership-paper-grid {
+  align-items: start;
+}
+
+.membership-field-group {
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+  padding-top: 12px;
+}
+
+.membership-field-group-heading h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.membership-field-group-heading p {
+  color: #5b6472;
+  font-size: 13px;
+  margin: 3px 0 0;
+}
+
+.membership-field-group-grid {
+  display: grid;
+  gap: 10px 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.membership-application-form .experience-field {
+  grid-column: 1 / -1;
+}
+
+.membership-application-form .state-field {
+  max-width: none;
+}
+
+.membership-club-section {
+  align-content: start;
+}
+
+.membership-application-form .membership-agreement-section {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.membership-agreement-text {
+  background: #f8fafc;
+  border: 1px solid #d8e1ec;
+  padding: 14px 16px;
+}
+
+.membership-agreement-text h3 {
+  font-size: 18px;
+  font-style: italic;
+  margin: 0 0 8px;
+  text-decoration: underline;
+}
+
+.membership-agreement-text p {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.35;
+  margin: 8px 0;
+}
+
+.membership-signature-block {
+  color: #4b5563;
+  display: grid;
+  font-size: 13px;
+  gap: 5px;
+  padding-top: 4px;
+}
+
+.membership-signature-line {
+  border-bottom: 1px solid #6b7280;
+  min-height: 34px;
 }
 
 .self-checkin-form {
@@ -1572,6 +1721,37 @@ th {
 
 .guest-registration-form input[type="checkbox"] {
   width: auto;
+}
+
+.guest-registration-form input[type="radio"] {
+  width: auto;
+}
+
+.guest-registration-form textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  box-sizing: border-box;
+  font: inherit;
+  min-height: 78px;
+  padding: 7px 8px;
+  resize: vertical;
+  width: 100%;
+}
+
+.radio-field {
+  border: 0;
+  color: #4b5563;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13px;
+  gap: 8px 14px;
+  margin: 0;
+  padding: 0;
+}
+
+.radio-field legend {
+  flex-basis: 100%;
+  margin-bottom: 2px;
 }
 
 .notice {
@@ -2177,6 +2357,10 @@ th {
   width: 8.5in;
 }
 
+.generated-membership-application {
+  padding-top: 0.38in;
+}
+
 .generated-form-top {
   align-items: stretch;
   display: grid;
@@ -2243,6 +2427,21 @@ th {
   margin: 3px 0 0;
 }
 
+.membership-print-header {
+  margin-bottom: 14px;
+  text-align: center;
+}
+
+.generated-section-heading {
+  border-top: 1px solid #9ca3af;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 750;
+  margin: 14px 0 8px;
+  padding-top: 8px;
+  text-transform: uppercase;
+}
+
 .generated-form-grid {
   display: grid;
   gap: 7px 8px;
@@ -2272,6 +2471,16 @@ th {
   font-weight: 500;
   min-height: 18px;
   overflow-wrap: anywhere;
+}
+
+.generated-membership-application .form-line strong {
+  font-size: 14px;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.generated-membership-application .form-line span {
+  font-size: 8.5px;
 }
 
 .form-line span {
@@ -2313,6 +2522,62 @@ th {
   width: 16px;
 }
 
+.membership-print-checks {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0;
+}
+
+.membership-print-checks p {
+  align-items: center;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  margin: 0;
+}
+
+.membership-print-checks .box {
+  border: 1px solid #111827;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 750;
+  height: 15px;
+  justify-content: center;
+  line-height: 1;
+  width: 15px;
+}
+
+.membership-print-notes .form-line {
+  min-height: 44px;
+}
+
+.membership-print-agreement {
+  border-top: 1px solid #9ca3af;
+  bottom: 0.96in;
+  left: 0.86in;
+  position: absolute;
+  right: 0.58in;
+}
+
+.membership-print-agreement h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13px;
+  font-style: italic;
+  margin: 6px 0 4px;
+  text-align: center;
+  text-decoration: underline;
+}
+
+.membership-print-agreement p {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 8px;
+  line-height: 1.12;
+  margin: 3px 0 0;
+  text-align: left;
+}
+
 .generated-agreement {
   border-top: 1px dashed #6b7280;
   padding-top: 6px;
@@ -2340,6 +2605,14 @@ th {
   left: 0.86in;
   position: absolute;
   right: 0.58in;
+}
+
+.membership-signature-grid {
+  bottom: 0.36in;
+}
+
+.membership-signature-grid-printed {
+  grid-template-columns: 2fr 1fr;
 }
 
 .signature-line {
@@ -2578,7 +2851,8 @@ th {
 
   .self-checkin-form,
   .barcode-checkin-form,
-  .guest-registration-section {
+  .guest-registration-section,
+  .membership-field-group-grid {
     grid-template-columns: 1fr;
   }
 

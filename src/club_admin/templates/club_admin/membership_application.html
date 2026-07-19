@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if message and not member %}
+    <meta http-equiv="refresh" content="{{ auto_return_seconds }};url={{ url_for('self_checkin') }}">
+  {% endif %}
+  <title>{{ app_title }} | Apply for Membership</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+</head>
+<body>
+  <main class="page{% if member %} guest-registration-page membership-application-page{% else %} self-checkin-page{% endif %}">
+    <header class="page-header{% if not member %} self-checkin-header{% endif %}">
+      <div>
+        <p class="app-title">{{ app_title }}</p>
+        <h1>Apply for Membership</h1>
+      </div>
+      {% set active_public_page = "membership" %}
+      {% include "club_admin/_public_kiosk_nav.html" %}
+    </header>
+
+    {% if member %}
+      {% if message %}
+        <p class="notice">{{ message }}</p>
+      {% endif %}
+
+      <form class="edit-form guest-registration-form membership-application-form" action="{{ form_action or url_for('membership_application') }}" method="post" autocomplete="off">
+        <input type="hidden" name="action" value="submit">
+        <p class="required-note">Application for <strong>{{ member.first_name }} {{ member.last_name }}</strong>. Items marked <span aria-hidden="true">•</span> are required.</p>
+
+        <section class="membership-paper-summary" aria-labelledby="applicant-section-title">
+          <h2 id="applicant-section-title">Applicant Information</h2>
+          <dl>
+            <div>
+              <dt>Name</dt>
+              <dd>{{ member.last_name }}, {{ member.first_name }}{% if member.nickname %} ({{ member.nickname }}){% endif %}</dd>
+            </div>
+            <div>
+              <dt>Residence Address</dt>
+              <dd>{{ member.address or '' }}{% if member.address2 %}, {{ member.address2 }}{% endif %}{% if member.city or member.state or member.zip %}<br>{{ member.city or '' }}{% if member.state %}, {{ member.state }}{% endif %} {{ member.zip or '' }}{% endif %}</dd>
+            </div>
+            <div>
+              <dt>Cell Phone</dt>
+              <dd>{{ member.cell_phone or member.phone or '' }}</dd>
+            </div>
+            <div>
+              <dt>Email Address</dt>
+              <dd>{{ member.email or '' }}</dd>
+            </div>
+            <div>
+              <dt>Birth Date</dt>
+              <dd>{{ member.date_of_birth or '' }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="guest-registration-section membership-paper-grid" aria-labelledby="application-details-title">
+          <h2 id="application-details-title">Application Details</h2>
+          <label class="required-field">
+            <span>Membership Type</span>
+            <select name="requested_membership" required autofocus>
+              <option value=""></option>
+              <option value="Full Member" {% if form_data.get('requested_membership') == 'Full Member' %}selected{% endif %}>Full Member</option>
+              <option value="Associate Member" {% if form_data.get('requested_membership') == 'Associate Member' %}selected{% endif %}>Associate Member</option>
+            </select>
+          </label>
+          <label class="required-field">
+            <span>Occupation</span>
+            <input type="text" name="occupation" value="{{ form_data.get('occupation', '') }}" autocomplete="off" required>
+          </label>
+          <label class="required-field">
+            <span>Gender</span>
+            <select name="gender" required>
+              <option value=""></option>
+              <option value="female" {% if form_data.get('gender') == 'female' %}selected{% endif %}>Female</option>
+              <option value="male" {% if form_data.get('gender') == 'male' %}selected{% endif %}>Male</option>
+              <option value="non_binary" {% if form_data.get('gender') == 'non_binary' %}selected{% endif %}>Non-binary</option>
+              <option value="self_described" {% if form_data.get('gender') == 'self_described' %}selected{% endif %}>Self-described</option>
+              <option value="prefer_not_to_say" {% if form_data.get('gender') == 'prefer_not_to_say' %}selected{% endif %}>Prefer not to say</option>
+            </select>
+          </label>
+          <label class="required-field">
+            <span>Driver's License #</span>
+            <input type="text" name="driver_license_number" value="{{ form_data.get('driver_license_number', '') }}" autocomplete="off" required>
+          </label>
+          <label class="state-field required-field">
+            <span>Driver License State</span>
+            <input type="text" name="driver_license_state" value="{{ form_data.get('driver_license_state', '') }}" autocomplete="off" maxlength="2" required>
+          </label>
+          <label class="required-field">
+            <span>Driver License Expiration</span>
+            <input type="text" name="driver_license_expires" value="{{ form_data.get('driver_license_expires', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY" required>
+          </label>
+          <section class="membership-field-group detail-wide" aria-labelledby="mailing-address-title">
+            <div class="membership-field-group-heading">
+              <h3 id="mailing-address-title">Mailing Address</h3>
+              <p>Only complete this section if your mailing address differs from your residence address.</p>
+            </div>
+            <div class="membership-field-group-grid">
+              <label>
+                <span>Street</span>
+                <input type="text" name="mailing_address" value="{{ form_data.get('mailing_address', '') }}" autocomplete="off">
+              </label>
+              <label>
+                <span>Address 2</span>
+                <input type="text" name="mailing_address2" value="{{ form_data.get('mailing_address2', '') }}" autocomplete="off">
+              </label>
+              <label>
+                <span>City</span>
+                <input type="text" name="mailing_city" value="{{ form_data.get('mailing_city', '') }}" autocomplete="off">
+              </label>
+              <label>
+                <span>State</span>
+                <input type="text" name="mailing_state" value="{{ form_data.get('mailing_state', '') }}" autocomplete="off" maxlength="2">
+              </label>
+              <label>
+                <span>Zip</span>
+                <input type="text" name="mailing_zip" value="{{ form_data.get('mailing_zip', '') }}" autocomplete="off" inputmode="numeric">
+              </label>
+            </div>
+          </section>
+          <label class="required-field">
+            <span>Emergency Contact Name</span>
+            <input type="text" name="emergency_contact_name" value="{{ form_data.get('emergency_contact_name', '') }}" autocomplete="off" required>
+          </label>
+          <label class="required-field">
+            <span>Relationship</span>
+            <input type="text" name="emergency_contact_relationship" value="{{ form_data.get('emergency_contact_relationship', '') }}" autocomplete="off" required>
+          </label>
+          <label class="required-field">
+            <span>Phone</span>
+            <input type="tel" name="emergency_contact_phone" value="{{ form_data.get('emergency_contact_phone', '') }}" autocomplete="off" inputmode="tel" required>
+          </label>
+          <fieldset class="radio-field required-field">
+            <legend>Permission to use full name in club news to club members only?</legend>
+            <label class="checkbox-field">
+              <input type="radio" name="club_news_name_permission" value="yes" {% if form_data.get('club_news_name_permission') == 'yes' %}checked{% endif %} required>
+              <span>Yes</span>
+            </label>
+            <label class="checkbox-field">
+              <input type="radio" name="club_news_name_permission" value="no" {% if form_data.get('club_news_name_permission') == 'no' %}checked{% endif %} required>
+              <span>No</span>
+            </label>
+          </fieldset>
+          <label class="detail-wide">
+            <span>If you are a custodial parent of minor children and they will participate at the club, please provide each child's name and birth month/year.</span>
+            <textarea name="minor_children" rows="3" placeholder="Example: George Washington, May/2018">{{ form_data.get('minor_children', '') }}</textarea>
+          </label>
+          <fieldset class="radio-field required-field">
+            <legend>Have you ever been convicted of a Federal, State, or Military crime other than a traffic violation?</legend>
+            <label class="checkbox-field">
+              <input type="radio" name="convicted" value="yes" {% if form_data.get('convicted') == 'yes' %}checked{% endif %} required>
+              <span>Yes</span>
+            </label>
+            <label class="checkbox-field">
+              <input type="radio" name="convicted" value="no" {% if form_data.get('convicted') == 'no' %}checked{% endif %} required>
+              <span>No</span>
+            </label>
+          </fieldset>
+          <label class="detail-wide">
+            <span>If yes, explain</span>
+            <textarea name="conviction_explanation" rows="3">{{ form_data.get('conviction_explanation', '') }}</textarea>
+          </label>
+          <fieldset class="radio-field">
+            <legend>Is social nudity or nudity in nature something you have practiced or currently practice?</legend>
+            <label class="checkbox-field">
+              <input type="radio" name="social_nudity_practiced" value="yes" {% if form_data.get('social_nudity_practiced') == 'yes' %}checked{% endif %}>
+              <span>Yes</span>
+            </label>
+            <label class="checkbox-field">
+              <input type="radio" name="social_nudity_practiced" value="no" {% if form_data.get('social_nudity_practiced') == 'no' %}checked{% endif %}>
+              <span>No</span>
+            </label>
+          </fieldset>
+          <label>
+            <span>If yes, how long?</span>
+            <input type="text" name="social_nudity_duration" value="{{ form_data.get('social_nudity_duration', '') }}" autocomplete="off">
+          </label>
+          <fieldset class="radio-field required-field">
+            <legend>Are you a current AANR member?</legend>
+            <label class="checkbox-field">
+              <input type="radio" name="aanr_member" value="yes" {% if form_data.get('aanr_member') == 'yes' %}checked{% endif %} required>
+              <span>Yes</span>
+            </label>
+            <label class="checkbox-field">
+              <input type="radio" name="aanr_member" value="no" {% if form_data.get('aanr_member') == 'no' %}checked{% endif %} required>
+              <span>No</span>
+            </label>
+          </fieldset>
+          <label>
+            <span>If yes, AANR Member #</span>
+            <input type="text" name="aanr_number" value="{{ form_data.get('aanr_number', '') }}" autocomplete="off">
+          </label>
+          <label>
+            <span>AANR Expiration</span>
+            <input type="text" name="aanr_expires" value="{{ form_data.get('aanr_expires', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY">
+          </label>
+          <fieldset class="radio-field required-field">
+            <legend>Are you a current member of another nudist club?</legend>
+            <label class="checkbox-field">
+              <input type="radio" name="other_club_member" value="yes" {% if form_data.get('other_club_member') == 'yes' %}checked{% endif %} required>
+              <span>Yes</span>
+            </label>
+            <label class="checkbox-field">
+              <input type="radio" name="other_club_member" value="no" {% if form_data.get('other_club_member') == 'no' %}checked{% endif %} required>
+              <span>No</span>
+            </label>
+          </fieldset>
+          <label>
+            <span>Club Name</span>
+            <input type="text" name="other_club_name" value="{{ form_data.get('other_club_name', '') }}" autocomplete="off">
+          </label>
+        </section>
+
+        <section class="guest-registration-section membership-agreement-section" aria-labelledby="agreement-section-title">
+          <h2 id="agreement-section-title">Agreement</h2>
+          <div class="membership-agreement-text detail-wide">
+            {% for paragraph in form_spec.agreement_paragraphs %}
+              <p>{{ paragraph }}</p>
+            {% endfor %}
+          </div>
+        </section>
+
+        <div class="form-actions">
+          <button type="submit">{{ submit_label or 'Submit Application' }}</button>
+          {% if cancel_url %}
+            <a class="button-link secondary" href="{{ cancel_url }}">Cancel</a>
+          {% else %}
+            <button class="secondary-action" type="submit" name="action" value="cancel" formnovalidate>Cancel</button>
+          {% endif %}
+        </div>
+      </form>
+    {% else %}
+      <div class="self-checkin-layout{% if message %} has-status{% endif %}">
+        {% if message %}
+          <aside
+            class="self-checkin-status is-error"
+            aria-label="Membership application status"
+            role="alert"
+            tabindex="-1"
+            data-checkin-status
+            data-auto-reset-delay="{{ auto_return_delay_ms }}"
+          >
+            <div class="checkin-result-label" aria-hidden="true">Try Again</div>
+            <h2>Application not started</h2>
+            <p class="notice">{{ message }}</p>
+            <div class="checkin-status-actions">
+              <button
+                class="checkin-continue-button"
+                type="button"
+                data-checkin-reset
+                data-reset-url="{{ url_for('self_checkin') }}"
+              >Continue</button>
+            </div>
+          </aside>
+        {% else %}
+          <div class="self-checkin-entry">
+            <section class="self-checkin-panel barcode-checkin-panel" aria-labelledby="barcode-application-heading">
+              <div>
+                <h2 id="barcode-application-heading">Barcode Scan</h2>
+                <p>Scan your saved barcode here.</p>
+              </div>
+              <form class="self-checkin-form barcode-checkin-form" action="{{ url_for('membership_application') }}" method="post" autocomplete="off">
+                <input type="hidden" name="action" value="identify">
+                <label>
+                  <span>Barcode</span>
+                  <input
+                    type="text"
+                    name="barcode_token"
+                    autocomplete="off"
+                  >
+                </label>
+                <button class="visually-hidden" type="submit" tabindex="-1">Submit barcode</button>
+              </form>
+            </section>
+
+            <section class="self-checkin-panel manual-checkin-panel" aria-labelledby="manual-application-heading">
+              <div>
+                <h2 id="manual-application-heading">Phone</h2>
+                <p>Enter your phone number and initials or first name.</p>
+              </div>
+              <form class="self-checkin-form manual-checkin-form" action="{{ url_for('membership_application') }}" method="post" autocomplete="off">
+                <input type="hidden" name="action" value="identify">
+                <label>
+                  <span>Phone Number</span>
+                  <input type="tel" name="phone" autocomplete="off" required autofocus>
+                </label>
+                <label>
+                  <span>Initials or First Name</span>
+                  <input type="text" name="initials" maxlength="40" autocomplete="off" required>
+                </label>
+                <div class="checkin-action-row">
+                  <button type="submit" data-manual-checkin-submit disabled>Continue</button>
+                  <button
+                    class="secondary-action reset-checkin-button"
+                    type="button"
+                    data-checkin-reset
+                    data-reset-url="{{ url_for('self_checkin') }}"
+                    disabled
+                  >Cancel</button>
+                </div>
+              </form>
+            </section>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </main>
+  <script>
+    (() => {
+      const resetButton = document.querySelector("[data-checkin-reset]");
+      const manualSubmitButton = document.querySelector("[data-manual-checkin-submit]");
+      const forms = Array.from(document.querySelectorAll(".self-checkin-form"));
+      const barcodeInput = document.querySelector('input[name="barcode_token"]');
+      const barcodeForm = barcodeInput?.closest("form");
+      const phoneInput = document.querySelector('input[name="phone"]');
+      const initialsInput = document.querySelector('input[name="initials"]');
+      const hasStatus = document.querySelector(".self-checkin-status") !== null;
+      const checkinStatus = document.querySelector("[data-checkin-status]");
+
+      if (!resetButton) {
+        return;
+      }
+
+      const formHasValue = () => forms.some((form) => Array.from(form.elements).some((field) => {
+        if (!(field instanceof HTMLInputElement) || field.type === "hidden") {
+          return false;
+        }
+        return field.value.trim() !== "";
+      }));
+
+      const updateResetState = () => {
+        resetButton.disabled = !hasStatus && !formHasValue();
+      };
+
+      const updateSubmitState = () => {
+        if (!manualSubmitButton) {
+          return;
+        }
+        manualSubmitButton.disabled = !phoneInput?.value.trim() || !initialsInput?.value.trim();
+      };
+
+      resetButton.addEventListener("click", () => {
+        if (resetButton.disabled) {
+          return;
+        }
+        if (hasStatus) {
+          window.location.href = resetButton.dataset.resetUrl;
+          return;
+        }
+        forms.forEach((form) => form.reset());
+        phoneInput?.focus();
+        resetButton.disabled = true;
+        updateSubmitState();
+      });
+
+      forms.forEach((form) => form.addEventListener("input", () => {
+        updateResetState();
+        updateSubmitState();
+      }));
+      updateResetState();
+      updateSubmitState();
+      checkinStatus?.focus({ preventScroll: true });
+
+      if (!hasStatus && barcodeInput && barcodeForm) {
+        const barcodeTokenPattern = /(?:U2:[A-Za-z0-9_-]{8}|UM1:[A-Za-z0-9_-]{12})/;
+        let scanBuffer = "";
+        let scanBufferTimer = 0;
+
+        const clearScanBuffer = () => {
+          scanBuffer = "";
+          if (scanBufferTimer) {
+            window.clearTimeout(scanBufferTimer);
+            scanBufferTimer = 0;
+          }
+        };
+
+        const submitBarcodeToken = (token) => {
+          barcodeInput.value = token;
+          phoneInput && (phoneInput.value = "");
+          initialsInput && (initialsInput.value = "");
+          barcodeForm.requestSubmit();
+        };
+
+        const barcodeTokenFrom = (value) => value.match(barcodeTokenPattern)?.[0] || "";
+
+        [phoneInput, initialsInput].forEach((input) => {
+          input?.addEventListener("input", () => {
+            const token = barcodeTokenFrom(input.value);
+            if (token) {
+              submitBarcodeToken(token);
+            }
+          });
+        });
+
+        window.addEventListener("keydown", (event) => {
+          if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) {
+            return;
+          }
+          const target = event.target;
+          const isTypingTarget = target instanceof HTMLInputElement
+            || target instanceof HTMLTextAreaElement
+            || target instanceof HTMLSelectElement
+            || target instanceof HTMLButtonElement
+            || target instanceof HTMLAnchorElement;
+          if (isTypingTarget && target !== phoneInput && target !== initialsInput) {
+            return;
+          }
+
+          if (event.key === "Enter") {
+            const token = barcodeTokenFrom(scanBuffer);
+            clearScanBuffer();
+            if (token) {
+              event.preventDefault();
+              event.stopPropagation();
+              submitBarcodeToken(token);
+            }
+            return;
+          }
+
+          if (event.key.length !== 1) {
+            return;
+          }
+
+          scanBuffer = (scanBuffer + event.key).slice(-80);
+          const token = barcodeTokenFrom(scanBuffer);
+          if (token) {
+            event.preventDefault();
+            event.stopPropagation();
+            clearScanBuffer();
+            submitBarcodeToken(token);
+            return;
+          }
+          if (scanBufferTimer) {
+            window.clearTimeout(scanBufferTimer);
+          }
+          scanBufferTimer = window.setTimeout(clearScanBuffer, 150);
+        });
+      }
+
+      const autoResetDelay = Number(checkinStatus?.dataset.autoResetDelay || 0);
+      if (hasStatus && autoResetDelay > 0) {
+        let autoResetTimer = window.setTimeout(() => {
+          window.location.href = resetButton.dataset.resetUrl;
+        }, autoResetDelay);
+        const restartAutoReset = () => {
+          window.clearTimeout(autoResetTimer);
+          autoResetTimer = window.setTimeout(() => {
+            window.location.href = resetButton.dataset.resetUrl;
+          }, autoResetDelay);
+        };
+        ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+          window.addEventListener(eventName, restartAutoReset, { passive: true });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

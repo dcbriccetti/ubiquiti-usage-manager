@@ -22,11 +22,12 @@ from club_admin import checkin_events
 from club_admin import checkin_repository
 from club_admin import database
 from club_admin import guest_registration_repository
+from club_admin import membership_application_repository
 from club_admin import member_repository
 from club_admin import user_note_repository
 from club_admin.repair_driver_license_scans import _prepare_stored_driver_license_image
 from club_admin.app import create_app, _barcode_token_for_card_number
-from club_admin.models import CheckIn, GuestRegistration, Member
+from club_admin.models import CheckIn, GuestRegistration, Member, MembershipApplication
 import config as cfg
 
 
@@ -38,7 +39,12 @@ def create_admin_app(
     documents_dir: str = "",
     zip_coordinates: dict[str, tuple[float, float]] | None = None,
     guest_form_definition_path: str = "",
+    membership_application_definition_path: str | None = None,
 ):
+    if membership_application_definition_path is None:
+        membership_application_definition_path = str(
+            SRC_DIR / "club_admin/examples/membership_application_form.toml"
+        )
     with patch.object(
         cfg,
         "USER_MANAGEMENT_ADMIN_PASSWORD_HASH",
@@ -51,6 +57,10 @@ def create_admin_app(
         cfg,
         "USER_MANAGEMENT_GUEST_FORM_DEFINITION_PATH",
         guest_form_definition_path,
+    ), patch.object(
+        cfg,
+        "USER_MANAGEMENT_MEMBERSHIP_APPLICATION_DEFINITION_PATH",
+        membership_application_definition_path,
     ):
         return create_app(db_path)
 
@@ -160,6 +170,86 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("member_since", columns)
         self.assertIn("date_of_birth", columns)
         self.assertIn("screening_status", columns)
+
+    def test_database_creates_membership_applications_table(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            database.init_db(db_path)
+            with closing(database.connect(db_path)) as connection:
+                columns = {
+                    row["name"]
+                    for row in connection.execute(
+                        "PRAGMA table_info(membership_applications)"
+                    ).fetchall()
+                }
+
+        self.assertIn("user_id", columns)
+        self.assertIn("requested_membership", columns)
+        self.assertNotIn("heard_about", columns)
+        self.assertIn("social_nudity_practiced", columns)
+        self.assertIn("social_nudity_duration", columns)
+        self.assertIn("aanr_member", columns)
+        self.assertIn("aanr_number", columns)
+        self.assertIn("aanr_expires", columns)
+        self.assertIn("other_club_member", columns)
+        self.assertIn("other_club_name", columns)
+        self.assertIn("mailing_address", columns)
+        self.assertIn("mailing_address2", columns)
+        self.assertIn("mailing_city", columns)
+        self.assertIn("mailing_state", columns)
+        self.assertIn("mailing_zip", columns)
+        self.assertNotIn("printed_name", columns)
+
+    def test_membership_application_repository_round_trips_record(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            database.init_db(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        cell_phone="510-555-1212",
+                    ),
+                )
+                member = member_repository.list_members(connection)[0]
+                application_id = membership_application_repository.insert_membership_application(
+                    connection,
+                    MembershipApplication(
+                        user_id=member.id,
+                        requested_membership="Full Member",
+                        emergency_contact_phone="5105559999",
+                        convicted=False,
+                        aanr_number="A12345",
+                        other_club_name="Other Club",
+                        agreement_accepted=True,
+                        signed_at=date(2026, 7, 5),
+                    ),
+                )
+                connection.commit()
+
+                record = membership_application_repository.get_membership_application_record(
+                    connection,
+                    application_id,
+                )
+                records = membership_application_repository.list_membership_application_records(
+                    connection
+                )
+
+        self.assertIsNotNone(record)
+        assert record is not None
+        self.assertEqual(record.member.first_name, "Jane")
+        self.assertEqual(record.application.requested_membership, "Full Member")
+        self.assertEqual(record.application.emergency_contact_phone, "(510) 555-9999")
+        self.assertFalse(record.application.convicted)
+        self.assertEqual(record.application.aanr_number, "A12345")
+        self.assertEqual(record.application.other_club_name, "Other Club")
+        self.assertTrue(record.application.agreement_accepted)
+        self.assertEqual(record.application.signed_at, date(2026, 7, 5))
+        self.assertEqual(records[0].application.id, application_id)
 
     def test_database_adds_user_date_columns_to_existing_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -352,6 +442,11 @@ class ClubMemberImportTests(unittest.TestCase):
             ("GET", "/guest-registrations"),
             ("GET", "/guest-registrations/recent"),
             ("GET", "/guest-registrations/1/form"),
+            ("GET", "/membership-applications"),
+            ("GET", "/membership-applications/1/form"),
+            ("POST", "/membership-applications/1/fee-received"),
+            ("POST", "/membership-applications/1/approve"),
+            ("POST", "/membership-applications/1/decline"),
             ("POST", "/guest-registrations/1/driver-license"),
         )
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -405,6 +500,10 @@ class ClubMemberImportTests(unittest.TestCase):
         body = response.get_data(as_text=True)
         self.assertIn("Self Check-in", body)
         self.assertIn('href="/guest-registration"', body)
+        self.assertIn('href="/membership-application"', body)
+        self.assertIn("Check In", body)
+        self.assertIn("First-Time Visitor", body)
+        self.assertIn("Apply for Membership", body)
         self.assertIn('method="post" autocomplete="off"', body)
         self.assertIn('name="phone" autocomplete="off" required autofocus', body)
         self.assertIn('name="initials" maxlength="40" autocomplete="off" required', body)
@@ -496,7 +595,346 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0")
-        self.assertIn("Visitor Registration", response.get_data(as_text=True))
+        body = response.get_data(as_text=True)
+        self.assertIn("Visitor Registration", body)
+        self.assertIn('href="/self-checkin"', body)
+        self.assertIn('href="/guest-registration"', body)
+        self.assertIn('href="/membership-application"', body)
+
+    def test_membership_application_page_stays_public_without_admin_login(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().get("/membership-application")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0")
+        body = response.get_data(as_text=True)
+        self.assertIn("Apply for Membership", body)
+        self.assertIn('href="/self-checkin"', body)
+        self.assertIn('href="/guest-registration"', body)
+        self.assertIn('href="/membership-application"', body)
+        self.assertIn('name="barcode_token"', body)
+        self.assertIn('name="phone" autocomplete="off" required autofocus', body)
+        self.assertIn('name="initials" maxlength="40" autocomplete="off" required', body)
+
+    def test_missing_membership_form_definition_disables_only_that_feature(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(
+                db_path,
+                membership_application_definition_path="",
+            )
+            client = flask_app.test_client()
+
+            application_response = client.get("/membership-application")
+            checkin_response = client.get("/self-checkin")
+            registration_response = client.get("/guest-registration")
+
+        self.assertEqual(application_response.status_code, 503)
+        self.assertIn(
+            "Membership applications are temporarily unavailable",
+            application_response.get_data(as_text=True),
+        )
+        self.assertEqual(checkin_response.status_code, 200)
+        self.assertEqual(registration_response.status_code, 200)
+
+    def test_membership_application_identifies_visitor_without_checking_in(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        cell_phone="510-555-1212",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/membership-application",
+                data={"phone": "5105551212", "initials": "Jane"},
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                checkins = checkin_repository.list_checkins(connection)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("Refresh", response.headers)
+        body = response.get_data(as_text=True)
+        self.assertIn("Application for <strong>Jane Doe</strong>", body)
+        self.assertIn('name="requested_membership"', body)
+        self.assertNotIn('name="heard_about"', body)
+        self.assertIn("Mailing Address", body)
+        self.assertIn(
+            "Only complete this section if your mailing address differs from your residence address.",
+            body,
+        )
+        self.assertIn('name="mailing_address" value="" autocomplete="off"', body)
+        self.assertNotIn('name="mailing_address" value="" autocomplete="off" required', body)
+        self.assertNotIn('name="agreement_accepted"', body)
+        self.assertNotIn('name="printed_name"', body)
+        self.assertEqual(checkins, [])
+
+    def test_membership_application_submit_links_to_existing_visitor(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        date_of_birth=date(1990, 1, 2),
+                        address="1 Main St",
+                        city="Oakland",
+                        state="CA",
+                        zip="94610",
+                        cell_phone="510-555-1212",
+                        email="jane@example.test",
+                    ),
+                )
+                connection.commit()
+                original_user = member_repository.list_members(connection)[0]
+                guest_registration_repository.insert_guest_registration(
+                    connection,
+                    GuestRegistration(
+                        user_id=original_user.id,
+                        visit_date=date(2026, 5, 1),
+                        heard_about="A member",
+                    ),
+                )
+                connection.commit()
+
+            client = flask_app.test_client()
+            identify_response = client.post(
+                "/membership-application",
+                data={"phone": "5105551212", "initials": "Jane"},
+            )
+            submit_response = client.post(
+                "/membership-application",
+                data={
+                    "action": "submit",
+                    "requested_membership": "Associate Member",
+                    "gender": "female",
+                    "occupation": "Engineer",
+                    "driver_license_number": "D1234567",
+                    "driver_license_state": "ca",
+                    "driver_license_expires": "08/01/2028",
+                    "mailing_address": "PO Box 9",
+                    "mailing_city": "Berkeley",
+                    "mailing_state": "ca",
+                    "mailing_zip": "94701",
+                    "club_news_name_permission": "yes",
+                    "emergency_contact_name": "Public, John",
+                    "emergency_contact_relationship": "Friend",
+                    "emergency_contact_phone": "5105559999",
+                    "minor_children": "Example Child May/2018",
+                    "convicted": "no",
+                    "social_nudity_practiced": "yes",
+                    "social_nudity_duration": "Two years",
+                    "aanr_member": "yes",
+                    "aanr_number": "A12345",
+                    "aanr_expires": "09/01/2028",
+                    "other_club_member": "yes",
+                    "other_club_name": "Other Club",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                records = membership_application_repository.list_membership_application_records(
+                    connection
+                )
+                updated_user = member_repository.get_member(connection, original_user.id)
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=original_user.id,
+                )
+
+        self.assertEqual(identify_response.status_code, 200)
+        self.assertEqual(submit_response.status_code, 302)
+        self.assertEqual(submit_response.headers["Location"], "/membership-application/thanks")
+        self.assertEqual(len(records), 1)
+        application = records[0].application
+        self.assertEqual(application.user_id, original_user.id)
+        self.assertEqual(application.requested_membership, "Associate Member")
+        self.assertEqual(application.gender, "female")
+        self.assertEqual(application.occupation, "Engineer")
+        self.assertEqual(application.driver_license_state, "CA")
+        self.assertEqual(application.driver_license_expires, date(2028, 8, 1))
+        self.assertEqual(application.mailing_address, "PO Box 9")
+        self.assertEqual(application.mailing_city, "Berkeley")
+        self.assertEqual(application.mailing_state, "CA")
+        self.assertEqual(application.mailing_zip, "94701")
+        self.assertTrue(application.club_news_name_permission)
+        self.assertEqual(application.emergency_contact_phone, "(510) 555-9999")
+        self.assertFalse(application.convicted)
+        self.assertTrue(application.social_nudity_practiced)
+        self.assertEqual(application.social_nudity_duration, "Two years")
+        self.assertIsNone(application.social_nudity_experience)
+        self.assertTrue(application.aanr_member)
+        self.assertEqual(application.aanr_number, "A12345")
+        self.assertEqual(application.aanr_expires, date(2028, 9, 1))
+        self.assertTrue(application.other_club_member)
+        self.assertEqual(application.other_club_name, "Other Club")
+        self.assertTrue(application.agreement_accepted)
+        self.assertIsNone(application.signed_at)
+        self.assertEqual(application.status, "pending")
+        self.assertEqual(updated_user, original_user)
+        self.assertEqual(
+            [entry.field_name for entry in audit_entries],
+            ["membership application submitted"],
+        )
+
+    def test_membership_application_rejects_second_pending_application(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        cell_phone="510-555-1212",
+                    ),
+                )
+                connection.commit()
+
+            client = flask_app.test_client()
+            client.post(
+                "/membership-application",
+                data={"phone": "5105551212", "initials": "Jane"},
+            )
+            first_response = client.post(
+                "/membership-application",
+                data={
+                    "action": "submit",
+                    "requested_membership": "Associate Member",
+                    "gender": "prefer_not_to_say",
+                    "occupation": "Engineer",
+                    "driver_license_number": "D1234567",
+                    "driver_license_state": "CA",
+                    "driver_license_expires": "08/01/2028",
+                    "club_news_name_permission": "no",
+                    "emergency_contact_name": "John Public",
+                    "emergency_contact_relationship": "Friend",
+                    "emergency_contact_phone": "5105559999",
+                    "convicted": "no",
+                    "social_nudity_practiced": "no",
+                    "aanr_member": "no",
+                    "other_club_member": "no",
+                },
+            )
+            client.post(
+                "/membership-application",
+                data={"phone": "5105551212", "initials": "Jane"},
+            )
+            second_response = client.post(
+                "/membership-application",
+                data={
+                    "action": "submit",
+                    "requested_membership": "Full Member",
+                    "gender": "prefer_not_to_say",
+                    "occupation": "Engineer",
+                    "driver_license_number": "D1234567",
+                    "driver_license_state": "CA",
+                    "driver_license_expires": "08/01/2028",
+                    "club_news_name_permission": "no",
+                    "emergency_contact_name": "John Public",
+                    "emergency_contact_relationship": "Friend",
+                    "emergency_contact_phone": "5105559999",
+                    "convicted": "no",
+                    "social_nudity_practiced": "no",
+                    "aanr_member": "no",
+                    "other_club_member": "no",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                records = (
+                    membership_application_repository.list_membership_application_records(
+                        connection
+                    )
+                )
+
+        self.assertEqual(first_response.status_code, 302)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertIn(
+            "You already have a pending membership application",
+            second_response.get_data(as_text=True),
+        )
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0].application.requested_membership, "Associate Member")
+
+    def test_membership_application_validation_rerenders_form(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        cell_phone="510-555-1212",
+                    ),
+                )
+                connection.commit()
+
+            client = flask_app.test_client()
+            client.post(
+                "/membership-application",
+                data={"phone": "5105551212", "initials": "Jane"},
+            )
+            response = client.post(
+                "/membership-application",
+                data={
+                    "action": "submit",
+                    "requested_membership": "Full Member",
+                    "convicted": "yes",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                records = membership_application_repository.list_membership_application_records(
+                    connection
+                )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Explain the conviction answer.", body)
+        self.assertIn("Application for <strong>Jane Doe</strong>", body)
+        self.assertEqual(records, [])
+
+    def test_membership_application_thanks_returns_to_self_checkin_after_delay(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().get("/membership-application/thanks")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["Cache-Control"], "no-store, max-age=0")
+        self.assertEqual(response.headers["Refresh"], "60; url=/self-checkin")
+        body = response.get_data(as_text=True)
+        self.assertIn("Application Submitted", body)
+        self.assertIn('<meta http-equiv="refresh" content="60;url=/self-checkin">', body)
+        self.assertIn('href="/self-checkin"', body)
 
     def test_guest_registration_thanks_returns_to_self_checkin_after_delay(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -799,7 +1237,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertEqual(checkins[0].last_name, "Doe")
         self.assertEqual(checkins[0].first_name, "John")
 
-    def test_guest_registration_duplicate_submit_reuses_visitor_user(self) -> None:
+    def test_guest_registration_duplicate_submit_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_admin_app(db_path)
@@ -817,6 +1255,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 "cell_phone": "510.510.5100",
                 "email": "john@example.test",
                 "marital_status": "single",
+                "heard_about": "Friend",
             }
 
             first_response = client.post("/guest-registration", data=form_data)
@@ -835,7 +1274,11 @@ class ClubMemberImportTests(unittest.TestCase):
                 )
 
         self.assertEqual(first_response.status_code, 302)
-        self.assertEqual(second_response.status_code, 302)
+        self.assertEqual(second_response.status_code, 409)
+        self.assertIn(
+            "You are already registered. Please use Self Check-in",
+            second_response.get_data(as_text=True),
+        )
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0].last_name, "Doe")
         self.assertEqual(users[0].card_number, "1")
@@ -851,6 +1294,63 @@ class ClubMemberImportTests(unittest.TestCase):
             ],
             ["guest registration submitted"],
         )
+
+    def test_guest_registration_preserves_fields_not_collected_by_form(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        date_of_birth=date(1990, 1, 2),
+                        address="Old Address",
+                        address2="Unit 4",
+                        city="Oakland",
+                        state="CA",
+                        zip="94610",
+                        mailing_address="PO Box 9",
+                        mailing_address2="Mail Stop 2",
+                        mailing_city="Berkeley",
+                        mailing_state="CA",
+                        mailing_zip="94701",
+                        cell_phone="510-555-1212",
+                    ),
+                )
+                connection.commit()
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "visit_date": "2026-05-14",
+                    "last_name": "Doe",
+                    "first_name": "Jane",
+                    "date_of_birth": "01/02/1990",
+                    "address": "1 Main St",
+                    "city": "Oakland",
+                    "state": "CA",
+                    "zip": "94610",
+                    "cell_phone": "510-555-1212",
+                    "marital_status": "single",
+                    "heard_about": "Friend",
+                },
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                member = member_repository.list_members(connection)[0]
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(member.address, "1 Main St")
+        self.assertEqual(member.address2, "Unit 4")
+        self.assertEqual(member.mailing_address, "PO Box 9")
+        self.assertEqual(member.mailing_address2, "Mail Stop 2")
+        self.assertEqual(member.mailing_city, "Berkeley")
+        self.assertEqual(member.mailing_state, "CA")
+        self.assertEqual(member.mailing_zip, "94701")
 
     def test_guest_registration_normalizes_obvious_casing_without_lowercasing_email(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -875,6 +1375,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "partner_name": "jane doe",
                     "guest_of_member": "1",
                     "member_name": "john member",
+                    "heard_about": "friend",
                 },
             )
 
@@ -920,7 +1421,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertNotIn('name="cell_phone" value="" autocomplete="tel" inputmode="tel" required', body)
         self.assertNotIn('name="other_phone" value="" inputmode="tel" required', body)
         self.assertNotIn('name="email" value="" autocomplete="email" required', body)
-        self.assertIn('name="date_of_birth" value="" autocomplete="off" inputmode="numeric" placeholder="YYYY-MM-DD or MM/DD/YYYY" required', body)
+        self.assertIn('name="date_of_birth" value="" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY" required', body)
         self.assertIn('name="address" value="" autocomplete="off" required', body)
         self.assertIn('name="zip" value="" autocomplete="off" inputmode="numeric" required data-zip-lookup', body)
         self.assertIn('name="city" value="" autocomplete="off" required tabindex="-1" data-city-field', body)
@@ -936,6 +1437,36 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertLess(body.index('name="zip"'), body.index('name="state"'))
         self.assertIn("https://api.zippopotam.us/us/", body)
         self.assertIn('select name="marital_status" required', body)
+        self.assertIn(
+            'name="heard_about" value="" autocomplete="off" required',
+            body,
+        )
+
+    def test_guest_registration_requires_how_visitor_heard_about_us(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+
+            response = flask_app.test_client().post(
+                "/guest-registration",
+                data={
+                    "last_name": "Doe",
+                    "first_name": "John",
+                    "email": "john@example.test",
+                    "date_of_birth": "1990-06-15",
+                    "address": "123 Main St",
+                    "city": "Everytown",
+                    "state": "CA",
+                    "zip": "94000",
+                    "marital_status": "single",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(
+            "How you heard about us is required.",
+            response.get_data(as_text=True),
+        )
 
     def test_guest_registration_requires_name_and_contact(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1059,7 +1590,7 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         body = response.get_data(as_text=True)
-        self.assertIn("Date of birth must use YYYY-MM-DD or MM/DD/YYYY.", body)
+        self.assertIn("Date of birth must use MM/DD/YYYY.", body)
         self.assertIn('value="June 15"', body)
         self.assertIn('value="Doe"', body)
 
@@ -2558,7 +3089,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('<option value="pending"', body)
         self.assertIn('<option value="safe"', body)
         self.assertIn('<option value="banned"', body)
-        self.assertIn('name="date_of_birth" value="1980-07-04" autocomplete="off" inputmode="numeric" placeholder="YYYY-MM-DD or MM/DD/YYYY"', body)
+        self.assertIn('name="member_since" value="" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY"', body)
+        self.assertIn('name="date_of_birth" value="07/04/1980" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY"', body)
         self.assertNotIn('name="membership" value=', body)
         self.assertNotIn('name="new_checkin_at"', body)
         self.assertNotIn("Delete Selected", body)
@@ -3165,7 +3697,10 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("2026-05-02 10:30:00", body)
         self.assertNotIn("card_number", body)
         self.assertNotIn("check-in added", body)
-        self.assertLess(body.index("check-in edited"), body.index("membership"))
+        self.assertLess(
+            body.index("<td>check-in edited</td>"),
+            body.index("<td>membership</td>"),
+        )
 
     def test_admin_guest_registration_queue_and_filled_form_use_definition_file(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -3297,6 +3832,344 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertNotIn(str(definition_path), form_body)
         self.assertNotIn(str(documents_dir), form_body)
 
+    def test_admin_membership_application_queue_and_print_form(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        date_of_birth=date(1990, 1, 2),
+                        address="1 Main St",
+                        city="Oakland",
+                        state="CA",
+                        zip="94610",
+                        cell_phone="510-555-1212",
+                        email="jane@example.test",
+                    ),
+                )
+                member = member_repository.list_members(connection)[0]
+                guest_registration_repository.insert_guest_registration(
+                    connection,
+                    GuestRegistration(
+                        user_id=member.id,
+                        visit_date=date(2026, 5, 1),
+                        heard_about="A member",
+                    ),
+                )
+                application_id = membership_application_repository.insert_membership_application(
+                    connection,
+                    MembershipApplication(
+                        user_id=member.id,
+                        requested_membership="Associate Member",
+                        gender="female",
+                        occupation="Engineer",
+                        driver_license_number="D1234567",
+                        driver_license_state="CA",
+                        driver_license_expires=date(2028, 8, 1),
+                        mailing_address="PO Box 9",
+                        mailing_city="Berkeley",
+                        mailing_state="CA",
+                        mailing_zip="94701",
+                        club_news_name_permission=True,
+                        emergency_contact_name="John Public",
+                        emergency_contact_relationship="Friend",
+                        emergency_contact_phone="5105559999",
+                        minor_children="Example Child May/2018",
+                        convicted=False,
+                        social_nudity_practiced=True,
+                        social_nudity_duration="Has visited several clubs",
+                        aanr_member=True,
+                        aanr_number="A12345",
+                        aanr_expires=date(2028, 9, 1),
+                        other_club_member=True,
+                        other_club_name="Other Club",
+                        agreement_accepted=True,
+                        signed_at=date(2026, 7, 5),
+                    ),
+                )
+                connection.execute(
+                    "UPDATE membership_applications SET created_at = ? WHERE id = ?",
+                    ("2026-07-05 18:30:00", application_id),
+                )
+                connection.commit()
+            client = admin_client(flask_app)
+
+            queue_response = client.get("/membership-applications")
+            form_response = client.get(
+                f"/membership-applications/{application_id}/form"
+            )
+
+        self.assertEqual(queue_response.status_code, 200)
+        queue_body = queue_response.get_data(as_text=True)
+        self.assertIn("Membership Applications", queue_body)
+        self.assertIn("Doe, Jane", queue_body)
+        self.assertIn("Associate Member", queue_body)
+        self.assertIn("Pending", queue_body)
+        self.assertIn("Print Form", queue_body)
+        self.assertIn("Fee Received", queue_body)
+        self.assertIn("Approve", queue_body)
+        self.assertIn("Decline", queue_body)
+        self.assertIn('href="/membership-applications"', queue_body)
+        self.assertEqual(form_response.status_code, 200)
+        form_body = form_response.get_data(as_text=True)
+        self.assertIn("Membership Application", form_body)
+        self.assertIn("Doe, Jane", form_body)
+        self.assertIn("1 Main St", form_body)
+        self.assertIn("Driver License Number", form_body)
+        self.assertIn("D1234567", form_body)
+        self.assertIn("Driver License Expiration", form_body)
+        self.assertIn("John Public", form_body)
+        self.assertIn("A12345", form_body)
+        self.assertIn("AANR Expiration", form_body)
+        self.assertIn("2028-09-01", form_body)
+        self.assertIn("Has visited several clubs", form_body)
+        self.assertIn("A member", form_body)
+        self.assertIn(
+            "Replace this sample paragraph with the organization-specific",
+            form_body,
+        )
+        self.assertNotIn("Applicant agreed to follow", form_body)
+        self.assertIn("Signature", form_body)
+        self.assertNotIn('name="printed_name"', form_body)
+
+    def test_admin_can_edit_pending_membership_application(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        cell_phone="510-555-1212",
+                    ),
+                )
+                member = member_repository.list_members(connection)[0]
+                guest_registration_repository.insert_guest_registration(
+                    connection,
+                    GuestRegistration(
+                        user_id=member.id,
+                        visit_date=date(2026, 5, 1),
+                        heard_about="A member",
+                    ),
+                )
+                application_id = membership_application_repository.insert_membership_application(
+                    connection,
+                    MembershipApplication(
+                        user_id=member.id,
+                        requested_membership="Associate Member",
+                        gender="female",
+                        occupation="Engineer",
+                        driver_license_number="D1234567",
+                        driver_license_state="CA",
+                        driver_license_expires=date(2028, 8, 1),
+                        mailing_address="PO Box 9",
+                        mailing_city="Berkeley",
+                        mailing_state="CA",
+                        mailing_zip="94701",
+                        club_news_name_permission=True,
+                        emergency_contact_name="John Public",
+                        emergency_contact_relationship="Friend",
+                        emergency_contact_phone="5105559999",
+                        convicted=False,
+                        aanr_member=False,
+                        other_club_member=False,
+                        agreement_accepted=True,
+                    ),
+                )
+                connection.commit()
+            client = admin_client(flask_app)
+
+            edit_page_response = client.get(
+                f"/membership-applications/{application_id}/edit"
+            )
+            save_response = client.post(
+                f"/membership-applications/{application_id}/edit",
+                data={
+                    "action": "submit",
+                    "requested_membership": "Full Member",
+                    "gender": "female",
+                    "occupation": "Teacher",
+                    "driver_license_number": "D7654321",
+                    "driver_license_state": "ca",
+                    "driver_license_expires": "09/01/2029",
+                    "mailing_address": "PO Box 42",
+                    "mailing_city": "Lafayette",
+                    "mailing_state": "ca",
+                    "mailing_zip": "94549",
+                    "club_news_name_permission": "no",
+                    "emergency_contact_name": "Public, Pat",
+                    "emergency_contact_relationship": "Sibling",
+                    "emergency_contact_phone": "5105558888",
+                    "convicted": "no",
+                    "aanr_member": "no",
+                    "other_club_member": "no",
+                },
+                follow_redirects=True,
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                record = (
+                    membership_application_repository.get_membership_application_record(
+                        connection,
+                        application_id,
+                    )
+                )
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+        self.assertEqual(edit_page_response.status_code, 200)
+        edit_body = edit_page_response.get_data(as_text=True)
+        self.assertIn("Save Application", edit_body)
+        self.assertIn('value="Engineer"', edit_body)
+        self.assertEqual(save_response.status_code, 200)
+        self.assertIn("Application updated.", save_response.get_data(as_text=True))
+        assert record is not None
+        self.assertEqual(record.application.requested_membership, "Full Member")
+        self.assertEqual(record.application.occupation, "Teacher")
+        self.assertEqual(record.application.driver_license_number, "D7654321")
+        self.assertEqual(record.application.driver_license_state, "CA")
+        self.assertEqual(record.application.driver_license_expires, date(2029, 9, 1))
+        self.assertEqual(record.application.mailing_address, "PO Box 42")
+        self.assertEqual(record.application.mailing_city, "Lafayette")
+        self.assertEqual(record.application.mailing_state, "CA")
+        self.assertEqual(record.application.mailing_zip, "94549")
+        self.assertEqual(
+            [entry.field_name for entry in audit_entries],
+            ["membership application edited"],
+        )
+
+    def test_admin_can_record_fee_and_approve_membership_application(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "club-users.db"
+            flask_app = create_admin_app(db_path)
+            with closing(database.connect(db_path)) as connection:
+                member_repository.upsert_member(
+                    connection,
+                    Member(
+                        last_name="Doe",
+                        first_name="Jane",
+                        card_number="123",
+                        membership="Visitor",
+                        date_of_birth=date(1990, 1, 2),
+                        address="1 Main St",
+                        city="Oakland",
+                        state="CA",
+                        zip="94610",
+                        cell_phone="510-555-1212",
+                        email="jane@example.test",
+                    ),
+                )
+                member = member_repository.list_members(connection)[0]
+                application_id = membership_application_repository.insert_membership_application(
+                    connection,
+                    MembershipApplication(
+                        user_id=member.id,
+                        requested_membership="Full Member",
+                        gender="female",
+                        occupation="Engineer",
+                        driver_license_number="D1234567",
+                        driver_license_state="CA",
+                        driver_license_expires=date(2028, 8, 1),
+                        mailing_address="PO Box 9",
+                        mailing_city="Berkeley",
+                        mailing_state="CA",
+                        mailing_zip="94701",
+                        club_news_name_permission=True,
+                        emergency_contact_name="John Public",
+                        emergency_contact_relationship="Friend",
+                        emergency_contact_phone="5105559999",
+                        minor_children="Example Child May/2018",
+                        convicted=False,
+                        social_nudity_experience="Has visited several clubs",
+                        aanr_number="A12345",
+                        other_club_name="Other Club",
+                        agreement_accepted=True,
+                        signed_at=date(2026, 7, 5),
+                    ),
+                )
+                connection.commit()
+            client = admin_client(flask_app)
+
+            fee_response = client.post(
+                f"/membership-applications/{application_id}/fee-received",
+                follow_redirects=True,
+            )
+            approve_response = client.post(
+                f"/membership-applications/{application_id}/approve",
+                follow_redirects=True,
+            )
+
+            with closing(database.connect(db_path)) as connection:
+                updated_member = member_repository.get_member(connection, member.id)
+                updated_record = (
+                    membership_application_repository.get_membership_application_record(
+                        connection,
+                        application_id,
+                    )
+                )
+                pending_records = (
+                    membership_application_repository.list_membership_application_records(
+                        connection
+                    )
+                )
+                audit_entries = audit_repository.list_audit_log_for_entity(
+                    connection,
+                    entity_type="user",
+                    entity_id=member.id,
+                )
+
+        self.assertEqual(fee_response.status_code, 200)
+        self.assertIn("Application fee recorded.", fee_response.get_data(as_text=True))
+        self.assertEqual(approve_response.status_code, 200)
+        approve_body = approve_response.get_data(as_text=True)
+        self.assertIn("Application approved.", approve_body)
+        self.assertNotIn("Doe, Jane", approve_body)
+        assert updated_member is not None
+        self.assertEqual(updated_member.membership, "Full Member")
+        self.assertEqual(updated_member.gender, "female")
+        self.assertEqual(updated_member.occupation, "Engineer")
+        self.assertEqual(updated_member.driver_license_number, "D1234567")
+        self.assertEqual(updated_member.driver_license_state, "CA")
+        self.assertEqual(updated_member.driver_license_expires, date(2028, 8, 1))
+        self.assertEqual(updated_member.mailing_address, "PO Box 9")
+        self.assertEqual(updated_member.mailing_city, "Berkeley")
+        self.assertEqual(updated_member.mailing_state, "CA")
+        self.assertEqual(updated_member.mailing_zip, "94701")
+        self.assertEqual(updated_member.emergency_contact_name, "John Public")
+        self.assertEqual(updated_member.emergency_contact_relationship, "Friend")
+        self.assertEqual(updated_member.emergency_contact_phone, "(510) 555-9999")
+        self.assertEqual(updated_member.aanr_number, "A12345")
+        self.assertEqual(updated_member.other_club_name, "Other Club")
+        self.assertEqual(updated_member.last_name, "Doe")
+        self.assertEqual(updated_member.first_name, "Jane")
+        self.assertEqual(updated_member.date_of_birth, date(1990, 1, 2))
+        self.assertEqual(updated_member.address, "1 Main St")
+        self.assertEqual(updated_member.email, "jane@example.test")
+        assert updated_record is not None
+        self.assertEqual(updated_record.application.status, "approved")
+        self.assertIsNotNone(updated_record.application.reviewed_at)
+        self.assertIsNotNone(updated_record.application.application_fee_received_at)
+        self.assertEqual(pending_records, [])
+        audit_by_field = {entry.field_name: entry for entry in audit_entries}
+        self.assertEqual(audit_by_field["membership"].old_value, "Visitor")
+        self.assertEqual(audit_by_field["membership"].new_value, "Full Member")
+        self.assertEqual(audit_by_field["aanr_number"].new_value, "A12345")
+        self.assertNotIn("first_name", audit_by_field)
+        self.assertNotIn("email", audit_by_field)
+
     def test_admin_guest_registration_queue_exposes_live_refresh_payload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -3314,6 +4187,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "state": "CA",
                     "zip": "94000",
                     "marital_status": "single",
+                    "heard_about": "Friend",
                 },
             )
             client = admin_client(flask_app)
@@ -3356,6 +4230,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "state": "CA",
                     "zip": "94000",
                     "marital_status": "single",
+                    "heard_about": "Friend",
                 },
             )
             with closing(database.connect(db_path)) as connection:
@@ -3410,6 +4285,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "state": "CA",
                     "zip": "94000",
                     "marital_status": "single",
+                    "heard_about": "Friend",
                 },
             )
             with closing(database.connect(db_path)) as connection:
@@ -3456,6 +4332,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "state": "CA",
                     "zip": "94000",
                     "marital_status": "single",
+                    "heard_about": "Friend",
                 },
             )
             with closing(database.connect(db_path)) as connection:
@@ -3517,6 +4394,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "state": "CA",
                     "zip": "94000",
                     "marital_status": "single",
+                    "heard_about": "Friend",
                 },
             )
             with closing(database.connect(db_path)) as connection:
@@ -3600,6 +4478,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "state": "CA",
                     "zip": "94000",
                     "marital_status": "single",
+                    "heard_about": "Friend",
                 },
             )
             with closing(database.connect(db_path)) as connection:

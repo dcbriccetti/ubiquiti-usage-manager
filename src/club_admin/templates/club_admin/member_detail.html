@@ -19,6 +19,7 @@
           <a class="active" href="{{ url_for('members') }}" aria-current="page">Users</a>
           <a href="{{ url_for('checkins_report') }}">Check-ins</a>
           <a href="{{ url_for('guest_registrations') }}">Visitors</a>
+          <a href="{{ url_for('membership_applications') }}">Applications</a>
           <a href="{{ url_for('documents_report') }}">Documents</a>
           <a href="{{ url_for('recent_changes') }}">Changes</a>
         </nav>
@@ -83,6 +84,17 @@
         <span>Address</span>
         <strong>{{ address_lines|join('<br>')|safe }}</strong>
       </div>
+      {% set mailing_address_lines = [
+        member.mailing_address,
+        member.mailing_address2,
+        [member.mailing_city, member.mailing_state, member.mailing_zip]|select|join(', ')
+      ]|select|list %}
+      {% if mailing_address_lines %}
+        <div class="detail-wide">
+          <span>Mailing Address</span>
+          <strong>{{ mailing_address_lines|join('<br>')|safe }}</strong>
+        </div>
+      {% endif %}
     </section>
 
     {% if document_preview %}
@@ -210,7 +222,7 @@
           </tr>
         {% else %}
           <tr>
-            <td colspan="2" class="empty">No check-ins imported for this user.</td>
+            <td colspan="2" class="empty">No check-ins recorded for this user.</td>
           </tr>
         {% endfor %}
       </tbody>

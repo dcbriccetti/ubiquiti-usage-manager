@@ -45,6 +45,13 @@ def _screening_status_to_text(value: str | None) -> str | None:
     return None
 
 
+def _row_value(row: sqlite3.Row, key: str) -> str | None:
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return None
+
+
 def _years_before(value: date, years: int) -> date:
     try:
         return value.replace(year=value.year - years)
@@ -205,11 +212,31 @@ def member_from_row(row: sqlite3.Row) -> Member:
         city=row["city"],
         state=row["state"],
         zip=row["zip"],
+        mailing_address=_row_value(row, "mailing_address"),
+        mailing_address2=_row_value(row, "mailing_address2"),
+        mailing_city=_row_value(row, "mailing_city"),
+        mailing_state=_row_value(row, "mailing_state"),
+        mailing_zip=_row_value(row, "mailing_zip"),
         phone=format_phone_number(row["phone"]),
         email=row["email"],
         work_phone=format_phone_number(row["work_phone"]),
         cell_phone=format_phone_number(row["cell_phone"]),
         screening_status=_screening_status_to_text(row["screening_status"]),
+        gender=_row_value(row, "gender"),
+        occupation=_row_value(row, "occupation"),
+        driver_license_number=_row_value(row, "driver_license_number"),
+        driver_license_state=_row_value(row, "driver_license_state"),
+        driver_license_expires=_text_to_date(_row_value(row, "driver_license_expires")),
+        emergency_contact_name=_row_value(row, "emergency_contact_name"),
+        emergency_contact_relationship=_row_value(
+            row,
+            "emergency_contact_relationship",
+        ),
+        emergency_contact_phone=format_phone_number(
+            _row_value(row, "emergency_contact_phone")
+        ),
+        aanr_number=_row_value(row, "aanr_number"),
+        other_club_name=_row_value(row, "other_club_name"),
     )
 
 
@@ -245,13 +272,18 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             city,
             state,
             zip,
+            mailing_address,
+            mailing_address2,
+            mailing_city,
+            mailing_state,
+            mailing_zip,
             phone,
             email,
             work_phone,
             cell_phone,
             screening_status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(card_number) DO UPDATE SET
             last_name = excluded.last_name,
             first_name = excluded.first_name,
@@ -264,6 +296,11 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             city = excluded.city,
             state = excluded.state,
             zip = excluded.zip,
+            mailing_address = excluded.mailing_address,
+            mailing_address2 = excluded.mailing_address2,
+            mailing_city = excluded.mailing_city,
+            mailing_state = excluded.mailing_state,
+            mailing_zip = excluded.mailing_zip,
             phone = excluded.phone,
             email = excluded.email,
             work_phone = excluded.work_phone,
@@ -282,6 +319,11 @@ def upsert_member(connection: sqlite3.Connection, member: Member) -> None:
             _empty_to_none(member.city),
             _empty_to_none(member.state),
             _empty_to_none(member.zip),
+            _empty_to_none(member.mailing_address),
+            _empty_to_none(member.mailing_address2),
+            _empty_to_none(member.mailing_city),
+            _empty_to_none(member.mailing_state),
+            _empty_to_none(member.mailing_zip),
             _phone_to_none(member.phone),
             _empty_to_none(member.email),
             _phone_to_none(member.work_phone),
@@ -308,13 +350,18 @@ def insert_member(connection: sqlite3.Connection, member: Member) -> int:
             city,
             state,
             zip,
+            mailing_address,
+            mailing_address2,
+            mailing_city,
+            mailing_state,
+            mailing_zip,
             phone,
             email,
             work_phone,
             cell_phone,
             screening_status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             member.last_name.strip(),
@@ -329,6 +376,11 @@ def insert_member(connection: sqlite3.Connection, member: Member) -> int:
             _empty_to_none(member.city),
             _empty_to_none(member.state),
             _empty_to_none(member.zip),
+            _empty_to_none(member.mailing_address),
+            _empty_to_none(member.mailing_address2),
+            _empty_to_none(member.mailing_city),
+            _empty_to_none(member.mailing_state),
+            _empty_to_none(member.mailing_zip),
             _phone_to_none(member.phone),
             _empty_to_none(member.email),
             _phone_to_none(member.work_phone),
@@ -357,6 +409,11 @@ def list_members(connection: sqlite3.Connection) -> list[Member]:
             city,
             state,
             zip,
+            mailing_address,
+            mailing_address2,
+            mailing_city,
+            mailing_state,
+            mailing_zip,
             phone,
             email,
             work_phone,
@@ -398,11 +455,26 @@ def list_members_checked_in_for_date_range(
             u.city,
             u.state,
             u.zip,
+            u.mailing_address,
+            u.mailing_address2,
+            u.mailing_city,
+            u.mailing_state,
+            u.mailing_zip,
             u.phone,
             u.email,
             u.work_phone,
             u.cell_phone,
-            u.screening_status
+            u.screening_status,
+            u.gender,
+            u.occupation,
+            u.driver_license_number,
+            u.driver_license_state,
+            u.driver_license_expires,
+            u.emergency_contact_name,
+            u.emergency_contact_relationship,
+            u.emergency_contact_phone,
+            u.aanr_number,
+            u.other_club_name
         FROM users u
         INNER JOIN checkins c ON c.user_id = u.id
         WHERE c.check_in_at >= ? AND c.check_in_at < ?
@@ -444,11 +516,26 @@ def list_member_report_rows(
             u.city,
             u.state,
             u.zip,
+            u.mailing_address,
+            u.mailing_address2,
+            u.mailing_city,
+            u.mailing_state,
+            u.mailing_zip,
             u.phone,
             u.email,
             u.work_phone,
             u.cell_phone,
             u.screening_status,
+            u.gender,
+            u.occupation,
+            u.driver_license_number,
+            u.driver_license_state,
+            u.driver_license_expires,
+            u.emergency_contact_name,
+            u.emergency_contact_relationship,
+            u.emergency_contact_phone,
+            u.aanr_number,
+            u.other_club_name,
             COUNT(
                 CASE
                     WHEN u.membership = 'AANR Member' AND c.check_in_at >= ? THEN 1
@@ -472,11 +559,26 @@ def list_member_report_rows(
             u.city,
             u.state,
             u.zip,
+            u.mailing_address,
+            u.mailing_address2,
+            u.mailing_city,
+            u.mailing_state,
+            u.mailing_zip,
             u.phone,
             u.email,
             u.work_phone,
             u.cell_phone,
-            u.screening_status
+            u.screening_status,
+            u.gender,
+            u.occupation,
+            u.driver_license_number,
+            u.driver_license_state,
+            u.driver_license_expires,
+            u.emergency_contact_name,
+            u.emergency_contact_relationship,
+            u.emergency_contact_phone,
+            u.aanr_number,
+            u.other_club_name
         ORDER BY u.last_name, u.first_name, u.card_number
         """,
         (one_year_start, two_year_start),
@@ -522,11 +624,26 @@ def get_member(connection: sqlite3.Connection, member_id: int) -> Member | None:
             city,
             state,
             zip,
+            mailing_address,
+            mailing_address2,
+            mailing_city,
+            mailing_state,
+            mailing_zip,
             phone,
             email,
             work_phone,
             cell_phone,
-            screening_status
+            screening_status,
+            gender,
+            occupation,
+            driver_license_number,
+            driver_license_state,
+            driver_license_expires,
+            emergency_contact_name,
+            emergency_contact_relationship,
+            emergency_contact_phone,
+            aanr_number,
+            other_club_name
         FROM users
         WHERE id = ?
         """,
@@ -553,11 +670,26 @@ def get_member_by_card_number(connection: sqlite3.Connection, card_number: str) 
             city,
             state,
             zip,
+            mailing_address,
+            mailing_address2,
+            mailing_city,
+            mailing_state,
+            mailing_zip,
             phone,
             email,
             work_phone,
             cell_phone,
-            screening_status
+            screening_status,
+            gender,
+            occupation,
+            driver_license_number,
+            driver_license_state,
+            driver_license_expires,
+            emergency_contact_name,
+            emergency_contact_relationship,
+            emergency_contact_phone,
+            aanr_number,
+            other_club_name
         FROM users
         WHERE card_number = ?
         """,
@@ -655,6 +787,11 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
             city = ?,
             state = ?,
             zip = ?,
+            mailing_address = ?,
+            mailing_address2 = ?,
+            mailing_city = ?,
+            mailing_state = ?,
+            mailing_zip = ?,
             phone = ?,
             email = ?,
             work_phone = ?,
@@ -675,11 +812,65 @@ def update_member(connection: sqlite3.Connection, member: Member) -> None:
             _empty_to_none(member.city),
             _empty_to_none(member.state),
             _empty_to_none(member.zip),
+            _empty_to_none(member.mailing_address),
+            _empty_to_none(member.mailing_address2),
+            _empty_to_none(member.mailing_city),
+            _empty_to_none(member.mailing_state),
+            _empty_to_none(member.mailing_zip),
             _phone_to_none(member.phone),
             _empty_to_none(member.email),
             _phone_to_none(member.work_phone),
             _phone_to_none(member.cell_phone),
             _screening_status_to_text(member.screening_status),
+            member.id,
+        ),
+    )
+
+
+def update_member_membership_profile(connection: sqlite3.Connection, member: Member) -> None:
+    '''Update membership approval fields for an existing club user.'''
+    if member.id is None:
+        raise ValueError("member.id is required for update.")
+
+    connection.execute(
+        """
+        UPDATE users
+        SET
+            membership = ?,
+            gender = ?,
+            occupation = ?,
+            driver_license_number = ?,
+            driver_license_state = ?,
+            driver_license_expires = ?,
+            mailing_address = ?,
+            mailing_address2 = ?,
+            mailing_city = ?,
+            mailing_state = ?,
+            mailing_zip = ?,
+            emergency_contact_name = ?,
+            emergency_contact_relationship = ?,
+            emergency_contact_phone = ?,
+            aanr_number = ?,
+            other_club_name = ?
+        WHERE id = ?
+        """,
+        (
+            member.membership.strip(),
+            _empty_to_none(member.gender),
+            _empty_to_none(member.occupation),
+            _empty_to_none(member.driver_license_number),
+            _empty_to_none(member.driver_license_state),
+            _date_to_text(member.driver_license_expires),
+            _empty_to_none(member.mailing_address),
+            _empty_to_none(member.mailing_address2),
+            _empty_to_none(member.mailing_city),
+            _empty_to_none(member.mailing_state),
+            _empty_to_none(member.mailing_zip),
+            _empty_to_none(member.emergency_contact_name),
+            _empty_to_none(member.emergency_contact_relationship),
+            _phone_to_none(member.emergency_contact_phone),
+            _empty_to_none(member.aanr_number),
+            _empty_to_none(member.other_club_name),
             member.id,
         ),
     )

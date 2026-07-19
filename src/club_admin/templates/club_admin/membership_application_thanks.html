@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="refresh" content="{{ auto_return_seconds }};url={{ url_for('self_checkin') }}">
-  <title>{{ app_title }} | Registration Submitted</title>
+  <title>{{ app_title }} | Application Submitted</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
 </head>
 <body>
@@ -12,13 +12,13 @@
     <header class="page-header">
       <div>
         <p class="app-title">{{ app_title }}</p>
-        <h1>Registration Submitted</h1>
+        <h1>Application Submitted</h1>
       </div>
-      {% set active_public_page = "visitor" %}
+      {% set active_public_page = "membership" %}
       {% include "club_admin/_public_kiosk_nav.html" %}
     </header>
 
-    <p class="notice">Thank you. Please see the front desk to finish registration.</p>
+    <p class="notice">Thank you. Please see the front desk if you have questions about your application.</p>
     <p>
       <a class="button-link guest-registration-return" href="{{ url_for('self_checkin') }}">Back to Check-in</a>
     </p>

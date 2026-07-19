@@ -1,0 +1,5 @@
+<nav class="nav-links self-checkin-nav" aria-label="Public kiosk navigation">
+  <a {% if active_public_page == "checkin" %}class="active" aria-current="page"{% endif %} href="{{ url_for('self_checkin') }}">Check In</a>
+  <a {% if active_public_page == "visitor" %}class="active" aria-current="page"{% endif %} href="{{ url_for('guest_registration') }}">First-Time Visitor</a>
+  <a {% if active_public_page == "membership" %}class="active" aria-current="page"{% endif %} href="{{ url_for('membership_application') }}">Apply for Membership</a>
+</nav>

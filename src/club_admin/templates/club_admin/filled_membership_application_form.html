@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Membership Application</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+  <style media="print">
+    @page {
+      margin: 0;
+      size: letter portrait;
+    }
+  </style>
+</head>
+<body class="print-body">
+  <main class="print-page">
+    <div class="print-actions">
+      <a href="{{ url_for('membership_applications') }}">Membership Applications</a>
+      <button type="button" onclick="window.print()">Print</button>
+    </div>
+
+    {% set application = record.application %}
+    {% set member = record.member %}
+
+    <article class="generated-guest-form generated-membership-application">
+      <header class="generated-form-header membership-print-header">
+        <p class="app-title">{{ organization_name }}</p>
+        <h1>Membership Application</h1>
+        <p>{{ application.requested_membership }} &bull; Submitted {{ application.created_at|local_sqlite_datetime }}</p>
+      </header>
+
+      <section class="generated-form-grid" aria-label="Applicant information">
+        <div class="form-line span-8">
+          <span>Name</span>
+          <strong>{{ member.last_name }}, {{ member.first_name }}</strong>
+        </div>
+        <div class="form-line span-4">
+          <span>Current Membership</span>
+          <strong>{{ member.membership }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>Date of Birth</span>
+          <strong>{{ member.date_of_birth or '' }}</strong>
+        </div>
+        <div class="form-line span-4">
+          <span>Phone</span>
+          <strong>{{ member.cell_phone or member.phone or '' }}</strong>
+        </div>
+        <div class="form-line span-5">
+          <span>Email</span>
+          <strong>{{ member.email or '' }}</strong>
+        </div>
+        <div class="form-line span-6">
+          <span>Address</span>
+          <strong>{{ member.address or '' }}{% if member.address2 %}, {{ member.address2 }}{% endif %}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>City</span>
+          <strong>{{ member.city or '' }}</strong>
+        </div>
+        <div class="form-line">
+          <span>State</span>
+          <strong>{{ member.state or '' }}</strong>
+        </div>
+        <div class="form-line span-2">
+          <span>Zip</span>
+          <strong>{{ member.zip or '' }}</strong>
+        </div>
+      </section>
+
+      <h2 class="generated-section-heading">Application Details</h2>
+      <section class="generated-form-grid" aria-label="Application details">
+        <div class="form-line span-4">
+          <span>Requested Membership</span>
+          <strong>{{ application.requested_membership }}</strong>
+        </div>
+        <div class="form-line span-4">
+          <span>Gender</span>
+          <strong>{{ application.gender|replace('_', ' ')|title if application.gender else '' }}</strong>
+        </div>
+        <div class="form-line span-4">
+          <span>Occupation</span>
+          <strong>{{ application.occupation or '' }}</strong>
+        </div>
+        <div class="form-line span-4">
+          <span>Driver License Number</span>
+          <strong>{{ application.driver_license_number or '' }}</strong>
+        </div>
+        <div class="form-line span-2">
+          <span>State</span>
+          <strong>{{ application.driver_license_state or '' }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>Driver License Expiration</span>
+          <strong>{{ application.driver_license_expires or '' }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>AANR Number</span>
+          <strong>{{ application.aanr_number or '' }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>AANR Expiration</span>
+          <strong>{{ application.aanr_expires or '' }}</strong>
+        </div>
+        <div class="form-line span-5">
+          <span>Emergency Contact</span>
+          <strong>{{ application.emergency_contact_name or '' }}</strong>
+        </div>
+        <div class="form-line span-3">
+          <span>Relationship</span>
+          <strong>{{ application.emergency_contact_relationship or '' }}</strong>
+        </div>
+        <div class="form-line span-4">
+          <span>Emergency Phone</span>
+          <strong>{{ application.emergency_contact_phone or '' }}</strong>
+        </div>
+        <div class="form-line span-12">
+          <span>Other Nudist Club</span>
+          <strong>{{ application.other_club_name or '' }}</strong>
+        </div>
+        <div class="form-line span-12">
+          <span>Mailing Address</span>
+          <strong>
+            {{ application.mailing_address or '' }}{% if application.mailing_address2 %}, {{ application.mailing_address2 }}{% endif %}
+            {% if application.mailing_city or application.mailing_state or application.mailing_zip %}
+              {{ application.mailing_city or '' }}{% if application.mailing_state %}, {{ application.mailing_state }}{% endif %} {{ application.mailing_zip or '' }}
+            {% endif %}
+          </strong>
+        </div>
+      </section>
+
+      <section class="membership-print-checks" aria-label="Application responses">
+        <p><span class="box">{{ 'X' if application.club_news_name_permission else '' }}</span> Permission to use full name in club news to club members only</p>
+        <p><span class="box">{{ 'X' if application.convicted else '' }}</span> Convicted of a Federal, State, or Military crime other than a traffic violation</p>
+        <p><span class="box">{{ 'X' if application.social_nudity_practiced else '' }}</span> Has practiced or currently practices social nudity or nudity in nature</p>
+        <p><span class="box">{{ 'X' if application.aanr_member else '' }}</span> Current AANR member</p>
+        <p><span class="box">{{ 'X' if application.other_club_member else '' }}</span> Current member of another nudist club</p>
+      </section>
+
+      <section class="generated-form-grid membership-print-notes" aria-label="Long-form answers">
+        <div class="form-line span-12">
+          <span>Conviction Explanation</span>
+          <strong>{{ application.conviction_explanation or '' }}</strong>
+        </div>
+        <div class="form-line span-12">
+          <span>Minor Children</span>
+          <strong>{{ application.minor_children or '' }}</strong>
+        </div>
+        <div class="form-line span-6">
+          <span>How did you hear about us?</span>
+          <strong>{{ heard_about or '' }}</strong>
+        </div>
+        <div class="form-line span-6">
+          <span>If yes, how long?</span>
+          <strong>{{ application.social_nudity_duration or '' }}</strong>
+        </div>
+      </section>
+
+      <section class="membership-print-agreement">
+        <h2>{{ form_spec.agreement_title }}</h2>
+        {% for paragraph in form_spec.agreement_paragraphs %}
+          <p>{{ paragraph }}</p>
+        {% endfor %}
+      </section>
+
+      <section class="signature-grid membership-signature-grid membership-signature-grid-printed" aria-label="Signature lines">
+        <div class="signature-line">
+          <strong></strong>
+          <span>Signature</span>
+        </div>
+        <div class="signature-line">
+          <strong>{{ application.signed_at or application.created_at|local_sqlite_date }}</strong>
+          <span>Date</span>
+        </div>
+      </section>
+    </article>
+  </main>
+</body>
+</html>
