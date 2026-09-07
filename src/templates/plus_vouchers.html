@@ -9,7 +9,11 @@
             <p class="muted">
                 Paper login credentials with fixed data allocations · {{ unconsumed_voucher_count }} unused
             </p>
-            <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+            <p>
+                <a href="{{ url_for('dashboard') }}">Back to dashboard</a>
+                ·
+                <a href="{{ url_for('plus_voucher_status') }}">Voucher status</a>
+            </p>
         </div>
     </section>
 
@@ -77,208 +81,12 @@
         </article>
     </div>
 
-    <article class="panel voucher-trend-panel" style="margin-top: var(--space-5);">
+    <article class="panel" style="margin-top: var(--space-5);">
         <div class="panel-body">
             <div class="panel-title-row">
-                <h2>Consumption Trend</h2>
-                <span class="muted">ISP cycle {{ voucher_topoff_analysis.billing_cycle_start.strftime("%Y-%m-%d") }} to {{ voucher_topoff_analysis.billing_cycle_end.strftime("%Y-%m-%d") }} · voucher trend through {{ voucher_consumption_trend.period_end.strftime("%Y-%m-%d") }}</span>
+                <h2>Recent Vouchers</h2>
+                <span class="muted">Exhausted vouchers are ended automatically after Internet usage is imported.</span>
             </div>
-
-            <div class="insights-kpis voucher-trend-kpis">
-                <div class="insight-kpi">
-                    <span class="label">Active Vouchers</span>
-                    <span class="value">{{ voucher_consumption_trend.total_used_mb|voucher_data_amount }}</span>
-                    <span class="detail-note">{{ voucher_consumption_trend.total_remaining_mb|voucher_data_amount }} left of {{ "{:,.0f}".format(voucher_consumption_trend.active_allocation_gb) }} GB</span>
-                </div>
-                <div class="insight-kpi">
-                    <span class="label">Voucher This Cycle</span>
-                    <span class="value">{{ voucher_topoff_analysis.voucher_cycle_used_mb|voucher_data_amount }}</span>
-                    <span class="detail-note">Since {{ voucher_topoff_analysis.billing_cycle_start.strftime("%b %d") }}</span>
-                </div>
-                <div class="insight-kpi">
-                    <span class="label">7-Day Voucher Pace</span>
-                    <span class="value">{{ voucher_consumption_trend.recent_average_daily_mb|voucher_data_amount }}<span class="voucher-rate-unit">/day</span></span>
-                    <span class="detail-note">{{ voucher_topoff_analysis.recent_trend_label }} vs prior 7 days</span>
-                </div>
-                {% set forecast = voucher_consumption_trend.forecast_performance %}
-                <div class="insight-kpi">
-                    <span class="label">Learned Voucher Pace</span>
-                    <span class="value">{{ forecast.learned_daily_forecast_mb|voucher_data_amount }}<span class="voucher-rate-unit">/day</span></span>
-                    {% if forecast.scored_forecast_count %}
-                        <span class="detail-note">Calibration {{ "%.2f"|format(forecast.calibration_factor) }} from {{ forecast.scored_forecast_count }} scored days</span>
-                    {% else %}
-                        <span class="detail-note">Learning starts after the next completed day</span>
-                    {% endif %}
-                </div>
-                <div class="insight-kpi">
-                    <span class="label">Forecast Accuracy</span>
-                    {% if forecast.mean_absolute_error_mb is not none %}
-                        <span class="value">{{ forecast.mean_absolute_error_mb|voucher_data_amount }}</span>
-                        {% if forecast.improvement_pct is not none and forecast.improvement_pct >= 0 %}
-                            <span class="detail-note">{{ "%.0f"|format(forecast.improvement_pct) }}% better than raw 7-day pace</span>
-                        {% elif forecast.improvement_pct is not none %}
-                            <span class="detail-note">{{ "%.0f"|format(0 - forecast.improvement_pct) }}% worse than raw 7-day pace</span>
-                        {% else %}
-                            <span class="detail-note">Mean absolute daily error</span>
-                        {% endif %}
-                    {% else %}
-                        <span class="value">Learning</span>
-                        <span class="detail-note">No completed forecast score yet</span>
-                    {% endif %}
-                </div>
-                <div class="insight-kpi">
-                    <span class="label">Basic Estimate</span>
-                    <span class="value">{{ voucher_topoff_analysis.expected_basic_usage_mb|voucher_data_amount }}</span>
-                    <span class="detail-note">{{ voucher_topoff_analysis.basic_average_daily_mb|voucher_data_amount }}/day baseline</span>
-                </div>
-                <div class="insight-kpi">
-                    <span class="label">ISP Cycle Forecast</span>
-                    <span class="value">{{ voucher_topoff_analysis.cycle_forecast_mb|voucher_data_amount }}</span>
-                    {% if voucher_topoff_analysis.cycle_forecast_overage_mb > 0 %}
-                        <span class="detail-note">{{ voucher_topoff_analysis.cycle_forecast_overage_mb|voucher_data_amount }} over {{ "{:,.0f}".format(voucher_topoff_analysis.included_usage_gb) }} GB</span>
-                    {% else %}
-                        <span class="detail-note">{{ voucher_topoff_analysis.cycle_forecast_headroom_mb|voucher_data_amount }} forecast headroom · {{ voucher_topoff_analysis.included_eta_label }}</span>
-                    {% endif %}
-                </div>
-                <div class="insight-kpi">
-                    <span class="label">Top-Off Signal</span>
-                    <span class="value voucher-recommendation">{{ voucher_topoff_analysis.recommendation }}</span>
-                    <span class="detail-note">{{ voucher_topoff_analysis.rationale }} {{ "{:,.0f}".format(voucher_topoff_analysis.break_even_gb) }} GB break-even.</span>
-                </div>
-            </div>
-
-            <div class="voucher-trend-layout">
-                <div class="month-chart-wrap voucher-trend-chart-wrap">
-                    <canvas id="voucher-consumption-chart" class="month-chart-canvas" role="img" aria-label="Daily active voucher consumption"></canvas>
-                </div>
-                <div class="voucher-trend-side">
-                    <h3>Last 7 Days</h3>
-                    <div class="table-wrap">
-                        <table class="fit-content-table voucher-recent-days-table">
-                            <thead>
-                            <tr>
-                                <th>Day</th>
-                                <th class="num">Used</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {% for row in recent_voucher_daily_usage %}
-                                <tr>
-                                    <td>{{ row.day.strftime("%Y-%m-%d") }}</td>
-                                    <td class="num">{{ row.used_mb|voucher_data_amount }}</td>
-                                </tr>
-                            {% else %}
-                                <tr>
-                                    <td colspan="2" class="muted">No daily usage yet.</td>
-                                </tr>
-                            {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <article class="panel" style="margin-top: var(--space-5);">
-        <div class="panel-body">
-            <h2>Activated Voucher Summary</h2>
-            <div class="table-wrap">
-                <table class="fit-content-table">
-                    <thead>
-                    <tr>
-                        <th>User ID</th>
-                        <th>Status</th>
-                        <th class="num">Allocation</th>
-                        <th class="num">Used</th>
-                        <th class="num">Remaining</th>
-                        <th class="num">Used %</th>
-                        <th>Created</th>
-                        <th>Activated</th>
-                        <th>Action</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for summary in active_voucher_summaries %}
-                        {% set voucher = summary.voucher %}
-                        <tr>
-                            <td class="mono">{{ voucher.user_id }}</td>
-                            <td>
-                                {% if summary.used_mb >= voucher.allocation_gb * 1000 %}
-                                    <span class="pill warn">Over allocation</span>
-                                {% else %}
-                                    <span class="pill">Active</span>
-                                {% endif %}
-                            </td>
-                            <td class="num">{{ "{:,.0f}".format(voucher.allocation_gb) }} GB</td>
-                            <td class="num">{{ summary.used_mb|voucher_data_amount }}</td>
-                            <td class="num">{{ summary.remaining_mb|voucher_data_amount }}</td>
-                            <td class="num{% if summary.used_mb >= voucher.allocation_gb * 1000 %} warn-text{% endif %}">
-                                {{ summary.used_pct|voucher_percent }}
-                            </td>
-                            <td>{{ voucher.generated_at.strftime("%Y-%m-%d") }}</td>
-                            <td>
-                                {{ summary.activated_at.strftime("%Y-%m-%d") }}
-                            </td>
-                            <td>
-                                <form
-                                    class="voucher-action-form"
-                                    method="post"
-                                    action="{{ url_for('consume_plus_voucher', voucher_id=voucher.id) }}"
-                                    onsubmit="return confirm('Remove RADIUS user {{ voucher.user_id }} and mark this voucher used?');"
-                                >
-                                    <button type="submit">Mark used</button>
-                                </form>
-                            </td>
-                        </tr>
-                    {% else %}
-                        <tr>
-                            <td colspan="9" class="muted">No activated vouchers.</td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </article>
-
-    <article class="panel" style="margin-top: var(--space-5);">
-        <div class="panel-body">
-            <h2>Inventory Summary</h2>
-            <div class="table-wrap">
-                <table class="fit-content-table">
-                    <thead>
-                    <tr>
-                        <th class="num">Voucher GB</th>
-                        <th class="num">Count</th>
-                        <th class="num">Total GB</th>
-                        <th>Oldest Created</th>
-                        <th>Newest Created</th>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    {% for row in inventory_voucher_summaries %}
-                        <tr>
-                            <td class="num">{{ "{:,.0f}".format(row.allocation_gb) }} GB</td>
-                            <td class="num">{{ "{:,.0f}".format(row.count) }}</td>
-                            <td class="num">{{ "{:,.0f}".format(row.total_allocation_gb) }} GB</td>
-                            <td>{{ row.oldest_generated_at.strftime("%Y-%m-%d") }}</td>
-                            <td>{{ row.newest_generated_at.strftime("%Y-%m-%d") }}</td>
-                        </tr>
-                    {% else %}
-                        <tr>
-                            <td colspan="5" class="muted">No unsold inventory.</td>
-                        </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </article>
-
-    <article class="panel" style="margin-top: var(--space-5);">
-        <div class="panel-body">
-            <h2>Recent Vouchers</h2>
             <div class="table-wrap">
                 <table class="fit-content-table">
                     <thead>
@@ -301,19 +109,15 @@
                             <td class="num">${{ "{:.2f}".format(voucher_cost_cents(voucher.allocation_gb) / 100.0) }}</td>
                             <td>
                                 {% if voucher.consumed_at %}
-                                    <span class="pill warn">Used</span>
+                                    <span class="pill warn">Ended</span>
                                 {% else %}
-                                    <span class="pill">Unused</span>
+                                    <span class="pill">Available or active</span>
                                 {% endif %}
                             </td>
                             <td>
-                                <a class="mac-link" href="{{ url_for('plus_voucher_batch_print', batch_id=voucher.batch_id) }}" target="_blank" rel="noopener">
-                                    Batch
-                                </a>
+                                <a class="mac-link" href="{{ url_for('plus_voucher_batch_print', batch_id=voucher.batch_id) }}" target="_blank" rel="noopener">Batch</a>
                                 ·
-                                <a class="mac-link" href="{{ url_for('plus_voucher_print', voucher_id=voucher.id) }}" target="_blank" rel="noopener">
-                                    Single
-                                </a>
+                                <a class="mac-link" href="{{ url_for('plus_voucher_print', voucher_id=voucher.id) }}" target="_blank" rel="noopener">Single</a>
                             </td>
                             <td>{{ voucher.generated_at.strftime("%Y-%m-%d %H:%M") }}</td>
                         </tr>
@@ -327,22 +131,4 @@
             </div>
         </div>
     </article>
-
-    <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
-    <script id="voucher-consumption-chart-config" type="application/json" data-usage-chart-config>
-        {{ {
-            "type": "month-mb",
-            "canvasId": "voucher-consumption-chart",
-            "labels": voucher_trend_chart.labels,
-            "fullLabels": voucher_trend_chart.full_labels,
-            "mbSeries": voucher_trend_chart.gb_series,
-            "fallbackLabel": "GB/day",
-            "totalLabel": "Total GB/day",
-            "xAxisTitle": "Date",
-            "yAxisTitle": "GB/day",
-            "showAllTickLimit": 16,
-            "yAxisWidth": 72
-        }|tojson }}
-    </script>
-    <script src="{{ url_for('static', filename='js/usage-charts.js') }}"></script>
 {% endblock %}

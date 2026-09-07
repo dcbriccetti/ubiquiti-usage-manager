@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Voucher Status | UniFi Usage{% endblock %}
+
+{% block content %}
+    <section class="hero detail-hero">
+        <div>
+            <h1>Voucher Status</h1>
+            <p class="muted">Active voucher balances and manual termination fallback</p>
+            <p><a href="{{ url_for('plus_vouchers') }}">Back to vouchers</a></p>
+        </div>
+    </section>
+
+    <article class="panel">
+        <div class="panel-body">
+            <div class="panel-title-row">
+                <h2>Activated Vouchers</h2>
+                <span class="muted">Vouchers at 100% are normally ended automatically after the next Internet usage import.</span>
+            </div>
+            <div class="table-wrap">
+                <table class="fit-content-table">
+                    <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Status</th>
+                        <th class="num">Allocation</th>
+                        <th class="num">Used</th>
+                        <th class="num">Remaining</th>
+                        <th class="num">Used %</th>
+                        <th>Created</th>
+                        <th>Activated</th>
+                        <th>Action</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for summary in active_voucher_summaries %}
+                        {% set voucher = summary.voucher %}
+                        <tr>
+                            <td class="mono">{{ voucher.user_id }}</td>
+                            <td>
+                                {% if summary.used_mb >= voucher.allocation_gb * 1000 %}
+                                    <span class="pill warn">Pending automatic end</span>
+                                {% else %}
+                                    <span class="pill">Active</span>
+                                {% endif %}
+                            </td>
+                            <td class="num">{{ "{:,.0f}".format(voucher.allocation_gb) }} GB</td>
+                            <td class="num">{{ summary.used_mb|voucher_data_amount }}</td>
+                            <td class="num">{{ summary.remaining_mb|voucher_data_amount }}</td>
+                            <td class="num{% if summary.used_mb >= voucher.allocation_gb * 1000 %} warn-text{% endif %}">{{ summary.used_pct|voucher_percent }}</td>
+                            <td>{{ voucher.generated_at.strftime("%Y-%m-%d") }}</td>
+                            <td>{{ summary.activated_at.strftime("%Y-%m-%d") }}</td>
+                            <td>
+                                <form
+                                    class="voucher-action-form"
+                                    method="post"
+                                    action="{{ url_for('consume_plus_voucher', voucher_id=voucher.id) }}"
+                                    onsubmit="return confirm('Remove RADIUS user {{ voucher.user_id }} and end this voucher?');"
+                                >
+                                    <button type="submit">End now</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="9" class="muted">No activated vouchers.</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </article>
+{% endblock %}

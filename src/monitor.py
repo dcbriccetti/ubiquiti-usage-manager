@@ -39,6 +39,63 @@ class ClientSnapshot:
     is_throttled: bool
 
 
+@dataclass(frozen=True, kw_only=True)
+class VoucherEnforcementSummary:
+    'Outcome of one automatic exhausted-voucher enforcement pass.'
+    checked_count: int
+    exhausted_count: int
+    ended_count: int
+    failure_count: int
+
+
+def end_exhausted_plus_vouchers() -> VoucherEnforcementSummary:
+    'Remove exhausted voucher RADIUS accounts and mark successful removals consumed.'
+    summaries = db.get_active_plus_voucher_summaries(force_refresh=True)
+    exhausted_summaries = [
+        summary
+        for summary in summaries
+        if summary.activated_at is not None
+        and summary.used_mb >= summary.voucher.allocation_gb * 1000
+    ]
+    ended_count = 0
+    failure_count = 0
+    for summary in exhausted_summaries:
+        voucher = summary.voucher
+        deleted, message = api.delete_radius_account_by_name(str(voucher.user_id))
+        if not deleted:
+            failure_count += 1
+            logger.warning(
+                'Automatic voucher end failed user_id=%s used_mb=%.2f allocation_gb=%s error=%s',
+                voucher.user_id,
+                summary.used_mb,
+                voucher.allocation_gb,
+                message,
+            )
+            continue
+
+        consumed_voucher = db.mark_plus_voucher_consumed(voucher.id)
+        if consumed_voucher is None:
+            failure_count += 1
+            logger.warning('Automatic voucher end could not find voucher id=%s user_id=%s', voucher.id, voucher.user_id)
+            continue
+
+        ended_count += 1
+        logger.info(
+            'Automatically ended exhausted voucher user_id=%s used_mb=%.2f allocation_gb=%s%s',
+            voucher.user_id,
+            summary.used_mb,
+            voucher.allocation_gb,
+            f' ({message})' if message else '',
+        )
+
+    return VoucherEnforcementSummary(
+        checked_count=len(summaries),
+        exhausted_count=len(exhausted_summaries),
+        ended_count=ended_count,
+        failure_count=failure_count,
+    )
+
+
 def get_connected_clients() -> list[ClientSnapshot]:
     'Fetch connected clients and return lightweight usage snapshots for the UI.'
     speed_limits = api.get_speed_limits()
@@ -222,6 +279,19 @@ class UsageMonitor:
                     skipped,
                 )
                 notify_dashboard_data_changed()
+            if rows and getattr(cfg, 'PLUS_VOUCHER_AUTO_END_ENABLED', True):
+                try:
+                    enforcement = end_exhausted_plus_vouchers()
+                    if enforcement.exhausted_count:
+                        logger.info(
+                            'Voucher enforcement checked=%s exhausted=%s ended=%s failures=%s',
+                            enforcement.checked_count,
+                            enforcement.exhausted_count,
+                            enforcement.ended_count,
+                            enforcement.failure_count,
+                        )
+                except Exception as exc:
+                    logger.exception('Automatic voucher enforcement failed; will retry after a later import: %s', exc)
             return files, rows, skipped
         except Exception as exc:
             logger.exception('Flow import failed: %s', exc)

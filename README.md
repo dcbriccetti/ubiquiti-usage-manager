@@ -194,9 +194,11 @@ the app also refuses to start if it detects broken club-user foreign keys.
 - Client table with live/historical windows: Active Now, Online Now, Today, 7 Days, and current month.
 - Per-client usage details page for admins and self-service users with daily charts and usage history.
 - Plus voucher workflow (admin-only):
-  - `/vouchers` generates vouchers at preset dollar values,
+  - `/vouchers` quickly generates and prints vouchers at preset dollar values,
+  - `/vouchers/status` provides active balances and a manual end fallback,
   - each voucher stores a local user ID, password, and GB allocation,
   - generated vouchers create matching UniFi local RADIUS users via `rest/account`,
+  - the monitor automatically removes exhausted RADIUS accounts and ends their vouchers after flow imports,
   - `/vouchers/batches/<batch_id>/print` and `/vouchers/<voucher_id>/print`
     render browser-printable vouchers sized for the Brother printer.
 - Organization-paid analytics split:
@@ -260,6 +262,7 @@ Config values:
 - `FLOW_IMPORT_WATCH_ENABLED`
 - `FLOW_IMPORT_WATCH_POLL_SECONDS`
 - `FLOW_IMPORT_SETTLE_SECONDS`
+- `PLUS_VOUCHER_AUTO_END_ENABLED` (automatically end vouchers at 100% after flow imports)
 - `ORGANIZATION_PAID_DEVICE_MACS`
 - `ORGANIZATION_PAID_USER_IDS`
 - `ORGANIZATION_PAID_VLAN_NAMES`
@@ -269,6 +272,7 @@ Voucher behavior:
 - Costs are calculated from `COST_IN_CENTS_PER_GB`.
 - Voucher values are priced at `COST_IN_CENTS_PER_GB` and currently offered as $5, $10, $20, $50, and $100 batches.
 - Creating vouchers also creates UniFi local RADIUS accounts, so test with a single voucher before generating a batch.
+- Exhausted vouchers are ended only after the UniFi RADIUS account is removed successfully; failures remain active and are retried after a later flow import.
 
 ## 3) Start The Monitor (required for live data)
 

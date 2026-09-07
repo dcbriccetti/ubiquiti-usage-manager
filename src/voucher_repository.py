@@ -571,14 +571,15 @@ def get_plus_voucher_consumption_trend(
     )
 
 
-def get_active_plus_voucher_summaries() -> list[db.PlusVoucherUsageSummary]:
+def get_active_plus_voucher_summaries(*, force_refresh: bool = False) -> list[db.PlusVoucherUsageSummary]:
     'Return active voucher balances for admin review.'
     global _active_voucher_summaries_cache
     cache_key = db.SessionLocal
     now_monotonic = monotonic_time.monotonic()
     with _active_voucher_summaries_cache_lock:
         if (
-            _active_voucher_summaries_cache
+            not force_refresh
+            and _active_voucher_summaries_cache
             and _active_voucher_summaries_cache[0] is cache_key
             and _active_voucher_summaries_cache[1] > now_monotonic
         ):
