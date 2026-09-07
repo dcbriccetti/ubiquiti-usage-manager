@@ -148,6 +148,41 @@ LAN, monitor, or club apps.
 
 ## Meter Database Pruning
 
+### Offline summary validation (Stage 1)
+
+`deploy/scripts/validate-meter-rollups.py` is an offline prototype, not an app
+migration or production accounting writer. Run it on an extracted consistent
+SQLite backup, with a new output directory:
+
+```bash
+python3 deploy/scripts/validate-meter-rollups.py \
+  --source /path/to/extracted-backup.db \
+  --output /path/to/new-validation-directory
+```
+
+The source is opened read-only. The tool builds separate hourly/daily WAN
+summaries and daily active-voucher charges, then writes `report.json`. It checks
+integer-byte and flow-count conservation, identity-group totals for each month,
+today and the last seven days, and each active voucher's daily bytes and first
+usage time. Reporting dates are anchored to the backup's latest flow. Partial
+hours use raw edge queries. Exit status 1 means a comparison failed; existing
+output directories are refused. Output may contain client identities; keep it
+private. Rebuild after an interrupted run into another new directory.
+
+The reference calculations stream the existing start-time query semantics to
+avoid loading millions of flow rows into memory. Tests compare those semantics
+with application functions. The proposed canonical identity timeline can differ
+from the current report-window-dependent attribution; any difference is a
+failure to investigate, not an acceptable rounding discrepancy.
+
+This stage does not implement live imports, retries, late-arrival corrections,
+end-time client details, consumed-voucher reconstruction, or pruning. A passing
+offline report alone is not permission to delete raw history. Run large backup
+checks at reduced CPU/I/O priority if sharing the production host. Timings from
+sequential offline runs include cache effects and are not live request timings.
+
+### Existing raw-flow cleanup
+
 Use the prune tool to remove old raw WAN-flow rows while preserving active Plus
 voucher accounting. The cutoff is the oldest unconsumed voucher generation time.
 If there are no active vouchers, it falls back to 90 days by default.
