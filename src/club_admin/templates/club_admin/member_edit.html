@@ -63,7 +63,7 @@
               {% endfor %}
             </select>
           {% elif field == 'member_since' or field == 'date_of_birth' %}
-            <input type="text" name="{{ field }}" value="{{ member|attr(field)|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY">
+            <input type="text" name="{{ field }}" value="{{ member|attr(field)|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY">
           {% else %}
             <input type="{{ input_type }}" name="{{ field }}" value="{{ member|attr(field) or '' }}">
           {% endif %}

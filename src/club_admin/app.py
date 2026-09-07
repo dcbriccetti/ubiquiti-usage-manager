@@ -92,6 +92,9 @@ SCREENING_STATUS_OPTIONS = (
     ("banned", "Banned"),
 )
 SCREENING_STATUS_LABELS = dict(SCREENING_STATUS_OPTIONS)
+MAX_PERSON_AGE_YEARS = 120
+MAX_EXPIRATION_YEARS_AHEAD = 25
+MAX_EXPIRATION_YEARS_AGO = 100
 CHECKIN_REPORT_MEMBERSHIP_BREAKDOWN = (
     ("Full Member", "Full Member", "membership-full"),
     ("Assoc.", "Associate Member", "membership-assoc"),
@@ -418,7 +421,7 @@ def _parse_member_form_date(form_data: Any, field_name: str) -> date | None:
     parsed_date = _parse_flexible_date(value)
     if parsed_date is not None:
         return parsed_date
-    raise MemberFormError("Enter valid user dates as MM/DD/YYYY.")
+    raise MemberFormError("Enter valid user dates using numbers, such as MM/DD/YYYY.")
 
 
 def _screening_status_from_form(form_data: Any) -> str | None:
@@ -435,19 +438,80 @@ def _screening_status_label(status: str | None) -> str:
 
 
 def _parse_flexible_date(value: str) -> date | None:
+    stripped_value = value.strip()
+    if re.fullmatch(r"\d{8}", stripped_value):
+        month, day, year = (
+            int(stripped_value[:2]),
+            int(stripped_value[2:4]),
+            int(stripped_value[4:]),
+        )
+    else:
+        match = re.fullmatch(
+            r"(\d{1,4})\s*([./-])\s*(\d{1,2})\s*\2\s*(\d{1,4})",
+            stripped_value,
+        )
+        if match is None:
+            match = re.fullmatch(
+                r"(\d{1,4})(\s+)(\d{1,2})\s+(\d{1,4})",
+                stripped_value,
+            )
+        if match is None:
+            return None
+        first, _, second, third = match.groups()
+        if len(first) == 4 and len(third) <= 2:
+            year, month, day = int(first), int(second), int(third)
+        elif len(first) <= 2 and len(third) in (2, 4):
+            month, day = int(first), int(second)
+            if len(third) == 2:
+                year = datetime.strptime(third, "%y").year
+            else:
+                year = int(third)
+        else:
+            return None
     try:
-        return date.fromisoformat(value)
+        return date(year, month, day)
     except ValueError:
-        pass
-    for date_format in ("%m/%d/%Y", "%m/%d/%y", "%m-%d-%Y", "%m-%d-%y"):
-        try:
-            return datetime.strptime(value, date_format).date()
-        except ValueError:
-            pass
-    return None
+        return None
+
+
+def _years_before(value: date, years: int) -> date:
+    try:
+        return value.replace(year=value.year - years)
+    except ValueError:
+        return value.replace(year=value.year - years, day=28)
+
+
+def _validate_birthdate(value: date, *, today: date | None = None) -> None:
+    current_date = today or date.today()
+    if value > current_date:
+        raise ValueError("Date of birth cannot be in the future.")
+    if value < _years_before(current_date, MAX_PERSON_AGE_YEARS):
+        raise ValueError("Please check the birth year; it appears too far in the past.")
+
+
+def _validate_expiration_date(value: date, *, today: date | None = None) -> None:
+    current_date = today or date.today()
+    if not (
+        current_date.year - MAX_EXPIRATION_YEARS_AGO
+        <= value.year
+        <= current_date.year + MAX_EXPIRATION_YEARS_AHEAD
+    ):
+        raise ValueError("Please check the expiration year; it appears unreasonable.")
 
 
 def _member_from_form(member: Member, form_data: Any) -> Member:
+    member_since = _parse_member_form_date(form_data, "member_since")
+    date_of_birth = _parse_member_form_date(form_data, "date_of_birth")
+    if date_of_birth is not None:
+        try:
+            _validate_birthdate(date_of_birth)
+        except ValueError as error:
+            raise MemberFormError(str(error)) from error
+    if member_since is not None:
+        if member_since > date.today():
+            raise MemberFormError("Member since date cannot be in the future.")
+        if date_of_birth is not None and member_since < date_of_birth:
+            raise MemberFormError("Member since date cannot be before date of birth.")
     return Member(
         id=member.id,
         last_name=form_data.get("last_name", "").strip(),
@@ -455,8 +519,8 @@ def _member_from_form(member: Member, form_data: Any) -> Member:
         nickname=form_data.get("nickname", "").strip() or None,
         card_number=member.card_number,
         membership=form_data.get("membership", "").strip(),
-        member_since=_parse_member_form_date(form_data, "member_since"),
-        date_of_birth=_parse_member_form_date(form_data, "date_of_birth"),
+        member_since=member_since,
+        date_of_birth=date_of_birth,
         address=form_data.get("address", "").strip() or None,
         address2=form_data.get("address2", "").strip() or None,
         city=form_data.get("city", "").strip() or None,
@@ -1327,6 +1391,10 @@ def _parse_membership_application_date(
     parsed_date = _parse_flexible_date(value)
     if parsed_date is None:
         raise MembershipApplicationFormError(message)
+    try:
+        _validate_expiration_date(parsed_date)
+    except ValueError as error:
+        raise MembershipApplicationFormError(str(error)) from error
     return parsed_date
 
 
@@ -1376,7 +1444,7 @@ def _membership_application_from_form(
         form_data,
         "driver_license_expires",
         required=True,
-        message="Driver license expiration must use MM/DD/YYYY.",
+        message="Enter a valid numeric driver license expiration date.",
     )
     club_news_name_permission = _membership_bool_choice(
         form_data,
@@ -1449,7 +1517,7 @@ def _membership_application_from_form(
         aanr_expires=_parse_membership_application_date(
             form_data,
             "aanr_expires",
-            message="AANR expiration must use MM/DD/YYYY.",
+            message="Enter a valid numeric AANR expiration date.",
         ),
         other_club_member=other_club_member,
         other_club_name=_visitor_title_text_or_none(form_data, "other_club_name"),
@@ -1597,7 +1665,13 @@ def _parse_visitor_date_of_birth(form_data: Any) -> date | None:
         return None
     parsed_date = _parse_flexible_date(value)
     if parsed_date is None:
-        raise GuestRegistrationFormError("Date of birth must use MM/DD/YYYY.")
+        raise GuestRegistrationFormError(
+            "Enter a complete numeric date of birth, such as MM/DD/YYYY."
+        )
+    try:
+        _validate_birthdate(parsed_date)
+    except ValueError as error:
+        raise GuestRegistrationFormError(str(error)) from error
     return parsed_date
 
 

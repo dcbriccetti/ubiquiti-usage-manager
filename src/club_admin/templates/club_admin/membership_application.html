@@ -90,7 +90,7 @@
           </label>
           <label class="required-field">
             <span>Driver License Expiration</span>
-            <input type="text" name="driver_license_expires" value="{{ form_data.get('driver_license_expires', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY" required>
+            <input type="text" name="driver_license_expires" value="{{ form_data.get('driver_license_expires', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY" required>
           </label>
           <section class="membership-field-group detail-wide" aria-labelledby="mailing-address-title">
             <div class="membership-field-group-heading">
@@ -194,7 +194,7 @@
           </label>
           <label>
             <span>AANR Expiration</span>
-            <input type="text" name="aanr_expires" value="{{ form_data.get('aanr_expires', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY">
+            <input type="text" name="aanr_expires" value="{{ form_data.get('aanr_expires', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY">
           </label>
           <fieldset class="radio-field required-field">
             <legend>Are you a current member of another nudist club?</legend>

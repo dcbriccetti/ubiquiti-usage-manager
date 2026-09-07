@@ -26,7 +26,13 @@ from club_admin import membership_application_repository
 from club_admin import member_repository
 from club_admin import user_note_repository
 from club_admin.repair_driver_license_scans import _prepare_stored_driver_license_image
-from club_admin.app import create_app, _barcode_token_for_card_number
+from club_admin.app import (
+    _barcode_token_for_card_number,
+    _parse_flexible_date,
+    _validate_birthdate,
+    _validate_expiration_date,
+    create_app,
+)
 from club_admin.models import CheckIn, GuestRegistration, Member, MembershipApplication
 import config as cfg
 
@@ -73,6 +79,55 @@ def admin_client(flask_app):
 
 
 class ClubMemberImportTests(unittest.TestCase):
+    def test_flexible_date_parser_accepts_numeric_formats(self) -> None:
+        expected = date(1990, 6, 15)
+        for value in (
+            "6/15/1990",
+            "06-15-1990",
+            "6.15.1990",
+            "6 15 1990",
+            "1990-06-15",
+            "1990/6/15",
+            "6 / 15 / 1990",
+            "06151990",
+            "06/15/90",
+        ):
+            with self.subTest(value=value):
+                self.assertEqual(_parse_flexible_date(value), expected)
+
+    def test_flexible_date_parser_rejects_ambiguous_or_incomplete_formats(self) -> None:
+        for value in (
+            "June 15, 1990",
+            "6/15",
+            "061590",
+            "19900615",
+            "6-15/1990",
+            "02/30/1990",
+            "",
+        ):
+            with self.subTest(value=value):
+                self.assertIsNone(_parse_flexible_date(value))
+
+    def test_birthdate_reasonableness_boundaries(self) -> None:
+        today = date(2026, 9, 7)
+        _validate_birthdate(date(1906, 9, 7), today=today)
+        _validate_birthdate(today, today=today)
+
+        with self.assertRaisesRegex(ValueError, "cannot be in the future"):
+            _validate_birthdate(date(2026, 9, 8), today=today)
+        with self.assertRaisesRegex(ValueError, "too far in the past"):
+            _validate_birthdate(date(1906, 9, 6), today=today)
+
+    def test_expiration_date_reasonableness_boundaries(self) -> None:
+        today = date(2026, 9, 7)
+        _validate_expiration_date(date(1926, 1, 1), today=today)
+        _validate_expiration_date(date(2051, 12, 31), today=today)
+
+        with self.assertRaisesRegex(ValueError, "expiration year"):
+            _validate_expiration_date(date(1925, 12, 31), today=today)
+        with self.assertRaisesRegex(ValueError, "expiration year"):
+            _validate_expiration_date(date(2052, 1, 1), today=today)
+
     def test_member_repository_formats_phone_numbers(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
@@ -729,7 +784,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "occupation": "Engineer",
                     "driver_license_number": "D1234567",
                     "driver_license_state": "ca",
-                    "driver_license_expires": "08/01/2028",
+                    "driver_license_expires": "08012028",
                     "mailing_address": "PO Box 9",
                     "mailing_city": "Berkeley",
                     "mailing_state": "ca",
@@ -744,7 +799,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "social_nudity_duration": "Two years",
                     "aanr_member": "yes",
                     "aanr_number": "A12345",
-                    "aanr_expires": "09/01/2028",
+                    "aanr_expires": "09.01.2028",
                     "other_club_member": "yes",
                     "other_club_name": "Other Club",
                 },
@@ -1179,7 +1234,7 @@ class ClubMemberImportTests(unittest.TestCase):
                     "visit_date": "2026-05-14",
                     "last_name": "Doe",
                     "first_name": "John",
-                    "date_of_birth": "06/15/1990",
+                    "date_of_birth": "06151990",
                     "nickname": "Johnny",
                     "address": "123 Main St",
                     "city": "Everytown",
@@ -1421,7 +1476,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertNotIn('name="cell_phone" value="" autocomplete="tel" inputmode="tel" required', body)
         self.assertNotIn('name="other_phone" value="" inputmode="tel" required', body)
         self.assertNotIn('name="email" value="" autocomplete="email" required', body)
-        self.assertIn('name="date_of_birth" value="" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY" required', body)
+        self.assertIn('name="date_of_birth" value="" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY" required', body)
         self.assertIn('name="address" value="" autocomplete="off" required', body)
         self.assertIn('name="zip" value="" autocomplete="off" inputmode="numeric" required data-zip-lookup', body)
         self.assertIn('name="city" value="" autocomplete="off" required tabindex="-1" data-city-field', body)
@@ -1590,7 +1645,9 @@ class ClubMemberImportTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         body = response.get_data(as_text=True)
-        self.assertIn("Date of birth must use MM/DD/YYYY.", body)
+        self.assertIn(
+            "Enter a complete numeric date of birth, such as MM/DD/YYYY.", body
+        )
         self.assertIn('value="June 15"', body)
         self.assertIn('value="Doe"', body)
 
@@ -3089,8 +3146,8 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('<option value="pending"', body)
         self.assertIn('<option value="safe"', body)
         self.assertIn('<option value="banned"', body)
-        self.assertIn('name="member_since" value="" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY"', body)
-        self.assertIn('name="date_of_birth" value="07/04/1980" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY"', body)
+        self.assertIn('name="member_since" value="" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY"', body)
+        self.assertIn('name="date_of_birth" value="07/04/1980" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY"', body)
         self.assertNotIn('name="membership" value=', body)
         self.assertNotIn('name="new_checkin_at"', body)
         self.assertNotIn("Delete Selected", body)
