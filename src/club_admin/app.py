@@ -14,13 +14,13 @@ import time
 import unicodedata
 from collections.abc import Callable, Iterator
 from collections import Counter
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from pathlib import Path
 from secrets import token_hex, token_urlsafe
-from typing import Any, cast
+from typing import Any, ParamSpec, cast
 from zoneinfo import ZoneInfo
 
 from flask import (
@@ -38,7 +38,9 @@ from flask import (
     stream_with_context,
     url_for,
 )
+from flask.typing import ResponseReturnValue
 from PIL import Image, ImageChops, ImageOps, UnidentifiedImageError
+from werkzeug.datastructures import FileStorage
 from werkzeug.security import check_password_hash
 
 import config as cfg
@@ -53,6 +55,9 @@ from club_admin import member_repository
 from club_admin import user_note_repository
 from club_admin import zip_repository
 from club_admin.models import CheckIn, GuestRegistration, Member, MembershipApplication
+
+
+_ViewParams = ParamSpec("_ViewParams")
 
 
 EDITABLE_MEMBER_FIELDS = (
@@ -91,7 +96,7 @@ SCREENING_STATUS_OPTIONS = (
     ("safe", "Safe"),
     ("banned", "Banned"),
 )
-SCREENING_STATUS_LABELS = dict(SCREENING_STATUS_OPTIONS)
+SCREENING_STATUS_LABELS: dict[str, str] = dict(SCREENING_STATUS_OPTIONS)
 MAX_PERSON_AGE_YEARS = 120
 MAX_EXPIRATION_YEARS_AHEAD = 25
 MAX_EXPIRATION_YEARS_AGO = 100
@@ -154,7 +159,7 @@ CODE128_PATTERNS = (
 )
 
 
-def _normalize_url_prefix(prefix: object) -> str:
+def _normalize_url_prefix(prefix: str | None) -> str:
     normalized = str(prefix or "").strip()
     if not normalized or normalized == "/":
         return ""
@@ -210,8 +215,8 @@ def _datetime_to_stored_text(value: datetime | None) -> str | None:
 class UrlPrefixMiddleware:
     '''Mount this app under a reverse-proxy path prefix.'''
 
-    def __init__(self, app: Any, prefix: str) -> None:
-        self.app = app
+    def __init__(self, wsgi_app: Any, prefix: str) -> None:
+        self.app = wsgi_app
         self.prefix = prefix
 
     def __call__(self, environ: dict[str, Any], start_response: Any) -> Any:
@@ -582,7 +587,7 @@ def _checkin_for_member(
         check_out_at=existing_checkin.check_out_at if existing_checkin else None,
         total_checkins=existing_checkin.total_checkins if existing_checkin else None,
         duration=existing_checkin.duration if existing_checkin else None,
-        membership=membership or member.membership,
+        membership=cast(str, membership or member.membership),
     )
 
 
@@ -636,7 +641,8 @@ def _record_member_profile_changes(
     old_member: Member,
     new_member: Member,
 ) -> None:
-    if old_member.id is None:
+    member_id = old_member.id
+    if member_id is None:
         raise ValueError("old_member.id is required for audit.")
     for field_name in (
         "membership",
@@ -663,7 +669,7 @@ def _record_member_profile_changes(
         audit_repository.record_field_change(
             connection,
             entity_type="user",
-            entity_id=old_member.id,
+            entity_id=member_id,
             action="edit",
             field_name=field_name,
             old_value=old_value,
@@ -671,7 +677,9 @@ def _record_member_profile_changes(
         )
 
 
-def _visible_member_audit_entries(audit_entries: list[audit_repository.AuditLogEntry]):
+def _visible_member_audit_entries(
+    audit_entries: list[audit_repository.AuditLogEntry],
+) -> tuple[audit_repository.AuditLogEntry, ...]:
     return tuple(
         entry
         for entry in audit_entries
@@ -1222,7 +1230,7 @@ def _checkins_report_stream_payload(
 ) -> dict[str, str]:
     context = _checkins_report_context(connection, start_date, end_date, today=today)
     return {
-        "count_text": str(context["count_text"]),
+        "count_text": cast(str, context["count_text"]),
         "membership_breakdown_html": render_template(
             "club_admin/_checkins_membership_breakdown.html",
             **context,
@@ -1255,7 +1263,7 @@ def _checkins_report_stream_payload(
 
 
 def _checkins_report_event_stream(
-    connection_context: Callable[[], Iterator[sqlite3.Connection]],
+    connection_context: Callable[[], AbstractContextManager[sqlite3.Connection]],
     start_date: date,
     end_date: date,
     *,
@@ -2076,22 +2084,25 @@ def _sample_driver_license_background(image: Image.Image) -> tuple[int, int, int
     edge_y = max(8, int(height * 0.04))
     step = max(1, min(width, height) // 120)
     pixels = image.load()
+    assert pixels is not None
     samples: list[tuple[int, int, int]] = []
 
+    # The caller converts to RGB; Pillow's pixel type also covers other modes.
     for y in range(max(0, height - edge_y), height, step):
         for x in range(0, width, step):
-            samples.append(pixels[x, y])
+            samples.append(cast(tuple[int, int, int], pixels[x, y]))
     for x in range(max(0, width - edge_x), width, step):
         for y in range(0, height, step):
-            samples.append(pixels[x, y])
+            samples.append(cast(tuple[int, int, int], pixels[x, y]))
 
     if not samples:
         return (255, 255, 255)
 
-    return tuple(
+    channels = [
         sorted(sample[channel] for sample in samples)[len(samples) // 2]
         for channel in range(3)
-    )
+    ]
+    return channels[0], channels[1], channels[2]
 
 
 def _driver_license_crop_mask(image: Image.Image) -> Image.Image:
@@ -2111,6 +2122,7 @@ def _image_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
     rgb_image = image.convert("RGB")
     mask = _driver_license_crop_mask(rgb_image)
     mask_pixels = mask.load()
+    assert mask_pixels is not None
     width, height = mask.size
     ignore_x = max(12, int(width * 0.025))
     ignore_y = max(20, int(height * 0.05))
@@ -2125,12 +2137,12 @@ def _image_content_bbox(image: Image.Image) -> tuple[int, int, int, int] | None:
     content_rows = [
         y
         for y in range(max(0, height - ignore_y))
-        if sum(1 for x in range(row_x_start, row_x_end) if mask_pixels[x, y]) >= min_row_pixels
+        if sum(bool(mask_pixels[x, y]) for x in range(row_x_start, row_x_end)) >= min_row_pixels
     ]
     content_columns = [
         x
         for x in range(max(0, width - ignore_x))
-        if sum(1 for y in range(column_y_start, column_y_end) if mask_pixels[x, y]) >= min_column_pixels
+        if sum(bool(mask_pixels[x, y]) for y in range(column_y_start, column_y_end)) >= min_column_pixels
     ]
     if not content_rows or not content_columns:
         return None
@@ -2191,7 +2203,7 @@ def _prepare_driver_license_image(image: Image.Image) -> Image.Image:
     return canvas
 
 
-def _save_driver_license_image(uploaded_file: Any, destination_path: Path) -> None:
+def _save_driver_license_image(uploaded_file: FileStorage, destination_path: Path) -> None:
     try:
         with Image.open(uploaded_file.stream) as image:
             prepared = _prepare_driver_license_image(image)
@@ -2632,11 +2644,11 @@ def _generate_guest_card_number(connection: sqlite3.Connection) -> str:
     return str((largest_card_number or 0) + 1)
 
 
-def _barcode_secret_bytes(secret_key: object) -> bytes:
+def _barcode_secret_bytes(secret_key: str | None) -> bytes:
     return str(secret_key or "").encode("utf-8")
 
 
-def _barcode_signature(card_number: str, secret_key: object, byte_count: int = 6) -> str:
+def _barcode_signature(card_number: str, secret_key: str | None, byte_count: int = 6) -> str:
     digest = hmac.new(
         _barcode_secret_bytes(secret_key),
         card_number.encode("utf-8"),
@@ -2647,7 +2659,7 @@ def _barcode_signature(card_number: str, secret_key: object, byte_count: int = 6
 
 def _barcode_token_for_card_number(
     card_number: str,
-    secret_key: object,
+    secret_key: str | None,
     version: str = BARCODE_TOKEN_VERSION,
 ) -> str:
     signature_byte_count = 9 if version in LEGACY_BARCODE_TOKEN_VERSIONS else 6
@@ -2675,7 +2687,7 @@ def _configured_barcode_secret() -> str:
 
 def _barcode_secret_for_connection(
     connection: sqlite3.Connection,
-    configured_secret: object = "",
+    configured_secret: str | None = "",
 ) -> str:
     configured_secret_text = str(configured_secret or "").strip()
     if configured_secret_text:
@@ -2702,7 +2714,7 @@ def _barcode_secret_for_connection(
 def _member_from_barcode_token(
     connection: sqlite3.Connection,
     token: str,
-    secret_key: object,
+    secret_key: str | None,
 ) -> Member | None:
     normalized_token = token.strip()
     parts = normalized_token.split(":")
@@ -2722,7 +2734,7 @@ def _resolve_kiosk_identity(
     connection: sqlite3.Connection,
     form_data: Any,
     *,
-    barcode_secret: object,
+    barcode_secret: str | None,
 ) -> KioskIdentityResult:
     '''Resolve the shared public kiosk barcode/phone identity form.'''
     barcode_token = form_data.get("barcode_token", "").strip()
@@ -2874,16 +2886,21 @@ def create_app(db_path: Path | None = None) -> Flask:
     )
     flask_app.config["USER_MANAGEMENT_URL_PREFIX"] = url_prefix
     if url_prefix:
-        flask_app.wsgi_app = UrlPrefixMiddleware(flask_app.wsgi_app, url_prefix)
+        # Flask supports wrapping this method with WSGI middleware.
+        flask_app.wsgi_app = UrlPrefixMiddleware(flask_app.wsgi_app, url_prefix)  # type: ignore[method-assign]
 
     flask_app.add_template_filter(_format_sqlite_utc_datetime, "local_sqlite_datetime")
     flask_app.add_template_filter(_format_sqlite_utc_date, "local_sqlite_date")
     flask_app.add_template_filter(_format_date_entry, "date_entry")
     flask_app.add_template_filter(_display_audit_field_name, "audit_field_name")
 
-    def require_admin(view):
+    def require_admin(
+        view: Callable[_ViewParams, ResponseReturnValue],
+    ) -> Callable[_ViewParams, ResponseReturnValue]:
         @wraps(view)
-        def wrapped(*args, **kwargs):
+        def wrapped(
+            *args: _ViewParams.args, **kwargs: _ViewParams.kwargs
+        ) -> ResponseReturnValue:
             if session.get("user_management_admin_authenticated") is True:
                 return view(*args, **kwargs)
             next_url = f"{request.script_root}{request.full_path}".rstrip("?")
@@ -2905,7 +2922,7 @@ def create_app(db_path: Path | None = None) -> Flask:
     }
 
     @flask_app.before_request
-    def require_admin_for_private_routes():
+    def require_admin_for_private_routes() -> ResponseReturnValue | None:
         if request.endpoint in public_endpoints:
             return None
         if session.get("user_management_admin_authenticated") is True:
@@ -2914,7 +2931,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         return redirect(url_for("admin_login", next=next_url))
 
     @flask_app.after_request
-    def prevent_public_kiosk_cache(response):
+    def prevent_public_kiosk_cache(response: Response) -> Response:
         if request.endpoint in PUBLIC_KIOSK_ENDPOINTS:
             response.headers["Cache-Control"] = "no-store, max-age=0"
             response.headers["Pragma"] = "no-cache"
@@ -2941,11 +2958,11 @@ def create_app(db_path: Path | None = None) -> Flask:
             connection.close()
 
     @flask_app.route("/")
-    def index():
+    def index() -> ResponseReturnValue:
         return redirect(url_for("self_checkin"))
 
     @flask_app.route("/guest-registration", methods=["GET", "POST"])
-    def guest_registration():
+    def guest_registration() -> ResponseReturnValue:
         if request.method == "POST":
             try:
                 member, registration = _guest_registration_from_form(
@@ -3050,7 +3067,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         )
 
     @flask_app.route("/guest-registration/thanks")
-    def guest_registration_thanks():
+    def guest_registration_thanks() -> ResponseReturnValue:
         response = make_response(
             render_template(
                 "club_admin/guest_registration_thanks.html",
@@ -3064,7 +3081,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         return response
 
     @flask_app.route("/membership-application", methods=["GET", "POST"])
-    def membership_application():
+    def membership_application() -> ResponseReturnValue:
         form_spec = _membership_application_form_spec()
         message = ""
         member: Member | None = None
@@ -3077,8 +3094,12 @@ def create_app(db_path: Path | None = None) -> Flask:
             if action == "submit":
                 form_data = request.form
                 raw_user_id = session.get(MEMBERSHIP_APPLICATION_SESSION_KEY)
+                if raw_user_id is None:
+                    session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+                    return redirect(url_for("membership_application"))
                 try:
-                    user_id = int(raw_user_id)
+                    # Applicant IDs in the session are integers or numeric strings.
+                    user_id = int(cast(int | str, raw_user_id))
                 except (TypeError, ValueError):
                     session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
                     return redirect(url_for("membership_application"))
@@ -3174,7 +3195,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         return response
 
     @flask_app.route("/membership-application/thanks")
-    def membership_application_thanks():
+    def membership_application_thanks() -> ResponseReturnValue:
         response = make_response(
             render_template(
                 "club_admin/membership_application_thanks.html",
@@ -3188,7 +3209,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         return response
 
     @flask_app.route("/admin/login", methods=["GET", "POST"])
-    def admin_login():
+    def admin_login() -> ResponseReturnValue:
         next_url = _safe_next_url(request.values.get("next"))
         password_hash = flask_app.config["USER_MANAGEMENT_ADMIN_PASSWORD_HASH"]
         message = ""
@@ -3209,13 +3230,13 @@ def create_app(db_path: Path | None = None) -> Flask:
         ), (200 if password_hash else 503)
 
     @flask_app.post("/admin/logout")
-    def admin_logout():
+    def admin_logout() -> ResponseReturnValue:
         session.pop("user_management_admin_authenticated", None)
         return redirect(url_for("self_checkin"))
 
     @flask_app.route("/members")
     @require_admin
-    def members():
+    def members() -> ResponseReturnValue:
         with open_connection() as connection:
             roster = member_repository.list_member_report_rows(connection)
         document_counts = _document_counts_by_member(
@@ -3234,7 +3255,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/members/export.csv")
     @require_admin
-    def export_members_csv():
+    def export_members_csv() -> ResponseReturnValue:
         with open_connection() as connection:
             roster = member_repository.list_member_report_rows(connection)
         document_counts = _document_counts_by_member(
@@ -3254,7 +3275,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/members/check-ins")
     @require_admin
-    def check_in_members():
+    def check_in_members() -> ResponseReturnValue:
         selected_member_ids: list[int] = []
         for raw_member_id in request.form.getlist("member_ids"):
             try:
@@ -3325,7 +3346,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/members/map")
     @require_admin
-    def members_map():
+    def members_map() -> ResponseReturnValue:
         today = date.today()
         start_date, end_date = _date_range_from_request(today)
         date_presets = _date_range_presets(today)
@@ -3379,7 +3400,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/members/map/zip-coordinates")
     @require_admin
-    def save_zip_coordinates():
+    def save_zip_coordinates() -> ResponseReturnValue:
         payload = request.get_json(silent=True) or {}
         raw_coordinates = payload.get("coordinates")
         if not isinstance(raw_coordinates, list):
@@ -3408,7 +3429,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/members/<int:member_id>")
     @require_admin
-    def member_detail(member_id: int):
+    def member_detail(member_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3448,7 +3469,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/members/<int:member_id>/checkin-barcode/print")
     @require_admin
-    def member_checkin_barcode_print(member_id: int):
+    def member_checkin_barcode_print(member_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3469,7 +3490,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/members/<int:member_id>/notes")
     @require_admin
-    def add_member_note(member_id: int):
+    def add_member_note(member_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3497,7 +3518,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/members/<int:member_id>/notes/<int:note_id>/edit")
     @require_admin
-    def edit_member_note(member_id: int, note_id: int):
+    def edit_member_note(member_id: int, note_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3547,7 +3568,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/members/<int:member_id>/notes/<int:note_id>/delete")
     @require_admin
-    def delete_member_note(member_id: int, note_id: int):
+    def delete_member_note(member_id: int, note_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3579,14 +3600,14 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/changes")
     @require_admin
-    def recent_changes():
+    def recent_changes() -> ResponseReturnValue:
         with open_connection() as connection:
             changes = audit_repository.list_recent_audit_log(connection)
         return render_template("club_admin/recent_changes.html", changes=changes)
 
     @flask_app.route("/members/<int:member_id>/guest-form.jpg")
     @require_admin
-    def member_guest_form(member_id: int):
+    def member_guest_form(member_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3602,7 +3623,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/members/<int:member_id>/document")
     @require_admin
-    def member_document(member_id: int):
+    def member_document(member_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3619,7 +3640,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/members/<int:member_id>/documents")
     @require_admin
-    def upload_member_document(member_id: int):
+    def upload_member_document(member_id: int) -> ResponseReturnValue:
         uploaded_file = request.files.get("member_document")
         if uploaded_file is None or not uploaded_file.filename:
             abort(400, "Document file is required.")
@@ -3657,7 +3678,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/members/<int:member_id>/edit", methods=["GET", "POST"])
     @require_admin
-    def edit_member(member_id: int):
+    def edit_member(member_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3708,7 +3729,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/members/<int:member_id>/checkins/edit", methods=["GET", "POST"])
     @require_admin
-    def edit_member_checkins(member_id: int):
+    def edit_member_checkins(member_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             member = member_repository.get_member(connection, member_id)
             if member is None:
@@ -3719,8 +3740,8 @@ def create_app(db_path: Path | None = None) -> Flask:
                 try:
                     checkins_changed = False
                     if request.form.get("checkin_action") == "delete_selected":
-                        deleted_checkin_ids = {
-                            checkin.id
+                        deleted_checkin_ids: set[int] = {
+                            cast(int, checkin.id)
                             for checkin in checkins
                             if checkin.id is not None
                             and request.form.get(f"delete_checkin_{checkin.id}") == "1"
@@ -3840,7 +3861,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/checkins/report")
     @require_admin
-    def checkins_report():
+    def checkins_report() -> ResponseReturnValue:
         today = date.today()
         start_date, end_date = _date_range_from_request(today)
         date_presets = _date_range_presets(today)
@@ -3866,7 +3887,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/checkins/charts")
     @require_admin
-    def checkins_charts():
+    def checkins_charts() -> ResponseReturnValue:
         today = date.today()
         start_date, end_date = _date_range_from_request(today)
         date_presets = _date_range_presets(today)
@@ -3892,7 +3913,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/checkins/report/stream")
     @require_admin
-    def checkins_report_stream():
+    def checkins_report_stream() -> ResponseReturnValue:
         today = date.today()
         start_date, end_date = _date_range_from_request(today)
         response = Response(
@@ -3911,7 +3932,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         return response
 
     @flask_app.route("/api/checkins/latest")
-    def checkins_latest_api():
+    def checkins_latest_api() -> ResponseReturnValue:
         if not _request_has_checkin_monitor_access():
             return jsonify({"error": "unauthorized"}), 401
 
@@ -3948,8 +3969,9 @@ def create_app(db_path: Path | None = None) -> Flask:
                         after_id=after_id,
                         limit=limit,
                     )
-                    if checkins and checkins[-1].id is not None:
-                        latest_id = int(checkins[-1].id)
+                    last_checkin_id = checkins[-1].id if checkins else None
+                    if last_checkin_id is not None:
+                        latest_id = last_checkin_id
                         has_more = latest_id < database_latest_id
                     else:
                         latest_id = min(after_id, database_latest_id)
@@ -3978,7 +4000,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/documents/report")
     @require_admin
-    def documents_report():
+    def documents_report() -> ResponseReturnValue:
         with open_connection() as connection:
             roster = member_repository.list_members(connection)
         report = _scan_documents_directory(
@@ -3989,7 +4011,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/documents/image")
     @require_admin
-    def document_image():
+    def document_image() -> ResponseReturnValue:
         image_path = _document_image_path(
             flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
             request.args.get("name", "").strip(),
@@ -4001,7 +4023,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/guest-registrations")
     @require_admin
-    def guest_registrations():
+    def guest_registrations() -> ResponseReturnValue:
         with open_connection() as connection:
             records = guest_registration_repository.list_guest_registration_records(connection)
         latest_record = records[0] if records else None
@@ -4015,7 +4037,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/guest-registrations/recent")
     @require_admin
-    def recent_guest_registrations():
+    def recent_guest_registrations() -> ResponseReturnValue:
         with open_connection() as connection:
             records = guest_registration_repository.list_guest_registration_records(connection)
         latest_record = records[0] if records else None
@@ -4046,7 +4068,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/guest-registrations/<int:registration_id>/mark-safe")
     @require_admin
-    def mark_guest_registration_safe(registration_id: int):
+    def mark_guest_registration_safe(registration_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             record = guest_registration_repository.get_guest_registration_record(
                 connection,
@@ -4080,7 +4102,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/guest-registrations/<int:registration_id>/form")
     @require_admin
-    def filled_guest_registration_form(registration_id: int):
+    def filled_guest_registration_form(registration_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             record = guest_registration_repository.get_guest_registration_record(
                 connection,
@@ -4102,7 +4124,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/membership-applications")
     @require_admin
-    def membership_applications():
+    def membership_applications() -> ResponseReturnValue:
         with open_connection() as connection:
             records = membership_application_repository.list_membership_application_records(
                 connection
@@ -4115,7 +4137,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/membership-applications/<int:application_id>/fee-received")
     @require_admin
-    def mark_membership_application_fee_received(application_id: int):
+    def mark_membership_application_fee_received(application_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             record = membership_application_repository.get_membership_application_record(
                 connection,
@@ -4135,7 +4157,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/membership-applications/<int:application_id>/edit", methods=["GET", "POST"])
     @require_admin
-    def edit_membership_application(application_id: int):
+    def edit_membership_application(application_id: int) -> ResponseReturnValue:
         form_spec = _membership_application_form_spec()
         message = ""
         with open_connection() as connection:
@@ -4154,7 +4176,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             try:
                 updated_application = _membership_application_from_form(
                     request.form,
-                    user_id=record.member.id,
+                    user_id=record.application.user_id,
                 )
             except MembershipApplicationFormError as error:
                 message = str(error)
@@ -4178,7 +4200,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                     audit_repository.record_field_change(
                         connection,
                         entity_type="user",
-                        entity_id=record.member.id,
+                        entity_id=record.application.user_id,
                         action="edit",
                         field_name="membership application edited",
                         old_value=record.application.id,
@@ -4211,7 +4233,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/membership-applications/<int:application_id>/approve")
     @require_admin
-    def approve_membership_application(application_id: int):
+    def approve_membership_application(application_id: int) -> ResponseReturnValue:
         reviewed_at = datetime.now()
         with open_connection() as connection:
             record = membership_application_repository.get_membership_application_record(
@@ -4243,7 +4265,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/membership-applications/<int:application_id>/decline")
     @require_admin
-    def decline_membership_application(application_id: int):
+    def decline_membership_application(application_id: int) -> ResponseReturnValue:
         with open_connection() as connection:
             record = membership_application_repository.get_membership_application_record(
                 connection,
@@ -4264,7 +4286,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/membership-applications/<int:application_id>/form")
     @require_admin
-    def filled_membership_application_form(application_id: int):
+    def filled_membership_application_form(application_id: int) -> ResponseReturnValue:
         form_spec = _membership_application_form_spec()
         with open_connection() as connection:
             record = membership_application_repository.get_membership_application_record(
@@ -4274,7 +4296,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             latest_registration = (
                 guest_registration_repository.get_latest_guest_registration_for_user(
                     connection,
-                    record.member.id,
+                    record.application.user_id,
                 )
                 if record is not None
                 else None
@@ -4294,7 +4316,7 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.post("/guest-registrations/<int:registration_id>/driver-license")
     @require_admin
-    def upload_guest_registration_driver_license(registration_id: int):
+    def upload_guest_registration_driver_license(registration_id: int) -> ResponseReturnValue:
         uploaded_file = request.files.get("driver_license")
         if uploaded_file is None or not uploaded_file.filename:
             abort(400, "Driver license image is required.")
@@ -4311,12 +4333,15 @@ def create_app(db_path: Path | None = None) -> Flask:
         )
         if destination_path is None:
             abort(400, "Document storage is not configured.")
+        member_id = record.member.id
+        if member_id is None:
+            abort(404)
         _save_driver_license_image(uploaded_file, destination_path)
         with open_connection() as connection:
             audit_repository.record_field_change(
                 connection,
                 entity_type="user",
-                entity_id=record.member.id,
+                entity_id=member_id,
                 action="edit",
                 field_name="driver license uploaded",
                 old_value=None,
@@ -4326,15 +4351,14 @@ def create_app(db_path: Path | None = None) -> Flask:
         return redirect(url_for("filled_guest_registration_form", registration_id=registration_id))
 
     @flask_app.route("/self-checkin", methods=["GET", "POST"])
-    def self_checkin():
+    def self_checkin() -> ResponseReturnValue:
         message = ""
         checkin_success = False
         checkin_blocked = False
         barcode_svg = ""
         barcode_show_default = True
         if request.method == "POST":
-            member = None
-            checkin_result: LiveCheckInResult | None = None
+            checkin_recorded = False
             with open_connection() as connection:
                 barcode_secret = _barcode_secret_for_connection(
                     connection,
@@ -4349,6 +4373,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                 if member is not None:
                     checkin_result = _record_self_checkin(connection, member)
                     checkin_blocked = checkin_result.blocked
+                    checkin_recorded = checkin_result.recorded
                     if not checkin_blocked:
                         token = _barcode_token_for_card_number(
                             member.card_number,
@@ -4357,21 +4382,17 @@ def create_app(db_path: Path | None = None) -> Flask:
                         barcode_svg = _code128b_svg(token)
                         barcode_show_default = not identity_result.used_barcode
                     connection.commit()
-                    if checkin_result.recorded:
+                    if checkin_recorded:
                         checkin_events.notify_checkins_changed()
             checkin_success = member is not None and not checkin_blocked
             if checkin_blocked:
                 message = "Please see the front desk."
+            elif not checkin_success:
+                message = "No matching user was found. Please check your barcode, phone number, and initials or first name."
+            elif checkin_recorded:
+                message = "Check-in recorded."
             else:
-                message = (
-                    (
-                        "Check-in recorded."
-                        if checkin_result is not None and checkin_result.recorded
-                        else "Already checked in within the past hour."
-                    )
-                    if checkin_success
-                    else "No matching user was found. Please check your barcode, phone number, and initials or first name."
-                )
+                message = "Already checked in within the past hour."
 
         response = make_response(
             render_template(
