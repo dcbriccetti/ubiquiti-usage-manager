@@ -18,7 +18,7 @@
     </header>
 
     {% if message %}
-      <p class="notice">{{ message }}</p>
+      <p class="notice" id="guest-registration-error" role="alert">{{ message }}</p>
     {% endif %}
 
     <form class="edit-form guest-registration-form" action="{{ url_for('guest_registration') }}" method="post" autocomplete="off">
@@ -27,7 +27,7 @@
         <h2 id="visit-section-title">Visit</h2>
         <label class="required-field visit-date-field">
           <span>Visit Date</span>
-          <input type="date" name="visit_date" value="{{ form_data.get('visit_date', today) }}" required tabindex="-1">
+          <input type="date" name="visit_date" value="{{ form_data.get('visit_date', today) }}" required tabindex="-1"{% if error_field == 'visit_date' %} aria-invalid="true" aria-describedby="guest-registration-error" autofocus{% endif %}>
         </label>
       </section>
 
@@ -35,7 +35,7 @@
         <h2 id="visitor-section-title">Visitor</h2>
         <label class="required-field">
           <span>Last Name</span>
-          <input type="text" name="last_name" value="{{ form_data.get('last_name', '') }}" autocomplete="off" required autofocus>
+          <input type="text" name="last_name" value="{{ form_data.get('last_name', '') }}" autocomplete="off" required{% if not error_field %} autofocus{% endif %}>
         </label>
         <label class="required-field">
           <span>First Name</span>
@@ -47,7 +47,7 @@
         </label>
         <label class="required-field">
           <span>Date of Birth</span>
-          <input type="text" name="date_of_birth" value="{{ form_data.get('date_of_birth', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY" required>
+          <input type="text" name="date_of_birth" value="{{ form_data.get('date_of_birth', '')|date_entry }}" autocomplete="off" inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY" required{% if error_field == 'date_of_birth' %} aria-invalid="true" aria-describedby="guest-registration-error" autofocus{% endif %}>
         </label>
       </section>
 

@@ -1627,6 +1627,12 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn("Visit date must use YYYY-MM-DD.", body)
         self.assertIn('value="May 14"', body)
         self.assertIn('value="Doe"', body)
+        self.assertIn(
+            'name="visit_date" value="May 14" required tabindex="-1" '
+            'aria-invalid="true" aria-describedby="guest-registration-error" autofocus',
+            body,
+        )
+        self.assertEqual(body.count(" autofocus"), 1)
 
     def test_guest_registration_bad_date_of_birth_rerenders_form(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1650,6 +1656,16 @@ class ClubMemberImportTests(unittest.TestCase):
         )
         self.assertIn('value="June 15"', body)
         self.assertIn('value="Doe"', body)
+        self.assertIn(
+            'name="date_of_birth" value="June 15" autocomplete="off" '
+            'inputmode="numeric" placeholder="MM/DD/YYYY or MMDDYYYY" required '
+            'aria-invalid="true" aria-describedby="guest-registration-error" autofocus',
+            body,
+        )
+        self.assertNotIn(
+            'name="last_name" value="Doe" autocomplete="off" required autofocus', body
+        )
+        self.assertEqual(body.count(" autofocus"), 1)
 
     def test_member_import_route_is_removed(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

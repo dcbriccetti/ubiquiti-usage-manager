@@ -401,6 +401,10 @@ class DocumentsScanReport:
 class GuestRegistrationFormError(ValueError):
     '''Raised when a visitor registration submission cannot be accepted.'''
 
+    def __init__(self, message: str, *, field_name: str | None = None) -> None:
+        super().__init__(message)
+        self.field_name = field_name
+
 
 class MembershipApplicationFormError(ValueError):
     '''Raised when a membership application submission cannot be accepted.'''
@@ -1656,7 +1660,9 @@ def _parse_visitor_visit_date(form_data: Any) -> date:
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise GuestRegistrationFormError("Visit date must use YYYY-MM-DD.")
+        raise GuestRegistrationFormError(
+            "Visit date must use YYYY-MM-DD.", field_name="visit_date"
+        )
 
 
 def _parse_visitor_date_of_birth(form_data: Any) -> date | None:
@@ -1666,12 +1672,15 @@ def _parse_visitor_date_of_birth(form_data: Any) -> date | None:
     parsed_date = _parse_flexible_date(value)
     if parsed_date is None:
         raise GuestRegistrationFormError(
-            "Enter a complete numeric date of birth, such as MM/DD/YYYY."
+            "Enter a complete numeric date of birth, such as MM/DD/YYYY.",
+            field_name="date_of_birth",
         )
     try:
         _validate_birthdate(parsed_date)
     except ValueError as error:
-        raise GuestRegistrationFormError(str(error)) from error
+        raise GuestRegistrationFormError(
+            str(error), field_name="date_of_birth"
+        ) from error
     return parsed_date
 
 
@@ -2948,6 +2957,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                     "club_admin/guest_registration.html",
                     today=date.today(),
                     message=str(exc),
+                    error_field=exc.field_name,
                     form_data=request.form,
                 ), 400
 
