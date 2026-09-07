@@ -1,10 +1,9 @@
 [Unit]
-Description=Daily UniFi usage manager database backup
+Description=Weekly UniFi usage manager database backup
 
 [Timer]
-OnCalendar=*-*-* 03:15:00
+OnCalendar=Mon *-*-* 02:00:00
 Persistent=true
-RandomizedDelaySec=15m
 
 [Install]
 WantedBy=timers.target
