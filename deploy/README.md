@@ -11,7 +11,7 @@ The checked-in systemd units keep the existing process model:
 - `ubiquiti-usage-monitor.service` runs `src/monitor.py`
 - `ubiquiti-usage-lan.service` runs the LAN dashboard on `127.0.0.1:5051`
 - `ubiquiti-usage-club.service` runs the user-management app on `127.0.0.1:5052`
-- `ubiquiti-usage-backup.timer` runs a daily SQLite backup
+- `ubiquiti-usage-backup.timer` runs a weekly SQLite backup on Mondays at 2 AM
 
 These files are repo artifacts only until explicitly installed on production.
 
