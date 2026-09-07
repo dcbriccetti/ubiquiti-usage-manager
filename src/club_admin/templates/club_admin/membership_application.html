@@ -8,6 +8,10 @@
   {% endif %}
   <title>{{ app_title }} | Apply for Membership</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+  {% if member and not form_action %}
+    <script src="{{ url_for('static', filename='membership-application-session.js') }}" defer></script>
+    <noscript><meta http-equiv="refresh" content="{{ application_remaining_seconds|int }};url={{ url_for('self_checkin') }}"></noscript>
+  {% endif %}
 </head>
 <body>
   <main class="page{% if member %} guest-registration-page membership-application-page{% else %} self-checkin-page{% endif %}">
@@ -25,8 +29,16 @@
         <p class="notice">{{ message }}</p>
       {% endif %}
 
-      <form class="edit-form guest-registration-form membership-application-form" action="{{ form_action or url_for('membership_application') }}" method="post" autocomplete="off">
-        <input type="hidden" name="action" value="submit">
+      <form class="edit-form guest-registration-form membership-application-form" action="{{ form_action or url_for('membership_application') }}" method="post" autocomplete="off"
+        {% if not form_action %}
+          data-application-session
+          data-idle-seconds="{{ application_idle_seconds }}"
+          data-remaining-seconds="{{ application_remaining_seconds }}"
+          data-exit-url="{{ url_for('self_checkin') }}"
+        {% endif %}>
+        {% if not form_action %}
+          <input type="hidden" name="application_token" value="{{ application_token }}">
+        {% endif %}
         <p class="required-note">Application for <strong>{{ member.first_name }} {{ member.last_name }}</strong>. Items marked <span aria-hidden="true">•</span> are required.</p>
 
         <section class="membership-paper-summary" aria-labelledby="applicant-section-title">
@@ -223,7 +235,7 @@
         </section>
 
         <div class="form-actions">
-          <button type="submit">{{ submit_label or 'Submit Application' }}</button>
+          <button type="submit" name="action" value="submit">{{ submit_label or 'Submit Application' }}</button>
           {% if cancel_url %}
             <a class="button-link secondary" href="{{ cancel_url }}">Cancel</a>
           {% else %}
@@ -231,6 +243,18 @@
           {% endif %}
         </div>
       </form>
+      {% if not form_action %}
+        <dialog class="upload-dialog" data-application-idle-warning aria-labelledby="application-idle-title">
+          <div class="upload-dialog-form">
+            <h2 id="application-idle-title">Are you still working?</h2>
+            <p>For your privacy, this form will close in <output data-application-idle-countdown>60</output> seconds. Unsubmitted answers will be cleared.</p>
+            <div class="upload-dialog-actions">
+              <button type="button" data-application-continue>Keep Working</button>
+              <a class="button-link secondary" href="{{ url_for('self_checkin') }}">Exit Application</a>
+            </div>
+          </div>
+        </dialog>
+      {% endif %}
     {% else %}
       <div class="self-checkin-layout{% if message %} has-status{% endif %}">
         {% if message %}

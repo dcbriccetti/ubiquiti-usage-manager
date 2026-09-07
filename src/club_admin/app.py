@@ -132,6 +132,9 @@ CHECKIN_MONITOR_MAX_LIMIT = 50
 CHECKIN_MONITOR_MAX_WAIT_SECONDS = 30.0
 CHECKIN_MONITOR_POLL_SECONDS = 1.0
 MEMBERSHIP_APPLICATION_SESSION_KEY = "membership_application_user_id"
+MEMBERSHIP_APPLICATION_ACTIVITY_KEY = "membership_application_last_activity"
+MEMBERSHIP_APPLICATION_TOKEN_KEY = "membership_application_token"
+MEMBERSHIP_APPLICATION_IDLE_SECONDS = 5 * 60
 PUBLIC_KIOSK_ENDPOINTS = frozenset(
     {
         "guest_registration",
@@ -1827,6 +1830,32 @@ def _guest_registration_exists(
     return row is not None
 
 
+def _clear_membership_application_session() -> None:
+    for key in (
+        MEMBERSHIP_APPLICATION_SESSION_KEY,
+        MEMBERSHIP_APPLICATION_ACTIVITY_KEY,
+        MEMBERSHIP_APPLICATION_TOKEN_KEY,
+    ):
+        session.pop(key, None)
+
+
+def _active_membership_applicant_id() -> int | None:
+    user_id = session.get(MEMBERSHIP_APPLICATION_SESSION_KEY)
+    last_activity = session.get(MEMBERSHIP_APPLICATION_ACTIVITY_KEY)
+    token = session.get(MEMBERSHIP_APPLICATION_TOKEN_KEY)
+    if (
+        not isinstance(user_id, int)
+        or not isinstance(last_activity, (int, float))
+        or not isinstance(token, str)
+        or not token
+        or not math.isfinite(last_activity)
+        or not 0 <= time.time() - last_activity < MEMBERSHIP_APPLICATION_IDLE_SECONDS
+    ):
+        _clear_membership_application_session()
+        return None
+    return user_id
+
+
 def _membership_application_form_spec() -> guest_form.GuestFormSpec:
     try:
         return guest_form.load_required_form_spec(
@@ -2923,6 +2952,11 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.before_request
     def require_admin_for_private_routes() -> ResponseReturnValue | None:
+        if request.endpoint in {
+            "index", "self_checkin", "guest_registration",
+            "guest_registration_thanks", "membership_application_thanks",
+        }:
+            _clear_membership_application_session()
         if request.endpoint in public_endpoints:
             return None
         if session.get("user_management_admin_authenticated") is True:
@@ -3082,32 +3116,44 @@ def create_app(db_path: Path | None = None) -> Flask:
 
     @flask_app.route("/membership-application", methods=["GET", "POST"])
     def membership_application() -> ResponseReturnValue:
+        action = request.form.get("action", "identify").strip()
+        if request.method == "POST" and "cancel" in request.form.getlist("action"):
+            # Also honor Cancel from a form opened before the duplicate-action fix.
+            _clear_membership_application_session()
+            return redirect(url_for("self_checkin"))
+
+        user_id = _active_membership_applicant_id()
+        if request.method == "POST" and action in {"submit", "activity"}:
+            token_matches = hmac.compare_digest(
+                request.form.get("application_token", "").encode("utf-8"),
+                str(session.get(MEMBERSHIP_APPLICATION_TOKEN_KEY, "")).encode("utf-8"),
+            )
+            if user_id is None or not token_matches:
+                _clear_membership_application_session()
+                if action == "activity":
+                    return jsonify({"error": "Application session ended."}), 401
+                return redirect(url_for("membership_application"))
+            session[MEMBERSHIP_APPLICATION_ACTIVITY_KEY] = time.time()
+            if action == "activity":
+                return jsonify({"idle_seconds": MEMBERSHIP_APPLICATION_IDLE_SECONDS})
+        elif request.method == "POST":
+            _clear_membership_application_session()
+            if action != "identify":
+                abort(400, "Choose a valid application action.")
+
         form_spec = _membership_application_form_spec()
         message = ""
         member: Member | None = None
         form_data: Any = {}
         if request.method == "POST":
-            action = request.form.get("action", "identify").strip()
-            if action == "cancel":
-                session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
-                return redirect(url_for("self_checkin"))
             if action == "submit":
                 form_data = request.form
-                raw_user_id = session.get(MEMBERSHIP_APPLICATION_SESSION_KEY)
-                if raw_user_id is None:
-                    session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
-                    return redirect(url_for("membership_application"))
-                try:
-                    # Applicant IDs in the session are integers or numeric strings.
-                    user_id = int(cast(int | str, raw_user_id))
-                except (TypeError, ValueError):
-                    session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
-                    return redirect(url_for("membership_application"))
+                assert user_id is not None
                 with open_connection() as connection:
                     connection.execute("BEGIN IMMEDIATE")
                     member = member_repository.get_member(connection, user_id)
                     if member is None:
-                        session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+                        _clear_membership_application_session()
                         return redirect(url_for("membership_application"))
                     try:
                         application = _membership_application_from_form(
@@ -3143,7 +3189,7 @@ def create_app(db_path: Path | None = None) -> Flask:
                                 new_value=application_id,
                             )
                             connection.commit()
-                            session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+                            _clear_membership_application_session()
                             return redirect(url_for("membership_application_thanks"))
             else:
                 with open_connection() as connection:
@@ -3165,16 +3211,13 @@ def create_app(db_path: Path | None = None) -> Flask:
                     message = "Please see the front desk."
                 else:
                     session[MEMBERSHIP_APPLICATION_SESSION_KEY] = member.id
-        elif session.get(MEMBERSHIP_APPLICATION_SESSION_KEY) is not None:
+                    session[MEMBERSHIP_APPLICATION_ACTIVITY_KEY] = time.time()
+                    session[MEMBERSHIP_APPLICATION_TOKEN_KEY] = token_urlsafe(32)
+        elif user_id is not None:
             with open_connection() as connection:
-                try:
-                    member_id = int(session[MEMBERSHIP_APPLICATION_SESSION_KEY])
-                except (TypeError, ValueError):
-                    member = None
-                else:
-                    member = member_repository.get_member(connection, member_id)
+                member = member_repository.get_member(connection, user_id)
             if member is None:
-                session.pop(MEMBERSHIP_APPLICATION_SESSION_KEY, None)
+                _clear_membership_application_session()
 
         response = make_response(
             render_template(
@@ -3184,6 +3227,13 @@ def create_app(db_path: Path | None = None) -> Flask:
                 form_data=form_data,
                 today=date.today(),
                 form_spec=form_spec,
+                application_token=session.get(MEMBERSHIP_APPLICATION_TOKEN_KEY, ""),
+                application_idle_seconds=MEMBERSHIP_APPLICATION_IDLE_SECONDS,
+                application_remaining_seconds=max(
+                    0,
+                    MEMBERSHIP_APPLICATION_IDLE_SECONDS
+                    - (time.time() - session.get(MEMBERSHIP_APPLICATION_ACTIVITY_KEY, 0)),
+                ),
                 auto_return_seconds=KIOSK_AUTO_RETURN_SECONDS,
                 auto_return_delay_ms=KIOSK_AUTO_RETURN_SECONDS * 1000,
             )

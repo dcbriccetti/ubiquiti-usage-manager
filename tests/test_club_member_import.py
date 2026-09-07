@@ -78,6 +78,11 @@ def admin_client(flask_app):
     return client
 
 
+def application_session_token(client) -> str:
+    with client.session_transaction() as browser_session:
+        return browser_session.get("membership_application_token", "")
+
+
 class ClubMemberImportTests(unittest.TestCase):
     def test_flexible_date_parser_accepts_numeric_formats(self) -> None:
         expected = date(1990, 6, 15)
@@ -779,6 +784,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 "/membership-application",
                 data={
                     "action": "submit",
+                    "application_token": application_session_token(client),
                     "requested_membership": "Associate Member",
                     "gender": "female",
                     "occupation": "Engineer",
@@ -877,6 +883,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 "/membership-application",
                 data={
                     "action": "submit",
+                    "application_token": application_session_token(client),
                     "requested_membership": "Associate Member",
                     "gender": "prefer_not_to_say",
                     "occupation": "Engineer",
@@ -901,6 +908,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 "/membership-application",
                 data={
                     "action": "submit",
+                    "application_token": application_session_token(client),
                     "requested_membership": "Full Member",
                     "gender": "prefer_not_to_say",
                     "occupation": "Engineer",
@@ -960,6 +968,7 @@ class ClubMemberImportTests(unittest.TestCase):
                 "/membership-application",
                 data={
                     "action": "submit",
+                    "application_token": application_session_token(client),
                     "requested_membership": "Full Member",
                     "convicted": "yes",
                 },

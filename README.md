@@ -142,6 +142,15 @@ If the configured file is missing, invalid, or has no agreement paragraphs,
 membership application pages return a temporary-unavailable error instead of
 silently substituting generic legal language. Other app features remain available.
 
+On a shared kiosk, leaving Apply for Membership for Check In or First-Time
+Visitor clears the identified applicant. Cancel discards the application without
+submitting it. An inactive application expires after five minutes, with a warning
+during the final minute; typing, scrolling, or choosing Keep Working extends the
+session. Unsubmitted answers are cleared on timeout. If JavaScript is disabled,
+the form returns to Check In when the session expires without activity extensions.
+The server also rejects expired submissions and forms from a previous applicant
+session. Admin application editing does not use this kiosk timeout.
+
 Example form definition:
 
 ```toml
