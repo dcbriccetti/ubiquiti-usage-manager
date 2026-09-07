@@ -12,6 +12,7 @@ The checked-in systemd units keep the existing process model:
 - `ubiquiti-usage-lan.service` runs the LAN dashboard on `127.0.0.1:5051`
 - `ubiquiti-usage-club.service` runs the user-management app on `127.0.0.1:5052`
 - `ubiquiti-usage-backup.timer` runs a weekly SQLite backup on Mondays at 2 AM
+- `ubiquiti-usage-nfdump-prune.timer` prunes imported nfdump capture files daily
 
 These files are repo artifacts only until explicitly installed on production.
 
@@ -26,6 +27,7 @@ sudo systemctl start ubiquiti-usage-monitor.service
 sudo systemctl start ubiquiti-usage-lan.service
 sudo systemctl start ubiquiti-usage-club.service
 sudo systemctl start ubiquiti-usage-backup.timer
+sudo systemctl start ubiquiti-usage-nfdump-prune.timer
 ```
 
 Verify before stopping the old `./run` process:
@@ -55,6 +57,7 @@ sudo systemctl enable ubiquiti-usage-monitor.service
 sudo systemctl enable ubiquiti-usage-lan.service
 sudo systemctl enable ubiquiti-usage-club.service
 sudo systemctl enable ubiquiti-usage-backup.timer
+sudo systemctl enable ubiquiti-usage-nfdump-prune.timer
 ```
 
 Rollback is to stop the new units and run the old script again:
@@ -119,6 +122,29 @@ deploy/scripts/backup-prod-databases.sh
 ```
 
 Adjust retention with `BACKUP_RETENTION_DAYS`; the default is 30 days.
+
+## nfdump Capture Pruning
+
+The nfdump prune timer deletes only completed capture files under
+`/var/cache/nfdump` that are older than 3 days and whose filenames already exist
+in the `meter.db` `flow_imports` table. It never deletes `nfcapd.current*`
+files.
+
+Report only:
+
+```bash
+deploy/scripts/prune-nfdump-captures.py
+```
+
+Apply manually:
+
+```bash
+sudo deploy/scripts/prune-nfdump-captures.py --apply
+```
+
+The systemd service runs as root because `/var/cache/nfdump` is owned by the
+capture service, not by the app user. It does not restart or signal the running
+LAN, monitor, or club apps.
 
 ## Meter Database Pruning
 

@@ -1,0 +1,9 @@
+[Unit]
+Description=Prune imported UniFi nfdump capture files
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/home/daveb/devel/ubiquiti-usage-manager
+ExecStart=/home/daveb/devel/ubiquiti-usage-manager/deploy/scripts/prune-nfdump-captures.py --apply --retention-days 3

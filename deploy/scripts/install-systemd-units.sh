@@ -16,6 +16,8 @@ install -m 0644 deploy/systemd/ubiquiti-usage-lan.service "${SYSTEMD_DIR}/ubiqui
 install -m 0644 deploy/systemd/ubiquiti-usage-club.service "${SYSTEMD_DIR}/ubiquiti-usage-club.service"
 install -m 0644 deploy/systemd/ubiquiti-usage-backup.service "${SYSTEMD_DIR}/ubiquiti-usage-backup.service"
 install -m 0644 deploy/systemd/ubiquiti-usage-backup.timer "${SYSTEMD_DIR}/ubiquiti-usage-backup.timer"
+install -m 0644 deploy/systemd/ubiquiti-usage-nfdump-prune.service "${SYSTEMD_DIR}/ubiquiti-usage-nfdump-prune.service"
+install -m 0644 deploy/systemd/ubiquiti-usage-nfdump-prune.timer "${SYSTEMD_DIR}/ubiquiti-usage-nfdump-prune.timer"
 
 systemctl daemon-reload
 systemctl list-unit-files 'ubiquiti-usage-*' --no-pager
