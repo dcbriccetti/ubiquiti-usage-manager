@@ -54,6 +54,8 @@ from club_admin import membership_application_repository
 from club_admin import member_repository
 from club_admin import user_note_repository
 from club_admin import zip_repository
+from club_admin import visit_guests
+from club_admin import visit_guest_repository
 from club_admin.models import CheckIn, GuestRegistration, Member, MembershipApplication
 
 
@@ -142,6 +144,7 @@ PUBLIC_KIOSK_ENDPOINTS = frozenset(
         "membership_application",
         "membership_application_thanks",
         "self_checkin",
+        "visit_guests.manage",
     }
 )
 CODE128_PATTERNS = (
@@ -1219,6 +1222,7 @@ def _checkins_report_context(
             by_month=True,
         ),
         "notes_by_user_id": notes_by_user_id,
+        "visit_links_by_user_date": visit_guest_repository.report_links(connection, start_date, end_date),
         "start_date": start_date,
         "end_date": end_date,
     }
@@ -2826,8 +2830,10 @@ def _code128b_svg(value: str) -> str:
 def _record_self_checkin(
     connection: sqlite3.Connection,
     member: Member,
+    *,
+    same_day: bool = False,
 ) -> LiveCheckInResult:
-    check_in_at = datetime.now().replace(microsecond=0)
+    check_in_at = datetime.now(CLUB_DISPLAY_TIMEZONE).replace(tzinfo=None, microsecond=0)
     if member.screening_status == "banned":
         if member.id is not None:
             audit_repository.record_field_change(
@@ -2849,7 +2855,8 @@ def _record_self_checkin(
         recent_checkin = checkin_repository.latest_checkin_for_user_between(
             connection,
             user_id=member.id,
-            start_at=check_in_at - LIVE_CHECKIN_REPEAT_WINDOW,
+            start_at=(check_in_at.replace(hour=0, minute=0, second=0)
+                      if same_day else check_in_at - LIVE_CHECKIN_REPEAT_WINDOW),
             end_at=check_in_at,
         )
         if recent_checkin is not None:
@@ -2948,6 +2955,7 @@ def create_app(db_path: Path | None = None) -> Flask:
         "admin_logout",
         "checkins_latest_api",
         "self_checkin",
+        "visit_guests.manage",
     }
 
     @flask_app.before_request
@@ -3491,6 +3499,8 @@ def create_app(db_path: Path | None = None) -> Flask:
                 entity_id=member_id,
             )
             notes = user_note_repository.list_user_notes(connection, member_id)
+            visit_links = [link for link in visit_guest_repository.list_links(connection, date.min, date.max)
+                           if member_id in (link["host_user_id"], link["guest_user_id"])]
         document_preview = _member_document_preview(
             member,
             flask_app.config["USER_MANAGEMENT_DOCUMENTS_DIR"],
@@ -3512,6 +3522,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             member=member,
             checkins=checkins,
             notes=notes,
+            visit_links=visit_links,
             audit_entries=_visible_member_audit_entries(audit_entries),
             document_preview=document_preview,
             other_documents=other_documents,
@@ -4407,9 +4418,11 @@ def create_app(db_path: Path | None = None) -> Flask:
         checkin_blocked = False
         barcode_svg = ""
         barcode_show_default = True
+        can_add_guests = False
         if request.method == "POST":
             checkin_recorded = False
             with open_connection() as connection:
+                connection.execute("BEGIN IMMEDIATE")
                 barcode_secret = _barcode_secret_for_connection(
                     connection,
                     flask_app.config["USER_MANAGEMENT_BARCODE_SECRET"],
@@ -4421,10 +4434,15 @@ def create_app(db_path: Path | None = None) -> Flask:
                 )
                 member = identity_result.member
                 if member is not None:
-                    checkin_result = _record_self_checkin(connection, member)
+                    checkin_result = _record_self_checkin(connection, member, same_day=True)
                     checkin_blocked = checkin_result.blocked
                     checkin_recorded = checkin_result.recorded
                     if not checkin_blocked:
+                        visit_guests.start_session(member)
+                        can_add_guests = visit_guests.eligible_host(member)
+                        if checkin_recorded:
+                            _record_checkin_change(connection, member_id=member.id, field_name="check-in added",
+                                                   old_value=None, new_value=checkin_result.check_in_at)
                         token = _barcode_token_for_card_number(
                             member.card_number,
                             barcode_secret,
@@ -4442,12 +4460,13 @@ def create_app(db_path: Path | None = None) -> Flask:
             elif checkin_recorded:
                 message = "Check-in recorded."
             else:
-                message = "Already checked in within the past hour."
+                message = "You’re already checked in today."
 
         response = make_response(
             render_template(
                 "club_admin/self_checkin.html",
                 message=message,
+                can_add_guests=can_add_guests,
                 checkin_success=checkin_success,
                 checkin_blocked=checkin_blocked,
                 barcode_svg=barcode_svg,
@@ -4462,6 +4481,7 @@ def create_app(db_path: Path | None = None) -> Flask:
             )
         return response
 
+    visit_guests.register_routes(flask_app, _record_self_checkin, _record_checkin_change)
     return flask_app
 
 

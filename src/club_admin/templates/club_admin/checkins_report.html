@@ -25,6 +25,7 @@
       <nav class="nav-links" aria-label="Club admin navigation">
         <a href="{{ url_for('members') }}">Users</a>
         <a class="active" href="{{ url_for('checkins_report') }}" aria-current="page">Check-ins</a>
+        <a href="{{ url_for('visit_guests.report') }}">Guests</a>
         <a href="{{ url_for('guest_registrations') }}">Visitors</a>
         <a href="{{ url_for('membership_applications') }}">Applications</a>
         <a href="{{ url_for('documents_report') }}">Documents</a>
@@ -56,7 +57,7 @@
       </div>
     </form>
 
-    <table class="checkins-table" data-sortable-table data-persist-sort-key="clubAdmin.checkinsReport.sort">
+    <table class="checkins-table" data-sortable-table data-persist-sort-key="clubAdmin.checkinsReport.sort.v2">
       <thead>
         <tr>
           <th scope="col" class="nowrap" aria-sort="none">
@@ -74,8 +75,11 @@
           <th scope="col" aria-sort="none">
             <span class="sortable-heading" role="button" tabindex="0" data-sort-column="4" data-sort-type="text">Membership <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
+          <th scope="col" aria-sort="none" data-guests-heading {% if not visit_links_by_user_date %}hidden{% endif %}>
+            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="5" data-sort-type="text">Guests <span class="sort-indicator" aria-hidden="true"></span></span>
+          </th>
           <th scope="col" aria-sort="none">
-            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="5" data-sort-type="text">Notes <span class="sort-indicator" aria-hidden="true"></span></span>
+            <span class="sortable-heading" role="button" tabindex="0" data-sort-column="6" data-sort-type="text">Notes <span class="sort-indicator" aria-hidden="true"></span></span>
           </th>
           <th scope="col" class="checkins-print-column">Barcode</th>
         </tr>
@@ -119,6 +123,10 @@
         }
         if (typeof payload.rows_html === "string" && tableBody) {
           tableBody.innerHTML = payload.rows_html;
+          const guestsHeading = table?.querySelector("[data-guests-heading]");
+          if (guestsHeading) {
+            guestsHeading.hidden = tableBody.querySelector("[data-guests-column]")?.hidden ?? true;
+          }
           window.ClubAdminTables?.applyStoredSort?.(table);
         }
       };

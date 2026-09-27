@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if complete %}<meta http-equiv="refresh" content="60;url={{ url_for('self_checkin') }}">{% endif %}
+  <title>{{ app_title }} | Guests</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+  <script src="{{ url_for('static', filename='visit-guests.js') }}" defer></script>
+</head>
+<body>
+<main class="page self-checkin-page" data-guest-session data-token="{{ token }}" data-idle-seconds="{{ idle_seconds }}" data-session-url="{{ url_for('visit_guests.manage') }}" data-reset-url="{{ url_for('self_checkin') }}">
+  <header class="page-header"><div><p class="app-title">{{ app_title }}</p><h1>Self Check-in</h1></div></header>
+  <section class="visit-guest-panel">
+  {% if complete %}
+    <p class="visit-saved">✓ Saved</p>
+    <h2>{{ 'Your guests are linked' if guests else 'Your visit is saved' }}</h2>
+    {% for guest in guests %}<p>{{ guest.name }}</p>{% endfor %}
+    <div class="visit-guest-actions"><a class="button-link" href="{{ url_for('self_checkin') }}">Continue</a><a class="guest-visit-link" href="{{ url_for('visit_guests.manage') }}">Add another guest</a></div>
+  {% else %}
+    <h2>Add guests to my visit</h2>
+    <p>{{ host_name }}’s visit · Today</p>
+    <p>Include anyone visiting as your guest today, even if they just registered.</p>
+    {% if message %}<p class="notice" role="alert">{{ message }}</p>{% endif %}
+    <form method="post" class="visit-guest-lookup" autocomplete="off">
+      <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="action" value="add">
+      <label>Guest phone number<input type="tel" name="phone" required autofocus></label>
+      <label>Initials or first name<input name="initials" maxlength="40" required></label>
+      <button type="submit">Add guest</button>
+    </form>
+    <h3>Your guests today{% if guests %} ({{ guests|length }}){% endif %}</h3>
+    <ul class="visit-guest-list">
+    {% for guest in guests %}
+      <li><div>{{ guest.name }}<small>{% if guest.saved %}Linked to your visit{% elif guest.checked_in %}Already checked in today · Ready to link{% else %}Will be checked in when you tap Done{% endif %}</small></div>
+      {% if not guest.saved %}<form method="post"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="guest_id" value="{{ guest.id }}"><button class="guest-visit-link" name="action" value="remove">Remove</button></form>{% else %}<small>Saved</small>{% endif %}</li>
+    {% else %}<li>No guests added yet.</li>{% endfor %}
+    </ul>
+    <form method="post" class="visit-guest-actions"><input type="hidden" name="token" value="{{ token }}"><button class="guest-visit-link" name="action" value="cancel">Cancel</button><button name="action" value="done">Done</button></form>
+  {% endif %}
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")"
+exec env PYTHONPATH=src .venv/bin/python -m club_admin.dev_app

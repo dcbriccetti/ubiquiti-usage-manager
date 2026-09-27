@@ -27,6 +27,19 @@
       </div>
     </header>
 
+    <section class="visit-history">
+      <h2>Guest visits</h2>
+      <a href="{{ url_for('visit_guests.admin', member_id=member.id) }}">Manage guest links</a>
+      {% for link in visit_links %}
+        <p>{{ link.visit_date }} ·
+        {% if link.host_user_id == member.id %}
+          Guest: <a href="{{ url_for('member_detail', member_id=link.guest_user_id) }}">{{ link.guest_first_name }} {{ link.guest_last_name }}</a>
+        {% else %}
+          Guest of: <a href="{{ url_for('member_detail', member_id=link.host_user_id) }}">{{ link.host_first_name }} {{ link.host_last_name }}</a>
+        {% endif %}
+        · <a href="{{ url_for('visit_guests.admin', member_id=member.id, visit_date=link.visit_date) }}">Edit</a></p>
+      {% endfor %}
+    </section>
     <section class="detail-grid">
       <div>
         <span>Last Name</span>

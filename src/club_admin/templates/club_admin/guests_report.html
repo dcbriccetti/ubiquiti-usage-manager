@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Guests by member</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+  <script src="{{ url_for('static', filename='guests-report.js') }}" defer></script>
+</head>
+<body>
+<main class="page">
+  <header class="page-header">
+    <div><p class="app-title">{{ app_title }}</p><h1>Guests by member</h1>
+      <p class="summary">{{ start_date }} to {{ end_date }}</p>
+    </div>
+    <nav class="nav-links" aria-label="Club admin navigation">
+      <a href="{{ url_for('members') }}">Users</a>
+      <a href="{{ url_for('checkins_report') }}">Check-ins</a>
+      <a href="{{ url_for('visit_guests.report') }}" class="active" aria-current="page">Guests</a>
+      <a href="{{ url_for('guest_registrations') }}">Visitors</a>
+      <a href="{{ url_for('membership_applications') }}">Applications</a>
+      <a href="{{ url_for('documents_report') }}">Documents</a>
+      <a href="{{ url_for('recent_changes') }}">Changes</a>
+    </nav>
+  </header>
+  <form class="report-filters" method="get">
+    <div class="report-date-fields">
+      <label>Start<input type="date" name="start_date" value="{{ start_date }}" required></label>
+      <label>End<input type="date" name="end_date" value="{{ end_date }}" required></label>
+      <button type="submit">Apply</button>
+    </div>
+    <nav class="report-presets" aria-label="Date range presets">
+      {% for preset in presets %}<a href="{{ url_for('visit_guests.report', start_date=preset.start.isoformat(), end_date=preset.end.isoformat()) }}" {% if start_date == preset.start and end_date == preset.end %}class="active" aria-current="date"{% endif %}>{{ preset.label }}</a>{% endfor %}
+    </nav>
+  </form>
+  <p class="summary"><strong>{{ summary.guest_visits }}</strong> guest visit{{ '' if summary.guest_visits == 1 else 's' }} · <strong>{{ summary.different_guests }}</strong> different guest{{ '' if summary.different_guests == 1 else 's' }} · <strong>{{ summary.host_count }}</strong> member{{ '' if summary.host_count == 1 else 's' }} hosting</p>
+  <div class="guest-report-scroll">
+    <table class="guest-host-report">
+      <thead><tr><th scope="col">Member</th><th scope="col" class="numeric">Guest visits</th><th scope="col" class="numeric">Different guests</th><th scope="col" class="numeric">Days hosting</th></tr></thead>
+      <tbody>
+      {% for host in summary.hosts %}
+        <tr>
+          <th scope="row"><a href="{{ url_for('member_detail', member_id=host.id) }}">{{ host.name }}</a></th>
+          {% for field, label in [('guest_visits', 'guest visits'), ('different_guests', 'different guests'), ('days_hosting', 'days hosting')] %}
+          <td class="numeric"><button type="button" class="guest-count-button" aria-expanded="false" aria-controls="host-visits-{{ host.id }}" aria-label="{{ host[field] }} {{ label }} for {{ host.name }}; show visit details">{{ host[field] }}</button></td>
+          {% endfor %}
+        </tr>
+        <tr id="host-visits-{{ host.id }}" hidden>
+          <td colspan="4" class="guest-host-details">
+            <section aria-label="Visit details for {{ host.name }}">
+              <h2>{{ host.name }} — visit details</h2>
+              <table><thead><tr><th scope="col">Date</th><th scope="col">Guests</th></tr></thead><tbody>
+              {% for visit in host.visits %}<tr><th scope="row" class="nowrap">{{ visit.date }}</th><td>{% for guest in visit.guests %}<a href="{{ url_for('member_detail', member_id=guest.id) }}">{{ guest.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>{% endfor %}
+              </tbody></table>
+            </section>
+          </td>
+        </tr>
+      {% else %}<tr><td colspan="4" class="empty">No recorded guest links in this date range.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="summary">Select any count to see the dates and guests. Members are ordered by guest visits.</p>
+  <p class="summary">One guest on one day counts as one guest visit. Different guests counts each person once; days hosting counts each date once. The overall different-guest total counts each person once across all hosts.</p>
+  <p class="summary">Only recorded host links are included. Unlinked visitors and older registration-form answers are not counted.</p>
+</main>
+</body>
+</html>

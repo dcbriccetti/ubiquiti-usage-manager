@@ -10,6 +10,12 @@
       <a href="{{ url_for('member_detail', member_id=checkin.user_id) }}">{{ checkin.first_name }}</a>
     </td>
     <td data-sort-value="{{ checkin.membership }}">{{ checkin.membership }}</td>
+    {% set guest_links = visit_links_by_user_date.get((checkin.user_id, checkin.check_in_at.date().isoformat()), []) %}
+    <td data-guests-column {% if not visit_links_by_user_date %}hidden{% endif %} data-sort-value="{{ guest_links|map(attribute='short_name')|join(' ') }}">
+      {% for link in guest_links %}
+        <div>{% if link.role == 'Guest of' %}Guest of {% endif %}<a href="{{ url_for('member_detail', member_id=link.user_id) }}">{{ link.short_name }}</a></div>
+      {% endfor %}
+    </td>
     <td data-sort-value="{{ user_notes|map(attribute='summary')|join(' ') }}">
       {% if user_notes %}
         <ul class="checkin-note-summaries">
@@ -30,6 +36,6 @@
   </tr>
 {% else %}
   <tr>
-    <td colspan="7" class="empty">No check-ins in this date range.</td>
+    <td colspan="{{ 8 if visit_links_by_user_date else 7 }}" class="empty">No check-ins in this date range.</td>
   </tr>
 {% endfor %}

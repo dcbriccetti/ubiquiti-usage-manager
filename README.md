@@ -350,3 +350,29 @@ By default, the importer reads completed `nfcapd.YYYYMMDDHHMM` files from `/var/
   - `src/monitor.py` polling + enforcement loop
   - `src/dashboard_service.py` dashboard row shaping
   - `src/database.py` persistence/query layer
+
+### Local guest-visit testing
+
+Run `./run-users-test` on the MacBook to start the users app at
+`http://127.0.0.1:5052/self-checkin`. This launcher explicitly uses
+`data/club_users.guest-test.db` and `data/club_documents_guest_test`, with a
+**TEST DATA** title. It leaves the ordinary database and configuration alone.
+The test database persists between launches and is seeded only once.
+Staff login password for this loopback-only test app: `local-guests`.
+
+| Person | Phone | Initials | Initial state |
+| --- | --- | --- | --- |
+| Dave Example | 202-555-0103 | DE | Full member host |
+| Alice Rivera | 202-555-0148 | AR | Registered and checked in on first test launch |
+| Bob Chen | 202-555-0172 | BC | Returning guest, not checked in |
+| Carol Example | 202-555-0115 | CE | Another member host |
+| Robin Example | 202-555-0199 | RE | Banned, for front-desk handling |
+
+Check in Dave, choose **Add guests to my visit**, add Alice and Bob, then
+choose **Done**. Public guest names use first name and last initial. Reidentifying
+Dave reopens today's saved list without another check-in. Staff can view dated
+links in user details and check-in reports, and add, correct, or remove them via
+**Manage guest links**. Guest check-ins and links save together; abandoning the
+form does not save staged guests. A five-minute idle timeout clears the kiosk
+identity. Public self-check-in suppresses repeats for the local calendar day;
+the existing staff bulk-check-in repeat window remains unchanged.

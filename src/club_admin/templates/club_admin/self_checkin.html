@@ -67,6 +67,9 @@
               data-checkin-reset
               data-reset-url="{{ url_for('self_checkin') }}"
             >{% if checkin_success or checkin_blocked %}Continue{% else %}Try Again{% endif %}</button>
+            {% if can_add_guests %}
+              <a class="guest-visit-link" href="{{ url_for('visit_guests.manage') }}">Add guests to my visit</a>
+            {% endif %}
           </div>
         </aside>
       {% else %}
@@ -169,6 +172,7 @@
         updateSubmitState();
       });
       checkinStatus?.addEventListener("keydown", (event) => {
+        if (event.target !== checkinStatus) return;
         if (event.key !== "Enter" && event.key !== " ") {
           return;
         }

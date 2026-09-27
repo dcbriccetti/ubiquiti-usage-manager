@@ -158,6 +158,18 @@ ON checkins (check_in_at);
 CREATE INDEX IF NOT EXISTS ix_checkins_card_check_in_at
 ON checkins (card_number, check_in_at);
 
+CREATE TABLE IF NOT EXISTS visit_guest_links (
+    id INTEGER PRIMARY KEY,
+    visit_date TEXT NOT NULL,
+    host_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    guest_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (guest_user_id, visit_date),
+    CHECK (host_user_id != guest_user_id)
+);
+CREATE INDEX IF NOT EXISTS ix_visit_guest_links_host_date
+ON visit_guest_links (host_user_id, visit_date);
+
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY,
     entity_type TEXT NOT NULL,

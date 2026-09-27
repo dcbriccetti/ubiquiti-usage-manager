@@ -112,14 +112,6 @@
           <span>Partner With Me Today</span>
           <input type="text" name="partner_name" value="{{ form_data.get('partner_name', '') }}" autocomplete="off">
         </label>
-        <label class="checkbox-field">
-          <input type="checkbox" name="guest_of_member" value="1" {% if form_data.get('guest_of_member') %}checked{% endif %}>
-          <span>Guest of a member</span>
-        </label>
-        <label>
-          <span>Member Name</span>
-          <input type="text" name="member_name" value="{{ form_data.get('member_name', '') }}" autocomplete="off">
-        </label>
         <label class="detail-wide required-field">
           <span>How Did You Hear About Us?</span>
           <input type="text" name="heard_about" value="{{ form_data.get('heard_about', '') }}" autocomplete="off" required>

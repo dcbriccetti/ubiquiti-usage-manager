@@ -409,7 +409,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertNotIn('name="view"', body)
         self.assertIn('src="/static/club-admin-table-sort.js"', body)
         self.assertIn('class="checkins-table" data-sortable-table', body)
-        self.assertIn('data-persist-sort-key="clubAdmin.checkinsReport.sort"', body)
+        self.assertIn('data-persist-sort-key="clubAdmin.checkinsReport.sort.v2"', body)
         self.assertIn('tr data-sortable-row', body)
         self.assertIn("Check-in #", body)
         self.assertIn("First/Nickname", body)
@@ -1251,7 +1251,7 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertIn("Check-in recorded.", response.get_data(as_text=True))
         self.assertEqual(len(checkins), 1)
 
-    def test_self_checkin_ignores_repeat_checkin_within_one_hour(self) -> None:
+    def test_self_checkin_ignores_repeat_checkin_today(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_app(db_path)
@@ -1286,15 +1286,14 @@ class ClubCheckInImportTests(unittest.TestCase):
         self.assertEqual(len(checkins), 1)
         body = second_response.get_data(as_text=True)
         self.assertIn('class="self-checkin-status is-success"', body)
-        self.assertIn("Already checked in within the past hour.", body)
+        self.assertIn("You’re already checked in today.", body)
 
-    def test_self_checkin_records_again_after_one_hour(self) -> None:
+    def test_self_checkin_records_again_on_another_day(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             db_path = Path(temp_dir) / "club-users.db"
             flask_app = create_app(db_path)
             old_checkin_at = datetime.now().replace(microsecond=0) - timedelta(
-                hours=1,
-                minutes=1,
+                days=1,
             )
             with closing(database.connect(db_path)) as connection:
                 member_repository.upsert_member(
