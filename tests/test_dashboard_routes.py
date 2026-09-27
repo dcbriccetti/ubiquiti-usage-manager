@@ -2,7 +2,7 @@ import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from datetime import datetime
+from datetime import date, datetime
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -119,6 +119,11 @@ class DashboardRouteTests(unittest.TestCase):
             used_mb=40_000.0,
             remaining_mb=0.0,
             used_pct=100.0,
+            last_used_at=datetime(2026, 6, 2, 15, 0),
+            activity_bars=(app.db.PlusVoucherActivityBar(
+                start_day=date(2026, 5, 31), end_day=date(2026, 6, 2),
+                used_mb=40_000.0, height_pct=100.0,
+            ),),
         )
 
         with patch.object(app.db, "get_active_plus_voucher_summaries", return_value=[summary]):
@@ -129,6 +134,11 @@ class DashboardRouteTests(unittest.TestCase):
         self.assertIn("Pending automatic end", body)
         self.assertIn('action="/vouchers/7/consume"', body)
         self.assertIn("End now", body)
+        self.assertIn("First used", body)
+        self.assertIn("Last used", body)
+        self.assertIn("2026-06-02", body)
+        self.assertIn('class="voucher-activity"', body)
+        self.assertIn('title="2026-05-31 – 2026-06-02: 40 GB"', body)
 
     def test_voucher_batch_print_renders_for_brother_printer(self) -> None:
         flask_app = app.create_app()

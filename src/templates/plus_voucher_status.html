@@ -17,6 +17,7 @@
                 <h2>Activated Vouchers</h2>
                 <span class="muted">Vouchers at 100% are normally ended automatically after the next Internet usage import.</span>
             </div>
+            <p class="muted">Activity shows Internet data between first and last use, with daily bars grouped for longer histories. Bar heights are scaled within each voucher; hover for dates and amounts.</p>
             <div class="table-wrap">
                 <table class="fit-content-table">
                     <thead>
@@ -28,7 +29,9 @@
                         <th class="num">Remaining</th>
                         <th class="num">Used %</th>
                         <th>Created</th>
-                        <th>Activated</th>
+                        <th>First used</th>
+                        <th>Activity</th>
+                        <th>Last used</th>
                         <th>Action</th>
                     </tr>
                     </thead>
@@ -51,6 +54,21 @@
                             <td>{{ voucher.generated_at.strftime("%Y-%m-%d") }}</td>
                             <td>{{ summary.activated_at.strftime("%Y-%m-%d") }}</td>
                             <td>
+                                {% if summary.activity_bars %}
+                                    <div class="voucher-activity" role="group" aria-label="Internet usage for voucher {{ voucher.user_id }} from {{ summary.activated_at.strftime('%Y-%m-%d') }} to {{ summary.last_used_at.strftime('%Y-%m-%d') }}">
+                                        {% for bar in summary.activity_bars %}
+                                            {% set label %}{{ bar.start_day }}{% if bar.end_day != bar.start_day %} – {{ bar.end_day }}{% endif %}: {{ bar.used_mb|voucher_data_amount }}{% endset %}
+                                            <span class="voucher-activity-slot" tabindex="0" aria-label="{{ label }}" title="{{ label }}">
+                                                <span class="voucher-activity-bar" style="height: {{ bar.height_pct }}%;{% if bar.used_mb > 0 %} min-height: 2px;{% endif %}"></span>
+                                            </span>
+                                        {% endfor %}
+                                    </div>
+                                {% else %}
+                                    <span class="muted">No activity recorded</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ summary.last_used_at.strftime("%Y-%m-%d") if summary.last_used_at else '—' }}</td>
+                            <td>
                                 <form
                                     class="voucher-action-form"
                                     method="post"
@@ -63,7 +81,7 @@
                         </tr>
                     {% else %}
                         <tr>
-                            <td colspan="9" class="muted">No activated vouchers.</td>
+                            <td colspan="11" class="muted">No activated vouchers.</td>
                         </tr>
                     {% endfor %}
                     </tbody>

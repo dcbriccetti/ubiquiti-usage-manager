@@ -262,6 +262,15 @@ class PlusVoucherRecord:
 
 
 @dataclass(frozen=True, kw_only=True)
+class PlusVoucherActivityBar:
+    'WAN usage in one calendar interval of a compact voucher chart.'
+    start_day: date
+    end_day: date
+    used_mb: float
+    height_pct: float
+
+
+@dataclass(frozen=True, kw_only=True)
 class PlusVoucherUsageSummary:
     'Admin-facing active voucher balance summary.'
     voucher: PlusVoucherRecord
@@ -269,6 +278,8 @@ class PlusVoucherUsageSummary:
     used_mb: float
     remaining_mb: float
     used_pct: float
+    last_used_at: datetime | None = None
+    activity_bars: tuple[PlusVoucherActivityBar, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)

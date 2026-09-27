@@ -166,6 +166,8 @@ def _build_voucher_summary(
     voucher: db.PlusVoucherRecord,
     activated_at: datetime | None,
     used_mb: float,
+    last_used_at: datetime | None = None,
+    daily_bytes: dict[date, int] | None = None,
 ) -> db.PlusVoucherUsageSummary:
     'Return the admin usage summary for one voucher.'
     allocation_mb = float(voucher.allocation_gb * 1000)
@@ -177,6 +179,30 @@ def _build_voucher_summary(
         used_mb=used_mb,
         remaining_mb=remaining_mb,
         used_pct=used_pct,
+        last_used_at=last_used_at,
+        activity_bars=_voucher_activity_bars(daily_bytes or {}),
+    )
+
+
+def _voucher_activity_bars(daily_bytes: dict[date, int]) -> tuple[db.PlusVoucherActivityBar, ...]:
+    'Keep calendar gaps and bound the chart to at most 30 bars.'
+    if not daily_bytes:
+        return ()
+    first_day, last_day = min(daily_bytes), max(daily_bytes)
+    day_count = (last_day - first_day).days + 1
+    days_per_bar = ceil(day_count / 30)
+    totals = [0] * ceil(day_count / days_per_bar)
+    for day, byte_count in daily_bytes.items():
+        totals[(day - first_day).days // days_per_bar] += byte_count
+    peak = max(totals)
+    return tuple(
+        db.PlusVoucherActivityBar(
+            start_day=first_day + timedelta(days=index * days_per_bar),
+            end_day=min(last_day, first_day + timedelta(days=(index + 1) * days_per_bar - 1)),
+            used_mb=total / 1_000_000.0,
+            height_pct=100.0 * total / peak if peak else 0.0,
+        )
+        for index, total in enumerate(totals)
     )
 
 
@@ -593,11 +619,21 @@ def get_active_plus_voucher_summaries(*, force_refresh: bool = False) -> list[db
     with db.SessionLocal() as session:
         vouchers = [_voucher_record(row) for row in session.execute(stmt).scalars().all()]
 
-    wan_summaries = _get_plus_voucher_wan_usage_summaries(vouchers)
+    attributed_rows = _get_plus_voucher_wan_usage_records(vouchers)
+    first_used: dict[int, datetime] = {}
+    last_used: dict[int, datetime] = {}
+    daily_bytes_by_voucher: dict[int, dict[date, int]] = defaultdict(lambda: defaultdict(int))
+    for voucher_id, started_at, byte_count in attributed_rows:
+        first_used[voucher_id] = min(first_used.get(voucher_id, started_at), started_at)
+        last_used[voucher_id] = max(last_used.get(voucher_id, started_at), started_at)
+        daily_bytes_by_voucher[voucher_id][started_at.date()] += byte_count
     summaries: list[db.PlusVoucherUsageSummary] = []
     for voucher in vouchers:
-        wan_activated_at, wan_used_mb = wan_summaries.get(voucher.id, (None, 0.0))
-        summaries.append(_build_voucher_summary(voucher, wan_activated_at, wan_used_mb))
+        daily_bytes = daily_bytes_by_voucher.get(voucher.id, {})
+        summaries.append(_build_voucher_summary(
+            voucher, first_used.get(voucher.id), sum(daily_bytes.values()) / 1_000_000.0,
+            last_used.get(voucher.id), daily_bytes,
+        ))
 
     summaries.sort(
         key=lambda summary: (

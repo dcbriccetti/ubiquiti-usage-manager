@@ -130,8 +130,48 @@ class ActiveVoucherSummaryTests(unittest.TestCase):
         self.assertEqual(set(summaries_by_user_id), {101, 102})
         self.assertIsNone(summaries_by_user_id[101].activated_at)
         self.assertEqual(summaries_by_user_id[101].used_mb, 0.0)
+        self.assertIsNone(summaries_by_user_id[101].last_used_at)
+        self.assertEqual(summaries_by_user_id[101].activity_bars, ())
         self.assertEqual(summaries_by_user_id[102].activated_at, generated_at + timedelta(hours=4))
         self.assertEqual(summaries_by_user_id[102].used_mb, 2.0)
+        self.assertEqual(summaries_by_user_id[102].last_used_at, generated_at + timedelta(hours=4))
+        self.assertEqual(len(summaries_by_user_id[102].activity_bars), 1)
+        self.assertEqual(summaries_by_user_id[102].activity_bars[0].used_mb, 2.0)
+
+    def test_activity_bars_preserve_gaps_and_scale_to_peak(self) -> None:
+        first = date(2026, 5, 1)
+        bars = voucher_repository._voucher_activity_bars({
+            first: 1_000_000, first + timedelta(days=2): 2_000_000,
+        })
+        self.assertEqual([bar.used_mb for bar in bars], [1.0, 0.0, 2.0])
+        self.assertEqual([bar.height_pct for bar in bars], [50.0, 0.0, 100.0])
+        self.assertEqual(bars[1].start_day, first + timedelta(days=1))
+
+    def test_activity_and_balances_share_one_cached_flow_query(self) -> None:
+        voucher = voucher_repository.create_plus_vouchers(1, 10)[0]
+        first = datetime(2026, 5, 1, 12)
+        last = first + timedelta(days=2)
+        with patch.object(voucher_repository, "_get_plus_voucher_wan_usage_records", return_value=[
+            (voucher.id, last, 2_000_000),
+            (voucher.id, first, 1_000_000),
+        ]) as records:
+            summary = voucher_repository.get_active_plus_voucher_summaries()[0]
+            cached = voucher_repository.get_active_plus_voucher_summaries()[0]
+        records.assert_called_once()
+        self.assertEqual(cached, summary)
+        self.assertEqual(summary.activated_at, first)
+        self.assertEqual(summary.last_used_at, last)
+        self.assertEqual(summary.used_mb, 3.0)
+        self.assertEqual([bar.used_mb for bar in summary.activity_bars], [1.0, 0.0, 2.0])
+
+    def test_long_activity_history_is_bounded_without_losing_usage(self) -> None:
+        first = date(2026, 1, 1)
+        last = first + timedelta(days=365)
+        bars = voucher_repository._voucher_activity_bars({first: 1_000_000, last: 3_000_000})
+        self.assertLessEqual(len(bars), 30)
+        self.assertEqual(bars[0].start_day, first)
+        self.assertEqual(bars[-1].end_day, last)
+        self.assertEqual(sum(bar.used_mb for bar in bars), 4.0)
 
     def test_active_summary_sums_multiple_devices_for_one_voucher(self) -> None:
         generated_at = datetime(2026, 5, 1, 10, 0)
