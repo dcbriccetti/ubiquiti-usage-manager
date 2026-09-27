@@ -29,6 +29,9 @@
 
     <section class="visit-history">
       <h2>Guest visits</h2>
+      {% if member.membership in ['Full Member', 'Associate Member'] %}
+        <p><a class="button-link" href="{{ url_for('visit_guests.admin_checkin', host_id=member.id) }}">Check In with Guests</a></p>
+      {% endif %}
       <a href="{{ url_for('visit_guests.admin', member_id=member.id) }}">Manage guest links</a>
       {% for link in visit_links %}
         <p>{{ link.visit_date }} ·
@@ -37,7 +40,7 @@
         {% else %}
           Guest of: <a href="{{ url_for('member_detail', member_id=link.host_user_id) }}">{{ link.host_first_name }} {{ link.host_last_name }}</a>
         {% endif %}
-        · <a href="{{ url_for('visit_guests.admin', member_id=member.id, visit_date=link.visit_date) }}">Edit</a></p>
+        · <a href="{{ url_for('visit_guests.admin', member_id=member.id, edit=link.id, _anchor='link-editor') }}">Edit</a></p>
       {% endfor %}
     </section>
     <section class="detail-grid">
@@ -256,8 +259,8 @@
           <tr>
             <td class="nowrap">{{ entry.changed_at|local_sqlite_datetime }}</td>
             <td>{{ entry.field_name|audit_field_name }}</td>
-            <td>{{ entry.old_value or '' }}</td>
-            <td>{{ entry.new_value or '' }}</td>
+            <td>{{ entry.display_old_value or '' }}</td>
+            <td>{{ entry.display_new_value or '' }}</td>
           </tr>
         {% else %}
           <tr>

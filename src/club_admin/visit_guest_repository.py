@@ -98,3 +98,18 @@ def guests_by_member(connection: sqlite3.Connection, start: date, end: date):
     rows.sort(key=lambda row: (-row['guest_visits'], row['sort_name'], row['id']))
     return {'hosts': rows, 'guest_visits': len(links), 'different_guests': len(all_guests),
             'host_count': len(rows)}
+
+
+def update_link(connection, link, host_id: int, guest_id: int, day: date):
+    """Edit a link in place, retaining its identity and rejecting date conflicts."""
+    conflict = guest_link(connection, guest_id, day)
+    if conflict is not None and conflict['id'] != link['id']:
+        raise ValueError('This guest already has a link on the selected date. Edit that link instead.')
+    old_values = (link['host_user_id'], link['guest_user_id'], link['visit_date'])
+    if old_values == (host_id, guest_id, day.isoformat()):
+        return
+    connection.execute('UPDATE visit_guest_links SET host_user_id = ?, guest_user_id = ?, visit_date = ? WHERE id = ?',
+                       (host_id, guest_id, day.isoformat(), link['id']))
+    record_change(connection, link['guest_user_id'], link['host_user_id'], None,
+                  date.fromisoformat(link['visit_date']))
+    record_change(connection, guest_id, None, host_id, day)

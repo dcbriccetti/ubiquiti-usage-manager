@@ -1097,7 +1097,7 @@ class ClubMemberImportTests(unittest.TestCase):
         self.assertIn('action="/members/check-ins"', members_body)
         self.assertIn('data-checkin-submit disabled', members_body)
         self.assertIn(f'name="member_ids" value="{john.id}"', members_body)
-        self.assertIn("Check In Selected", members_body)
+        self.assertIn("disabled>Check In</button>", members_body)
         self.assertNotIn("Select shown", members_body)
         self.assertEqual(response.status_code, 200)
         notify.assert_called_once_with()

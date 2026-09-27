@@ -61,7 +61,10 @@
       </label>
       <button class="users-search-reset" type="button" data-table-search-reset disabled>Reset Search</button>
       <a class="button-link users-export" href="{{ url_for('export_members_csv') }}">Export CSV</a>
-      <button class="users-bulk-checkin" type="submit" form="members-checkin-form" data-checkin-submit disabled>Check In Selected</button>
+      <div class="users-checkin-actions" role="group" aria-label="Check-in actions">
+        <button class="users-bulk-checkin" type="submit" form="members-checkin-form" data-checkin-submit disabled>Check In</button>
+        <button class="users-bulk-checkin users-guest-checkin" type="button" data-guest-checkin-url="{{ url_for('visit_guests.admin_checkin') }}" title="Select exactly one eligible Full or Associate member" disabled>Check In with Guests</button>
+      </div>
     </section>
 
     <form id="members-checkin-form" method="post" action="{{ url_for('check_in_members') }}" autocomplete="off">
@@ -88,7 +91,7 @@
               <tr data-user-row>
                 <td data-sort-value="{{ row.member.last_name }}">
                   <label class="member-select">
-                    <input type="checkbox" name="member_ids" value="{{ row.member.id }}" data-checkin-checkbox>
+                    <input type="checkbox" name="member_ids" value="{{ row.member.id }}" data-checkin-checkbox data-eligible-host="{{ 'true' if row.member.membership in ['Full Member', 'Associate Member'] and row.member.screening_status != 'banned' else 'false' }}">
                     <span><a href="{{ url_for('member_detail', member_id=row.member.id) }}">{{ row.member.last_name }}</a></span>
                   </label>
                 </td>

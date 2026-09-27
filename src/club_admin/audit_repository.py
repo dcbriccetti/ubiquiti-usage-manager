@@ -1,5 +1,6 @@
 '''Audit log persistence for club admin changes.'''
 
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +18,8 @@ class AuditLogEntry:
     new_value: str | None
     changed_at: datetime
     id: int | None = None
+    display_old_value: str | None = None
+    display_new_value: str | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -47,7 +50,27 @@ class RecentAuditLogEntry:
         return name or f"{self.entry.entity_type} #{self.entry.entity_id}"
 
 
-def _entry_from_row(row: sqlite3.Row) -> AuditLogEntry:
+def _display_value(connection: sqlite3.Connection, field_name: str, value: str | None) -> str | None:
+    """Resolve guest-link IDs for display without changing historical audit data."""
+    if not field_name.startswith("guest link ") or value is None:
+        return value
+    match = re.fullmatch(r"guest (\d+), host (\d+)", value)
+    if not match:
+        return value
+
+    def name(user_id: str) -> str:
+        row = connection.execute(
+            "SELECT first_name, nickname, last_name FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        if row is None:
+            return "Unavailable user"
+        first = row["first_name"] or row["nickname"]
+        return " ".join(part for part in (first, row["last_name"]) if part) or "Unnamed user"
+
+    return f"Guest: {name(match[1])}; Host: {name(match[2])}"
+
+
+def _entry_from_row(row: sqlite3.Row, connection: sqlite3.Connection) -> AuditLogEntry:
     return AuditLogEntry(
         id=row["id"],
         entity_type=row["entity_type"],
@@ -57,6 +80,8 @@ def _entry_from_row(row: sqlite3.Row) -> AuditLogEntry:
         old_value=row["old_value"],
         new_value=row["new_value"],
         changed_at=datetime.fromisoformat(row["changed_at"]),
+        display_old_value=_display_value(connection, row["field_name"], row["old_value"]),
+        display_new_value=_display_value(connection, row["field_name"], row["new_value"]),
     )
 
 
@@ -118,7 +143,7 @@ def list_audit_log_for_entity(
         """,
         (entity_type, entity_id),
     ).fetchall()
-    return [_entry_from_row(row) for row in rows]
+    return [_entry_from_row(row, connection) for row in rows]
 
 
 def list_recent_audit_log(
@@ -153,7 +178,7 @@ def list_recent_audit_log(
     ).fetchall()
     return [
         RecentAuditLogEntry(
-            entry=_entry_from_row(row),
+            entry=_entry_from_row(row, connection),
             member_first_name=row["member_first_name"],
             member_nickname=row["member_nickname"],
             member_last_name=row["member_last_name"],

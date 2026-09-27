@@ -3054,3 +3054,33 @@ th {
 .guest-host-details h2 { font-size: 18px; margin-top: 0; }
 .guest-host-details table { margin-bottom: 0; }
 @media print { .guest-host-report tr[hidden] { display: table-row; } }
+
+.admin-group-checkin .group-host-label, .admin-group-checkin .group-search-label { display: grid; gap: 8px; }
+.admin-group-checkin select, .admin-group-checkin input[type="search"] { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px; font: inherit; }
+.group-guest-options { max-height: 340px; overflow-y: auto; background: #fff; border: 1px solid #d4dce4; border-radius: 6px; }
+.group-guest-option { display: flex; align-items: center; gap: 12px; padding: 12px; border-bottom: 1px solid #e5e9ee; }
+.group-guest-option[hidden] { display: none; }
+.group-guest-option small { display: block; color: #526374; margin-top: 3px; }
+.group-guest-option input { width: 18px; height: 18px; }
+.group-guest-options [data-no-guests] { padding: 12px; }
+
+.person-picker { display: grid; gap: 8px; margin: 20px 0; }
+.person-picker label { display: grid; gap: 8px; }
+.person-picker input, .person-picker select, .guest-link-editor input[type="date"] { box-sizing: border-box; width: 100%; padding: 10px; font: inherit; }
+.person-picker .summary { margin: 0; }
+.guest-history-item { display: flex; justify-content: space-between; align-items: center; gap: 16px; border-bottom: 1px solid #d4dce4; padding: 14px 0; }
+.guest-history-item p { margin: 6px 0; }
+.guest-history-actions { display: flex; align-items: center; gap: 16px; }
+#link-editor { margin-top: 28px; }
+@media(max-width: 500px) { .guest-history-item { align-items: flex-start; flex-direction: column; } }
+
+/* Utilities use outlines; both check-in actions share the primary/disabled styles. */
+.users-search-reset, .users-export { background: #fff; color: #245c9f; border: 1px solid #9cacbf; box-sizing: border-box; min-height: 36px; padding: 7px 10px; }
+.users-search-reset:disabled { background: #f7f8fa; color: #778392; border-color: #d4dce4; }
+.users-checkin-actions { display: flex; align-items: stretch; gap: 10px; max-width: 100%; }
+.users-checkin-actions button { min-width: 0; }
+
+.group-selected-guests { list-style: none; padding: 0; }
+.group-selected-guests li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; background: #fff; border-bottom: 1px solid #d4dce4; }
+.group-selected-guests small { display: block; color: #526374; margin-top: 3px; }
+.group-selected-guests button { background: #fff; color: #245c9f; border: 1px solid #9cacbf; }

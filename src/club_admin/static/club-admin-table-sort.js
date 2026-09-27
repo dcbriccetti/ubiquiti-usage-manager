@@ -171,18 +171,21 @@
   const checkedCheckinCount = (container) =>
     checkinCheckboxes(container).filter((checkbox) => checkbox.checked).length;
 
+  const selectedGuestHost = (container) => {
+    const selected = checkinCheckboxes(container).filter(checkbox => checkbox.checked);
+    return selected.length === 1 && selected[0].dataset.eligibleHost === "true"
+      ? selected[0].value : null;
+  };
+
   const updateBulkCheckinState = (container) => {
     const submitButton = container.querySelector("[data-checkin-submit]");
     const checkedCount = checkedCheckinCount(container);
+    const guestButton = container.querySelector("[data-guest-checkin-url]");
+    if (guestButton) guestButton.disabled = selectedGuestHost(container) === null;
 
     if (submitButton) {
       submitButton.disabled = checkedCount === 0;
-      if (checkedCount === 0) {
-        submitButton.textContent = "Check In Selected";
-      } else {
-        submitButton.textContent =
-          checkedCount === 1 ? "Check In 1 Selected" : `Check In ${checkedCount} Selected`;
-      }
+      submitButton.textContent = "Check In";
     }
   };
 
@@ -318,6 +321,14 @@
       checkinCheckboxes(container).forEach((checkbox) => {
         checkbox.addEventListener("change", () => updateBulkCheckinState(container));
       });
+      container.querySelector("[data-guest-checkin-url]")?.addEventListener("click", (event) => {
+        const hostId = selectedGuestHost(container);
+        if (hostId === null) return;
+        const url = new URL(event.currentTarget.dataset.guestCheckinUrl, window.location.href);
+        url.searchParams.set("host_id", hostId);
+        window.location.assign(url.href);
+      });
+      window.addEventListener("pageshow", () => updateBulkCheckinState(container));
       container.querySelector("#members-checkin-form")?.addEventListener("submit", (event) => {
         if (!confirmBulkCheckin(container)) {
           event.preventDefault();

@@ -46,8 +46,8 @@
               {% endif %}
             </td>
             <td>{{ change.entry.field_name|audit_field_name }}</td>
-            <td>{{ change.entry.old_value or '' }}</td>
-            <td>{{ change.entry.new_value or '' }}</td>
+            <td>{{ change.entry.display_old_value or '' }}</td>
+            <td>{{ change.entry.display_new_value or '' }}</td>
           </tr>
         {% else %}
           <tr>

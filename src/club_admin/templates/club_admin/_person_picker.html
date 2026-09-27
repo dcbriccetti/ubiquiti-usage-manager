@@ -1,0 +1,13 @@
+{% macro person_picker(label, field, people, selected) %}
+<div class="person-picker" data-person-picker>
+  <label for="{{ field }}-search">Find {{ label|lower }}
+    <input id="{{ field }}-search" type="search" placeholder="Name or phone" autocomplete="off" data-person-search>
+  </label>
+  <label for="{{ field }}-picker">{{ label }}</label>
+  <select id="{{ field }}-picker" name="{{ field }}" required size="5" data-person-select {% if field == 'host_id' %}data-group-host{% endif %}>
+    <option value="">Choose {{ label|lower }}</option>
+    {% for person in people %}<option value="{{ person.id }}" data-search="{{ person.first_name }} {{ person.last_name }} {{ person.nickname or '' }} {{ person.phone or '' }} {{ person.cell_phone or '' }} {{ person.work_phone or '' }}" {% if person.id|string == selected %}selected{% endif %}>{{ person.last_name }}, {{ person.first_name }}{% if person.nickname %} ({{ person.nickname }}){% endif %}{% if person.cell_phone or person.phone or person.work_phone %} · {{ person.cell_phone or person.phone or person.work_phone }}{% endif %}</option>{% endfor %}
+  </select>
+  <p class="summary" data-person-selection aria-live="polite"></p>
+</div>
+{% endmacro %}

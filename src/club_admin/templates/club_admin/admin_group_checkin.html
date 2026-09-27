@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ app_title }} | Check In with Guests</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='club-admin.css') }}">
+  <script src="{{ url_for('static', filename='admin-group-checkin.js') }}" defer></script>
+</head>
+<body>
+<main class="page narrow">
+  <header class="page-header"><div><p class="app-title">{{ app_title }}</p><h1>Check In with Guests</h1><p class="summary">Today · {{ day }}</p></div><a href="{{ url_for('members') }}">Users</a></header>
+  {% if message %}<p class="notice" role="alert">{{ message }}</p>{% endif %}
+  {% if host %}
+  <form method="post" class="admin-group-checkin" data-group-checkin>
+    <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="visit_date" value="{{ day }}">
+    <input type="hidden" name="host_id" value="{{ host.id }}" data-group-host>
+    <p><strong>Member:</strong> {{ host.first_name }} {{ host.last_name }}</p>
+    <h2>Guests</h2>
+    <p>Choose one or more guests. Anyone already checked in today keeps their existing check-in.</p>
+    <label class="group-search-label">Find guests<input type="search" placeholder="Name or phone" autocomplete="off" data-group-search></label>
+    <p class="summary" data-search-status aria-live="polite">Search by name or phone. Enter at least two characters.</p>
+    <div class="group-guest-options" role="group" aria-label="Search results" data-group-results hidden>
+      {% for user in users if user.id != host.id and user.screening_status != 'banned' %}
+        <label class="group-guest-option" hidden data-guest-option data-user-id="{{ user.id }}" data-search="{{ user.first_name }} {{ user.last_name }} {{ user.nickname or '' }} {{ user.phone or '' }} {{ user.cell_phone or '' }} {{ user.work_phone or '' }}">
+          <input type="checkbox" name="guest_ids" value="{{ user.id }}" {% if user.id|string in selected_ids %}checked{% endif %}>
+          <span><span data-guest-name>{{ user.last_name }}, {{ user.first_name }}</span><small>{{ user.cell_phone or user.phone or user.work_phone or '' }}{% if user.id in checked_ids %} · Already checked in today{% endif %}</small></span>
+        </label>
+      {% endfor %}
+    </div>
+    <h3>Selected guests</h3>
+    <p class="summary" data-group-selection aria-live="polite">No guests selected.</p>
+    <ul class="group-selected-guests" data-selected-guests></ul>
+    <noscript><p>Enable JavaScript to search for and select guests.</p></noscript>
+    <p class="summary">First-time guests should complete <a href="{{ url_for('guest_registration') }}" target="_blank" rel="noopener">visitor registration</a> first, then reload this page.</p>
+    <div class="visit-guest-actions"><a href="{{ url_for('members') }}">Cancel</a><button type="submit">Check In with Guests</button></div>
+  </form>
+  {% else %}
+  <p><a href="{{ url_for('members') }}">Return to Users to select a member.</a></p>
+  {% endif %}
+</main>
+</body>
+</html>

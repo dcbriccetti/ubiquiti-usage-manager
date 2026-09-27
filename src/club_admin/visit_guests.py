@@ -152,6 +152,77 @@ def register_routes(app, record_checkin, record_checkin_change):
                                token=state["token"], message=message, complete=complete,
                                idle_seconds=IDLE_SECONDS)
 
+    @bp.route("/members/check-in-with-guests", methods=["GET", "POST"])
+    def admin_checkin():
+        # Protected by the app's admin gate; independent of public kiosk identity.
+        session.setdefault("visit_guest_admin_token", token_urlsafe(24))
+        token = session["visit_guest_admin_token"]
+        day = today()
+        host_id_text = request.values.get("host_id", "")
+        selected_ids = set(request.form.getlist("guest_ids"))
+        message = ""
+        with closing(connection()) as conn:
+            if request.method == "POST":
+                if not compare_digest(request.form.get("token", ""), token):
+                    abort(400)
+                try:
+                    conn.execute("BEGIN IMMEDIATE")
+                    if request.form.get("visit_date") != day.isoformat():
+                        raise ValueError("The date has changed. Review the group and submit again for today.")
+                    try:
+                        host_id = int(host_id_text)
+                        guest_ids = sorted({int(value) for value in selected_ids})
+                    except ValueError:
+                        raise ValueError("Choose a member host and valid guests.") from None
+                    if not guest_ids:
+                        raise ValueError("Select at least one guest.")
+                    host = member_repository.get_member(conn, host_id)
+                    if not eligible_host(host):
+                        raise ValueError("Choose a Full or Associate member who is eligible to check in.")
+                    if host_id in guest_ids:
+                        raise ValueError("The member host cannot also be their own guest.")
+                    guests = []
+                    for guest_id in guest_ids:
+                        guest = member_repository.get_member(conn, guest_id)
+                        if guest is None:
+                            raise ValueError("A selected guest no longer exists. Review the guest list.")
+                        if guest.screening_status == "banned":
+                            raise ValueError(f"{guest.first_name} {guest.last_name} is banned and cannot check in.")
+                        link = repository.guest_link(conn, guest_id, day)
+                        if link and link["host_user_id"] != host_id:
+                            raise ValueError(f"{guest.first_name} {guest.last_name} already has another host today. Correct the guest link before checking in this group.")
+                        guests.append(guest)
+                    # Check-ins and links commit together. Repeat submissions reuse today's records.
+                    for person in [host, *guests]:
+                        result = record_checkin(conn, person, same_day=True)
+                        if result.blocked:
+                            raise ValueError("A selected user cannot check in. No changes were saved.")
+                        if result.recorded:
+                            record_checkin_change(conn, member_id=person.id, field_name="check-in added",
+                                                  old_value=None, new_value=result.check_in_at)
+                    for guest in guests:
+                        repository.save_link(conn, host_id, guest.id, day)
+                    conn.commit()
+                    checkin_events.notify_checkins_changed()
+                    count = len(guests)
+                    return redirect(url_for("members", checked_in=(
+                        f"{host.first_name} {host.last_name} and {count} "
+                        f"{'guest are' if count == 1 else 'guests are'} checked in today. Guest links saved."
+                    )))
+                except ValueError as exc:
+                    conn.rollback()
+                    message = str(exc) + " No check-ins or links were changed."
+            users = member_repository.list_members(conn)
+            selected_host = next((user for user in users if str(user.id) == host_id_text and eligible_host(user)), None)
+            if selected_host is None and request.method == "GET":
+                return redirect(url_for("members"))
+            checked_ids = {row[0] for row in conn.execute(
+                "SELECT DISTINCT user_id FROM checkins WHERE check_in_at >= ? AND check_in_at < ?",
+                (f"{day.isoformat()}T00:00:00", f"{(day + timedelta(days=1)).isoformat()}T00:00:00"))}
+        return render_template("club_admin/admin_group_checkin.html", users=users, host=selected_host,
+                               host_id=host_id_text, selected_ids=selected_ids, checked_ids=checked_ids,
+                               day=day, token=token, message=message)
+
     @bp.get("/guests/report")
     def report():
         # Uses the same April–October season as the existing check-in charts.
@@ -178,48 +249,82 @@ def register_routes(app, record_checkin, record_checkin_change):
 
     @bp.route("/members/<int:member_id>/visit-guests", methods=["GET", "POST"])
     def admin(member_id):
-        # The app's private-route gate requires an authenticated administrator.
+        # All-time history; dates are edited on individual links, never used as a filter.
         session.setdefault("visit_guest_admin_token", token_urlsafe(24))
         token = session["visit_guest_admin_token"]
         message = ""
-        try:
-            day = date.fromisoformat(request.values.get("visit_date", today().isoformat()))
-        except ValueError:
-            abort(400, "Enter a valid visit date.")
         with closing(connection()) as conn:
             member = member_repository.get_member(conn, member_id)
             if member is None:
                 abort(404)
+            link_id = request.form.get("link_id") if request.method == "POST" else request.args.get("edit")
+            editing = None
+            if link_id:
+                editing = conn.execute("SELECT * FROM visit_guest_links WHERE id = ? AND (host_user_id = ? OR guest_user_id = ?)",
+                                       (link_id, member_id, member_id)).fetchone()
+                if editing is None:
+                    abort(404)
+            form_date = editing["visit_date"] if editing else today().isoformat()
+            host_id_text = str(editing["host_user_id"]) if editing else (str(member_id) if member.membership in HOST_MEMBERSHIPS else "")
+            guest_id_text = str(editing["guest_user_id"]) if editing else (str(member_id) if member.membership not in HOST_MEMBERSHIPS else "")
             if request.method == "POST":
                 if not compare_digest(request.form.get("token", ""), token):
                     abort(400)
+                form_date = request.form.get("visit_date", form_date)
+                host_id_text = request.form.get("host_id", host_id_text)
+                guest_id_text = request.form.get("guest_id", guest_id_text)
                 try:
                     conn.execute("BEGIN IMMEDIATE")
-                    if request.form.get("action") == "remove":
-                        link = conn.execute("SELECT * FROM visit_guest_links WHERE id = ? AND visit_date = ? AND (host_user_id = ? OR guest_user_id = ?)",
-                                            (request.form.get("link_id"), day.isoformat(), member_id, member_id)).fetchone()
-                        if link is None:
+                    # Re-read under the write lock before modifying a specific link.
+                    if editing is not None:
+                        editing = conn.execute("SELECT * FROM visit_guest_links WHERE id = ? AND (host_user_id = ? OR guest_user_id = ?)",
+                                               (link_id, member_id, member_id)).fetchone()
+                        if editing is None:
                             abort(404)
-                        repository.delete_link(conn, link)
+                    if request.form.get("action") == "remove":
+                        if editing is None:
+                            abort(400)
+                        repository.delete_link(conn, editing)
                     elif request.form.get("action") == "save":
-                        host_id = int(request.form.get("host_id", ""))
-                        guest_id = int(request.form.get("guest_id", ""))
+                        try:
+                            day = date.fromisoformat(form_date)
+                        except ValueError:
+                            raise ValueError("Enter a valid visit date.") from None
+                        try:
+                            host_id = int(host_id_text)
+                            guest_id = int(guest_id_text)
+                        except ValueError:
+                            raise ValueError("Choose a member host and a guest.") from None
                         host = member_repository.get_member(conn, host_id)
                         guest = member_repository.get_member(conn, guest_id)
-                        if member_id not in (host_id, guest_id) or not eligible_host(host) or guest is None or host_id == guest_id:
-                            raise ValueError("Choose a member host and a different guest, including this user.")
-                        repository.save_link(conn, host_id, guest_id, day, replace=True)
+                        if host is None or guest is None or host_id == guest_id:
+                            raise ValueError("Choose a member host and a different guest.")
+                        if host.membership not in HOST_MEMBERSHIPS and (editing is None or editing["host_user_id"] != host_id):
+                            raise ValueError("Choose a Full or Associate member as host.")
+                        if editing is None:
+                            if member_id not in (host_id, guest_id):
+                                raise ValueError("The new link must include this user as host or guest.")
+                            existing = repository.guest_link(conn, guest_id, day)
+                            if existing is not None:
+                                raise ValueError("This guest already has a link on the selected date. Edit that link instead.")
+                            repository.save_link(conn, host_id, guest_id, day)
+                        else:
+                            repository.update_link(conn, editing, host_id, guest_id, day)
                     else:
                         abort(400)
                     conn.commit()
                     checkin_events.notify_checkins_changed()
-                    return redirect(url_for("visit_guests.admin", member_id=member_id, visit_date=day.isoformat()))
+                    return redirect(url_for("visit_guests.admin", member_id=member_id))
                 except ValueError as exc:
                     conn.rollback()
                     message = str(exc)
-            links = [r for r in repository.list_links(conn, day, day) if member_id in (r["host_user_id"], r["guest_user_id"])]
+            links = [r for r in repository.list_links(conn, date.min, date.max)
+                     if member_id in (r["host_user_id"], r["guest_user_id"])]
             users = member_repository.list_members(conn)
-        return render_template("club_admin/visit_guests_admin.html", member=member, users=users, links=links,
-                               day=day, token=token, message=message, host_memberships=HOST_MEMBERSHIPS)
+            hosts = [user for user in users if user.membership in HOST_MEMBERSHIPS
+                     or (editing is not None and user.id == editing["host_user_id"])]
+        return render_template("club_admin/visit_guests_admin.html", member=member, users=users, hosts=hosts,
+                               links=links, editing=editing, form_date=form_date, host_id=host_id_text,
+                               guest_id=guest_id_text, token=token, message=message)
 
     app.register_blueprint(bp)

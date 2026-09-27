@@ -178,7 +178,9 @@ class VisitGuestTests(unittest.TestCase):
         self.assertEqual(self.client.get(path).status_code,302)
         self.assertEqual(staff.get(path).status_code,200)
         with staff.session_transaction() as s: token=s['visit_guest_admin_token']
-        response=staff.post(path,data={'action':'save','token':token,'visit_date':today().isoformat(),'host_id':self.ids['Carol'],'guest_id':self.ids['Bob']})
+        with closing(database.connect(self.db)) as conn:
+            link_id = visit_guest_repository.guest_link(conn,self.ids['Bob'],today())['id']
+        response=staff.post(path,data={'action':'save','link_id':link_id,'token':token,'visit_date':today().isoformat(),'host_id':self.ids['Carol'],'guest_id':self.ids['Bob']})
         self.assertEqual(response.status_code,302)
         with closing(database.connect(self.db)) as conn:
             link=visit_guest_repository.guest_link(conn,self.ids['Bob'],today())
@@ -189,6 +191,27 @@ class VisitGuestTests(unittest.TestCase):
         staff.post(path,data={'action':'remove','token':token,'visit_date':today().isoformat(),'link_id':link['id']})
         self.assertEqual(self.count('visit_guest_links'),0)
         self.assertEqual(self.count('checkins','Bob'),1)
+
+    def test_guest_audit_displays_names_for_existing_add_edit_and_remove_entries(self):
+        with closing(database.connect(self.db)) as conn:
+            visit_guest_repository.save_link(conn, self.ids['Dave'], self.ids['Bob'], today())
+            visit_guest_repository.save_link(conn, self.ids['Carol'], self.ids['Bob'], today(), replace=True)
+            visit_guest_repository.delete_link(conn, visit_guest_repository.guest_link(conn, self.ids['Bob'], today()))
+            # Ordinary audit values must remain untouched, even if they resemble link IDs.
+            from club_admin import audit_repository
+            audit_repository.record_field_change(conn, entity_type='user', entity_id=self.ids['Bob'],
+                action='edit', field_name='notes', old_value=None, new_value='Ordinary note')
+            conn.commit()
+            before = [tuple(row) for row in conn.execute('SELECT * FROM audit_log')]
+        staff = admin_client(self.app)
+        for path in ('/changes', f"/members/{self.ids['Bob']}"):
+            body = staff.get(path).get_data(as_text=True)
+            self.assertIn('Guest: Bob Chen; Host: Dave Example', body)
+            self.assertIn('Guest: Bob Chen; Host: Carol Example', body)
+            self.assertNotIn(f"guest {self.ids['Bob']}, host", body)
+            self.assertIn('Ordinary note', body)
+        with closing(database.connect(self.db)) as conn:
+            self.assertEqual(before, [tuple(row) for row in conn.execute('SELECT * FROM audit_log')])
 
     def test_real_new_visitor_registration_then_member_links(self):
         body=self.client.get('/guest-registration').get_data(as_text=True)
@@ -246,6 +269,131 @@ class VisitGuestTests(unittest.TestCase):
         self.assertIn('No recorded guest links',body)
         for query in ['start_date=bad', 'start_date=2026-10-02&end_date=2026-10-01']:
             self.assertEqual(staff.get('/guests/report?'+query).status_code,400)
+
+    def staff_form(self, path):
+        staff = admin_client(self.app)
+        self.assertEqual(staff.get(path).status_code, 200)
+        with staff.session_transaction() as state:
+            token = state['visit_guest_admin_token']
+        return staff, token
+
+    def test_admin_group_host_is_fixed_and_required(self):
+        staff = admin_client(self.app)
+        path = '/members/check-in-with-guests'
+        for suffix in ('', '?host_id=bad', f"?host_id={self.ids['Alice']}"):
+            response = staff.get(path + suffix)
+            self.assertEqual(response.status_code, 302)
+            self.assertTrue(response.location.endswith('/members'))
+        body = staff.get(path + f"?host_id={self.ids['Dave']}").get_data(as_text=True)
+        self.assertIn('<strong>Member:</strong> Dave Example', body)
+        self.assertIn(f'name="host_id" value="{self.ids["Dave"]}" data-group-host', body)
+        self.assertNotIn('<select', body)
+        self.assertNotIn(f'data-user-id="{self.ids["Dave"]}"', body)
+        self.assertIn('Name or phone', body)
+
+    def test_admin_group_checkin_records_all_and_reuses_same_day(self):
+        path = '/members/check-in-with-guests'
+        self.assertEqual(self.client.get(path).status_code,302)
+        self.identify('Alice','2025550148')
+        staff, token = self.staff_form(path + f"?host_id={self.ids['Dave']}")
+        data = {'token':token,'host_id':self.ids['Dave'],'guest_ids':[self.ids['Alice'],self.ids['Bob']], 'visit_date':today().isoformat()}
+        self.assertEqual(staff.post(path,data=data).status_code,302)
+        self.assertEqual(self.count('visit_guest_links'),2)
+        for name in ('Dave','Alice','Bob'):
+            self.assertEqual(self.count('checkins',name),1)
+        self.assertEqual(staff.post(path,data=data).status_code,302)
+        self.assertEqual(self.count('checkins'),3)
+        self.assertEqual(self.count('visit_guest_links'),2)
+
+    def test_admin_group_checkin_rejects_invalid_groups_without_partial_writes(self):
+        path = '/members/check-in-with-guests'
+        staff, token = self.staff_form(path + f"?host_id={self.ids['Dave']}")
+        base={'token':token,'host_id':self.ids['Dave'],'visit_date':today().isoformat()}
+        for guests in ([self.ids['Alice'],self.ids['Robin']], [self.ids['Dave']], ['bad'], ['999999'], []):
+            response=staff.post(path,data={**base,'guest_ids':guests})
+            self.assertEqual(response.status_code,200)
+            self.assertIn('No check-ins or links were changed',response.get_data(as_text=True))
+            self.assertEqual(self.count('checkins'),0)
+            self.assertEqual(self.count('visit_guest_links'),0)
+        self.assertEqual(staff.post(path,data={**base,'token':'wrong','guest_ids':[self.ids['Alice']]}).status_code,400)
+        response=staff.post(path,data={**base,'host_id':self.ids['Alice'],'guest_ids':[self.ids['Bob']]})
+        self.assertIn('eligible to check in',response.get_data(as_text=True))
+        response=staff.post(path,data={**base,'visit_date':'2020-01-01','guest_ids':[self.ids['Bob']]})
+        self.assertIn('date has changed',response.get_data(as_text=True))
+        self.assertEqual(self.count('checkins'),0)
+
+    def test_admin_group_conflict_and_write_failure_are_atomic(self):
+        path='/members/check-in-with-guests'
+        staff,token=self.staff_form(path + f"?host_id={self.ids['Dave']}")
+        data={'token':token,'host_id':self.ids['Dave'],'guest_ids':[self.ids['Alice'],self.ids['Bob']], 'visit_date':today().isoformat()}
+        with patch('club_admin.visit_guest_repository.save_link',side_effect=ValueError('write failed')):
+            self.assertEqual(staff.post(path,data=data).status_code,200)
+        self.assertEqual(self.count('checkins'),0)
+        with closing(database.connect(self.db)) as conn:
+            visit_guest_repository.save_link(conn,self.ids['Carol'],self.ids['Bob'],today())
+            conn.commit()
+        self.assertIn('already has another host',staff.post(path,data=data).get_data(as_text=True))
+        self.assertEqual(self.count('checkins'),0)
+        self.assertEqual(self.count('visit_guest_links'),1)
+
+    def test_staff_all_time_history_backdating_and_editing_date(self):
+        from datetime import date
+        path=f"/members/{self.ids['Dave']}/visit-guests"
+        staff,token=self.staff_form(path)
+        data={'action':'save','token':token,'host_id':self.ids['Dave'],'guest_id':self.ids['Alice'],'visit_date':'2020-02-03'}
+        self.assertEqual(staff.post(path,data=data).status_code,302)
+        data['guest_id']=self.ids['Bob'];data['visit_date']=today().isoformat()
+        self.assertEqual(staff.post(path,data=data).status_code,302)
+        body=staff.get(path+'?visit_date=1999-01-01').get_data(as_text=True)
+        self.assertIn('2020-02-03',body)
+        self.assertIn(today().isoformat(),body)
+        self.assertNotIn('>Show<',body)
+        with closing(database.connect(self.db)) as conn:
+            link=visit_guest_repository.guest_link(conn,self.ids['Alice'],date(2020,2,3))
+        edit_page=staff.get(path+f"?edit={link['id']}").get_data(as_text=True)
+        self.assertIn('value="2020-02-03"',edit_page)
+        self.assertIn('Save changes',edit_page)
+        data.update(link_id=link['id'],guest_id=self.ids['Alice'],host_id=self.ids['Carol'],visit_date='2019-01-01')
+        self.assertEqual(staff.post(path,data=data).status_code,302)
+        with closing(database.connect(self.db)) as conn:
+            changed=visit_guest_repository.guest_link(conn,self.ids['Alice'],date(2019,1,1))
+            self.assertEqual(changed['id'],link['id'])
+            self.assertEqual(changed['host_user_id'],self.ids['Carol'])
+            self.assertIsNone(visit_guest_repository.guest_link(conn,self.ids['Alice'],date(2020,2,3)))
+        self.assertEqual(self.count('checkins'),0)
+        visitor_page=staff.get(f"/members/{self.ids['Alice']}/visit-guests").get_data(as_text=True)
+        self.assertIn('2019-01-01',visitor_page)
+        self.assertIn('value="'+str(self.ids['Alice'])+'"',visitor_page)
+
+    def test_staff_date_conflict_and_cross_user_edits_preserve_existing_links(self):
+        from datetime import date
+        path=f"/members/{self.ids['Dave']}/visit-guests"
+        staff,token=self.staff_form(path)
+        with closing(database.connect(self.db)) as conn:
+            visit_guest_repository.save_link(conn,self.ids['Dave'],self.ids['Alice'],date(2020,1,1))
+            visit_guest_repository.save_link(conn,self.ids['Carol'],self.ids['Alice'],date(2020,1,2))
+            conn.commit()
+            link=visit_guest_repository.guest_link(conn,self.ids['Alice'],date(2020,1,1))
+        data={'action':'save','link_id':link['id'],'token':token,'host_id':self.ids['Dave'],'guest_id':self.ids['Alice'],'visit_date':'2020-01-02'}
+        response=staff.post(path,data=data)
+        self.assertIn('already has a link',response.get_data(as_text=True))
+        with closing(database.connect(self.db)) as conn:
+            self.assertEqual(visit_guest_repository.guest_link(conn,self.ids['Alice'],date(2020,1,1))['id'],link['id'])
+        self.assertEqual(staff.post(f"/members/{self.ids['Bob']}/visit-guests",data=data).status_code,404)
+        self.assertEqual(self.count('visit_guest_links'),2)
+        self.assertEqual(staff.post(path,data={'action':'remove','token':token,'link_id':link['id']}).status_code,302)
+        self.assertEqual(self.count('visit_guest_links'),1)
+
+    def test_staff_guest_pickers_never_render_card_numbers(self):
+        with closing(database.connect(self.db)) as conn:
+            conn.execute("UPDATE users SET card_number = 'DO-NOT-SHOW-CARD' WHERE id = ?",(self.ids['Dave'],))
+            conn.commit()
+        staff=admin_client(self.app)
+        for path in (f"/members/check-in-with-guests?host_id={self.ids['Dave']}",f"/members/{self.ids['Dave']}/visit-guests"):
+            body=staff.get(path).get_data(as_text=True)
+            self.assertNotIn('DO-NOT-SHOW-CARD',body)
+            self.assertNotIn('card number',body.lower())
+            self.assertIn('Name or phone',body)
 
 
 if __name__ == '__main__':
